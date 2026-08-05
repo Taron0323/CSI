@@ -34,7 +34,7 @@ V2.1 的 dry run 只能证明软件执行。fixture 在元数据、gate 和报�
 | patch F/P 与严格四臂 | `formal_v2/formal_model.py`、`formal_v2/formal_factorial.py` | 代码已实现；未运行 |
 | 两城市定位与统计 | `formal_v2/formal_factorial.py`、`formal_v2/formal_statistics.py` | 代码已实现；city-level k 和 V6 多层估计量 |
 | CGS/Response/q_comp/p_fail/path | `formal_v2/formal_evaluation.py`、`formal_v2/formal_risk.py`、`formal_v2/formal_path.py` | 代码已实现；未运行 |
-| 资源、scene-ID、外部模型控制 | `formal_v2/formal_controls.py`、`formal_v2/formal_scene_id.py`、`formal_v2/formal_external.py` | runner 已实现；实际 adapter 和结果缺失 |
+| 资源、scene-ID、外部模型控制 | `formal_v2/formal_controls.py`、`formal_v2/formal_scene_id.py`、`formal_v2/formal_external.py` | runner 已实现；Wi-GATr 官方代码适配已实现但未跑正式训练，第二个外部模型仍缺失 |
 | 命令入口 | `formal_v2/formal_cli.py` | 完成；上游失败会阻断四臂 |
 | V2 自包含工具 | `formal_v2/formal_io.py`、`formal_v2/formal_baselines.py` | 完成；不再导入冻结 V1 `experiments` 代码 |
 | 依赖与脚本 | `formal_v2/requirements-lock.txt`、`formal_v2/scripts/setup_formal_v2.sh`、`formal_v2/scripts/run_formal_v2.sh` | 完成 |

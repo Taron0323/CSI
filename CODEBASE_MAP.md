@@ -10,7 +10,7 @@
 | 当前 Python 包 | `/root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/formal_v2` | V2.1/V6 可执行实现 |
 | 当前配置 | `/root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/configs/formal_v2.json` | 正式 schema 与冻结阈值 |
 | 数据合同 | `/root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/DATA_CONTRACT.md` | NPZ 字段、权限和验证边界 |
-| 当前测试 | `/root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/tests/test_formal_v2.py` | 52 个 schema/语义/变异测试 |
+| 当前测试 | `/root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/tests/test_formal_v2.py` | 61 个 schema/语义/变异测试 |
 | 当前论文草稿 | `/root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/paper_v2/main.tex` | 必须反向核对 V6，不是更高规范 |
 | 历史代码 | `/root/autodl-tmp/CSI/archive/CSI-PAIRS-anonymous-supplement-v1.26` | 只用于追溯，不得替当前代码补缺 |
 
@@ -44,6 +44,7 @@ code/CSI-PAIRS-v2.0-server/
 │   ├── formal_path.py                # A_path、matching、G7
 │   ├── formal_wrong_map.py           # 本地六条件诊断，不是 C1 外部证据
 │   ├── formal_external.py            # 至少两个外部模型六条件 adapter
+│   ├── external_adapters/             # Wi-GATr 官方 snapshot、独立环境、六条件适配
 │   ├── formal_controls.py            # equal-FLOP/concat 资源控制 adapter
 │   ├── formal_scene_id.py            # C2 scene-ID adapter
 │   ├── formal_claim_controls.py      # shuffled-pair 与 retention adapter
@@ -104,8 +105,8 @@ ZIP 是原始传输包；`code/` 和 `archive/` 是当前阅读/测试位置。R
 
 ## 5. 当前可验证边界
 
-- `sha256sum --check SHA256SUMS`：当前 64 个登记文件全部通过。
-- `python3 -m unittest discover -s formal_v2/tests -v`：当前 52 个测试通过。
+- `sha256sum --check SHA256SUMS`：当前 117 个登记文件全部通过。
+- `python3 -m unittest discover -s formal_v2/tests -v`：当前 61 个测试通过。
 - `python3 -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py`：通过。
 - 正式数据、licensed scene asset、外部模型 checkpoint、第二 RT/真实干预结果均不存在。
 - `formal_v2/data/` 只有合同说明；fixture 永远是 `scientific_use=FORBIDDEN`。

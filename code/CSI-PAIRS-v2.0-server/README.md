@@ -37,6 +37,20 @@ Expected software outcome:
 - no teacher, qualification, four-arm, localization, RT, or external-model experiment is run;
 - no scientific gate changes state.
 
+## 3.1 Optional official Wi-GATr environment
+
+The core environment intentionally does not install Wi-GATr's Python 3.10/Torch 2.0 dependency
+stack. To execute the vendored official-code adaptation in a separate unused environment:
+
+```bash
+formal_v2/external_adapters/setup_wigatr.sh /absolute/path/wigatr-env
+```
+
+Then merge `formal_v2/external_adapters/wigatr_adapter_entry.json` into an external-adapter
+manifest together with at least one other executable map-conditioned model. Read
+`formal_v2/external_adapters/README.md` for the exact six-condition, source-role, inverse
+localization, and provenance contract. Adapter code or fixture execution is not C1 evidence.
+
 ## 4. Inspect formal data
 
 Do not start training first. Validate the NPZ against the frozen contract:

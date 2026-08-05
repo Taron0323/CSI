@@ -23,3 +23,8 @@ python3 -m unittest discover -s formal_v2/tests -v
 ```
 
 Historical V1 code, local experiment runs, external reference downloads, environments, and generated archives are intentionally excluded from the current-code repository.
+
+The current tree includes an authenticated official-code adaptation of Wi-GATr under
+`code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters`. It is implemented but not yet formally trained or evaluated; C1
+remains blocked until Wi-GATr and at least one second map-conditioned model execute on the same
+non-fixture six-condition unit registry.

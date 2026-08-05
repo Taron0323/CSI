@@ -50,19 +50,60 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
+    expected_units = _expected_six_condition_units(
+        config, dataset, output_root
+    )
+    expected_unit_ids = {unit.unit_id for unit in expected_units}
+    unit_rows = []
+    for unit in expected_units:
+        unit_rows.append(
+            {
+                "unit_id": unit.unit_id,
+                "city_id": str(dataset.city_ids[unit.scene]),
+                "bank_id": str(dataset.bank_ids[unit.scene]),
+                "position_id": str(dataset.position_ids[unit.scene, unit.position]),
+                "source_world": unit.source_world,
+                "active_world": unit.active_world,
+                "null_world": unit.null_world,
+                "wrong_city_bank_id": str(dataset.bank_ids[unit.wrong_city_scene]),
+                "csi_context_sha256": unit.csi_context_sha256,
+                "query_count": 1,
+            }
+        )
+    write_csv(
+        output_dir / "external_unit_registry.csv",
+        bind_rows(unit_rows, evidence),
+    )
     status_rows = []
     all_rows = []
     for adapter in manifest["adapters"]:
         adapter_output = output_dir / "adapters" / adapter["adapter_id"]
         adapter_output.mkdir(parents=True, exist_ok=True)
+        command_digest = hashlib.sha256(
+            json.dumps(
+                adapter["command"], separators=(",", ":"), ensure_ascii=True
+            ).encode("utf-8")
+        ).hexdigest()
         command = [
             value.format(
                 dataset=str(dataset.source_path),
                 output=str(adapter_output),
+                run_root=str(Path(output_root).resolve()),
+                project_root=str(Path(__file__).resolve().parents[1]),
+                adapter_command_sha256=command_digest,
+                adapter_id=adapter["adapter_id"],
+                model_name=adapter["model_name"],
+                source_revision=adapter["source_revision"],
             )
             for value in adapter["command"]
         ]
-        completed = subprocess.run(command, check=False, capture_output=True, text=True)
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[1],
+        )
         (adapter_output / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
         (adapter_output / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
         result_path = adapter_output / "six_condition_results.csv"
@@ -79,8 +120,16 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
             continue
         with result_path.open(newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
-        _validate_six_condition_rows(adapter, rows, dataset)
-        _validate_execution_manifest(adapter, adapter_output, result_path)
+        _validate_six_condition_rows(
+            adapter,
+            rows,
+            dataset,
+            expected_unit_ids=expected_unit_ids,
+            expected_unit_contract={unit.unit_id: unit for unit in expected_units},
+        )
+        _validate_execution_manifest(
+            adapter, adapter_output, result_path, dataset
+        )
         all_rows.extend(rows)
         status_rows.append(
             {
@@ -167,7 +216,14 @@ def _validate_manifest(manifest):
             raise ValueError("unexecuted literature baseline may not claim an adapter")
 
 
-def _validate_six_condition_rows(adapter, rows, dataset):
+def _validate_six_condition_rows(
+    adapter,
+    rows,
+    dataset,
+    *,
+    expected_unit_ids=None,
+    expected_unit_contract=None,
+):
     if not rows:
         raise ValueError("external adapter emitted no result rows")
     by_unit = {}
@@ -212,6 +268,28 @@ def _validate_six_condition_rows(adapter, rows, dataset):
     required = set(CONDITIONS)
     if any(conditions != required for conditions in by_unit.values()):
         raise ValueError("every external unit must contain exactly the six frozen conditions")
+    if expected_unit_ids is not None and set(by_unit) != set(expected_unit_ids):
+        missing = sorted(set(expected_unit_ids).difference(by_unit))
+        unexpected = sorted(set(by_unit).difference(expected_unit_ids))
+        raise ValueError(
+            "external adapter does not cover the frozen common unit registry: "
+            f"missing={missing[:5]}, unexpected={unexpected[:5]}"
+        )
+    if expected_unit_contract is not None:
+        for unit_id, unit in expected_unit_contract.items():
+            selected = [row for row in rows if row["unit_id"] == unit_id]
+            expected = {
+                "city_id": str(dataset.city_ids[unit.scene]),
+                "bank_id": str(dataset.bank_ids[unit.scene]),
+                "position_id": str(dataset.position_ids[unit.scene, unit.position]),
+                "csi_context_sha256": unit.csi_context_sha256,
+                "query_count": "1",
+            }
+            for key, value in expected.items():
+                if any(str(row[key]) != value for row in selected):
+                    raise ValueError(
+                        f"external unit {unit_id!r} changes frozen {key}"
+                    )
     for unit_id in by_unit:
         selected = [row for row in rows if row["unit_id"] == unit_id]
         if len({row["csi_context_sha256"] for row in selected}) != 1:
@@ -225,7 +303,7 @@ def _validate_six_condition_rows(adapter, rows, dataset):
             raise ValueError("external query_count must be positive")
 
 
-def _validate_execution_manifest(adapter, output_dir, result_path):
+def _validate_execution_manifest(adapter, output_dir, result_path, dataset):
     path = output_dir / "execution_manifest.json"
     if not path.is_file():
         raise RuntimeError("external adapter omitted execution_manifest.json")
@@ -234,7 +312,13 @@ def _validate_execution_manifest(adapter, output_dir, result_path):
         "schema_version",
         "adapter_id",
         "model_name",
+        "implementation_status",
         "source_revision",
+        "dataset_sha256",
+        "adapter_config_path",
+        "adapter_config_sha256",
+        "training_record_path",
+        "training_record_sha256",
         "checkpoint_path",
         "checkpoint_sha256",
         "command_sha256",
@@ -242,20 +326,64 @@ def _validate_execution_manifest(adapter, output_dir, result_path):
     }
     if not isinstance(payload, dict) or set(payload) != required:
         raise RuntimeError("external execution manifest fields must be exact")
-    if payload["schema_version"] != "csi-pairs-v6-external-execution-v1":
+    if payload["schema_version"] != "csi-pairs-v6-external-execution-v2":
         raise RuntimeError("external execution manifest schema mismatch")
-    for key in ("adapter_id", "model_name", "source_revision"):
+    for key in (
+        "adapter_id",
+        "model_name",
+        "implementation_status",
+        "source_revision",
+    ):
         if payload[key] != adapter[key]:
             raise RuntimeError(f"external execution {key} mismatch")
+    if payload["dataset_sha256"] != sha256_file(dataset.source_path):
+        raise RuntimeError("external execution dataset hash mismatch")
     command_digest = hashlib.sha256(
         json.dumps(adapter["command"], separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     ).hexdigest()
     if payload["command_sha256"] != command_digest:
         raise RuntimeError("external execution command hash mismatch")
-    checkpoint = (output_dir / payload["checkpoint_path"]).resolve()
-    if output_dir.resolve() not in checkpoint.parents or not checkpoint.is_file():
-        raise RuntimeError("external checkpoint is missing or escapes adapter output")
-    if sha256_file(checkpoint) != payload["checkpoint_sha256"]:
-        raise RuntimeError("external checkpoint hash mismatch")
+    for prefix in ("adapter_config", "training_record", "checkpoint"):
+        artifact = (output_dir / payload[f"{prefix}_path"]).resolve()
+        if output_dir.resolve() not in artifact.parents or not artifact.is_file():
+            raise RuntimeError(f"external {prefix} is missing or escapes adapter output")
+        if sha256_file(artifact) != payload[f"{prefix}_sha256"]:
+            raise RuntimeError(f"external {prefix} hash mismatch")
+    training_record = read_strict_json(output_dir / payload["training_record_path"])
+    if (
+        training_record.get("train_role") != "source_encoder_train"
+        or training_record.get("selection_role") != "source_method_selection"
+        or training_record.get("target_roles_read") != []
+    ):
+        raise RuntimeError("external training record violates the source-only role ledger")
     if sha256_file(result_path) != payload["results_sha256"]:
         raise RuntimeError("external result hash mismatch")
+
+
+def _expected_six_condition_units(config, dataset, output_root):
+    from .external_adapters.wigatr_protocol import build_six_condition_units
+    from .formal_evidence import require_manifested_formal_qualification
+    from .formal_routing import fit_route_normalization, route_dataset
+    from .formal_teacher import load_teacher_bundle
+
+    qualification = read_strict_json(
+        Path(output_root) / "qualification" / "gate.json"
+    )
+    qualification = require_manifested_formal_qualification(
+        qualification,
+        config,
+        dataset,
+        allow_nonscientific_fixture=True,
+    )
+    teacher = load_teacher_bundle(qualification["teacher_checkpoint"], config)
+    normalization = fit_route_normalization(dataset, teacher)
+    scenes = np.concatenate(
+        (
+            dataset.indices_for_role("source_final_unseen_bank"),
+            dataset.indices_for_role("target"),
+        )
+    )
+    routed = route_dataset(
+        dataset, teacher, config, scenes, normalization=normalization
+    )
+    return build_six_condition_units(dataset, routed)

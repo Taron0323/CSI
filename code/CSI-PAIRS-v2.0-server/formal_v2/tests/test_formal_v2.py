@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import torch
@@ -33,8 +34,32 @@ from formal_v2.formal_evidence import (
 from formal_v2.formal_factorial import city_support_candidates, eligible_query_indices
 from formal_v2.formal_evaluation import _eligible_evaluation_positions, _paired_score_differences
 from formal_v2.formal_external_validity import _validate_manifest as validate_external_validity_manifest
+from formal_v2.formal_external import (
+    _validate_execution_manifest as validate_external_execution_manifest,
+    _validate_six_condition_rows,
+)
+from formal_v2.external_adapters.wigatr_adapter import (
+    _verify_vendor_tree,
+    inverse_localize_power,
+)
+from formal_v2.external_adapters.wigatr_protocol import (
+    SIX_CONDITIONS,
+    build_six_condition_units,
+    condition_map,
+    geometry_destroyed_map,
+    grid_to_triangular_mesh,
+    load_wigatr_config,
+    relative_total_power_db,
+)
 from formal_v2.formal_fixture import write_nonscientific_fixture
-from formal_v2.formal_io import StrictJsonError, artifact_manifest, parse_strict_json, write_json
+from formal_v2.formal_io import (
+    StrictJsonError,
+    artifact_manifest,
+    parse_strict_json,
+    sha256_file,
+    write_csv,
+    write_json,
+)
 from formal_v2.formal_model import CSIPairsFormalModel, required_mean
 from formal_v2.formal_path import _noop_path_threshold, localization_path_incidence, path_incidence
 from formal_v2.formal_protocol import (
@@ -730,6 +755,288 @@ class EvidenceAndPathTests(unittest.TestCase):
             "assemble-claims",
         ):
             self.assertIn(command, help_text)
+
+
+class WiGATrAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.path = self.root / "fixture.npz"
+        write_nonscientific_fixture(self.path)
+        self.dataset = FormalDataset.load(self.path)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_paper_dose_config_and_vendor_snapshot_are_frozen(self):
+        config = load_wigatr_config(
+            ROOT / "formal_v2/configs/wigatr_official_v1.json"
+        )
+        self.assertEqual(config["model"]["num_blocks"], 32)
+        self.assertEqual(config["model"]["hidden_mv_channels"], 16)
+        self.assertEqual(config["model"]["hidden_s_channels"], 32)
+        self.assertEqual(config["model"]["num_heads"], 8)
+        self.assertEqual(config["training"]["steps"], 200000)
+        vendor = ROOT / "formal_v2/external_adapters/vendor/Wi-GATr"
+        _verify_vendor_tree(vendor)
+        self.assertTrue((vendor / "LICENSE").is_file())
+
+    def test_relative_total_power_is_invariant_to_common_phase(self):
+        real = np.asarray([1.2, -0.4, 0.7, 2.1])
+        imaginary = np.asarray([-0.3, 0.8, 1.1, -0.6])
+        angle = 0.71
+        rotated_real = real * np.cos(angle) - imaginary * np.sin(angle)
+        rotated_imaginary = real * np.sin(angle) + imaginary * np.cos(angle)
+        original = relative_total_power_db(
+            np.concatenate((real, imaginary)), 1e-12
+        )
+        rotated = relative_total_power_db(
+            np.concatenate((rotated_real, rotated_imaginary)), 1e-12
+        )
+        self.assertAlmostEqual(float(original), float(rotated), places=12)
+
+    def test_2p5d_mesh_has_top_exposed_sides_and_materials(self):
+        maps = np.zeros((3, 3, 3), dtype=np.float64)
+        maps[0, 1, 1] = 1.0
+        maps[1, 1, 1] = 2.0
+        maps[2, 1, 1] = 3.0
+        mesh, materials = grid_to_triangular_mesh(
+            maps,
+            ("occupancy", "height", "material"),
+            resolution_m=0.5,
+            origin_xy_m=(-0.75, -0.75),
+            occupancy_threshold=0.5,
+            minimum_height_m=0.001,
+        )
+        self.assertEqual(mesh.shape, (10, 3, 3))
+        self.assertTrue(np.all(materials == 3))
+        self.assertAlmostEqual(float(mesh[..., 2].min()), 0.0)
+        self.assertAlmostEqual(float(mesh[..., 2].max()), 2.0)
+        empty_mesh, empty_materials = grid_to_triangular_mesh(
+            np.zeros_like(maps),
+            ("occupancy", "height", "material"),
+            resolution_m=0.5,
+            origin_xy_m=(-0.75, -0.75),
+            occupancy_threshold=0.5,
+            minimum_height_m=0.001,
+        )
+        self.assertEqual(empty_mesh.shape, (0, 3, 3))
+        self.assertEqual(empty_materials.shape, (0,))
+
+    def test_geometry_destroyed_preserves_joint_cell_statistics(self):
+        maps = np.arange(3 * 4 * 4, dtype=np.float64).reshape(3, 4, 4)
+        first = geometry_destroyed_map(maps, "fixed-unit")
+        second = geometry_destroyed_map(maps, "fixed-unit")
+        self.assertTrue(np.array_equal(first, second))
+        self.assertFalse(np.array_equal(first, maps))
+        original_cells = sorted(map(tuple, maps.reshape(3, -1).T.tolist()))
+        destroyed_cells = sorted(map(tuple, first.reshape(3, -1).T.tolist()))
+        self.assertEqual(original_cells, destroyed_cells)
+
+    def test_common_unit_registry_excludes_target_support(self):
+        routes = {}
+        scenes = np.concatenate(
+            (
+                self.dataset.indices_for_role("source_final_unseen_bank"),
+                self.dataset.indices_for_role("target"),
+            )
+        )
+        for scene_value in scenes:
+            scene = int(scene_value)
+            for edge in self.dataset.directed_edges(scene):
+                for position in range(self.dataset.position_count):
+                    routes[(scene, edge.source_world, edge.target_world, position)] = (
+                        2 if edge.bit_index == 0 else 0
+                    )
+        units = build_six_condition_units(
+            self.dataset, SimpleNamespace(alignment_route=routes)
+        )
+        self.assertGreater(len(units), 0)
+        for unit in units:
+            if str(self.dataset.scene_roles[unit.scene]) == "target":
+                self.assertEqual(
+                    str(self.dataset.position_roles[unit.scene, unit.position]),
+                    "query",
+                )
+        unit = units[0]
+        maps = [condition_map(self.dataset, unit, name) for name in SIX_CONDITIONS]
+        self.assertEqual(len(maps), 6)
+        self.assertTrue(np.array_equal(maps[-1], np.zeros_like(maps[-1])))
+
+    def test_external_rows_must_cover_the_frozen_registry(self):
+        scene = int(self.dataset.indices_for_role("target")[0])
+        position = int(np.flatnonzero(self.dataset.position_roles[scene] == "query")[0])
+        unit_id = "registered-unit"
+        rows = [
+            {
+                "unit_id": unit_id,
+                "model_name": "Wi-GATr",
+                "condition": condition,
+                "city_id": str(self.dataset.city_ids[scene]),
+                "bank_id": str(self.dataset.bank_ids[scene]),
+                "position_id": str(self.dataset.position_ids[scene, position]),
+                "localization_error_m": "1.0",
+                "csi_context_sha256": "a" * 64,
+                "query_count": "1",
+            }
+            for condition in SIX_CONDITIONS
+        ]
+        _validate_six_condition_rows(
+            {"model_name": "Wi-GATr"},
+            rows,
+            self.dataset,
+            expected_unit_ids={unit_id},
+            expected_unit_contract={
+                unit_id: SimpleNamespace(
+                    scene=scene,
+                    position=position,
+                    csi_context_sha256="a" * 64,
+                )
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "common unit registry"):
+            _validate_six_condition_rows(
+                {"model_name": "Wi-GATr"},
+                rows,
+                self.dataset,
+                expected_unit_ids={unit_id, "missing-unit"},
+            )
+        rows[0]["csi_context_sha256"] = "b" * 64
+        with self.assertRaisesRegex(ValueError, "frozen csi_context_sha256"):
+            _validate_six_condition_rows(
+                {"model_name": "Wi-GATr"},
+                rows,
+                self.dataset,
+                expected_unit_ids={unit_id},
+                expected_unit_contract={
+                    unit_id: SimpleNamespace(
+                        scene=scene,
+                        position=position,
+                        csi_context_sha256="a" * 64,
+                    )
+                },
+            )
+        rows[0]["csi_context_sha256"] = "a" * 64
+        support = int(
+            np.flatnonzero(self.dataset.position_roles[scene] == "support_pool")[0]
+        )
+        rows[0]["position_id"] = str(self.dataset.position_ids[scene, support])
+        with self.assertRaisesRegex(ValueError, "support_pool"):
+            _validate_six_condition_rows(
+                {"model_name": "Wi-GATr"}, rows, self.dataset
+            )
+
+    def test_execution_manifest_binds_config_training_checkpoint_and_results(self):
+        output = self.root / "adapter"
+        output.mkdir()
+        config_path = output / "adapter_config.json"
+        training_path = output / "training_record.json"
+        checkpoint_path = output / "checkpoint.pt"
+        result_path = output / "six_condition_results.csv"
+        write_json(config_path, {"schema_version": "adapter-config"})
+        write_json(
+            training_path,
+            {
+                "train_role": "source_encoder_train",
+                "selection_role": "source_method_selection",
+                "target_roles_read": [],
+            },
+        )
+        checkpoint_path.write_bytes(b"checkpoint")
+        write_csv(result_path, [{"result": 1}])
+        command = ["python", "adapter.py"]
+        adapter = {
+            "adapter_id": "wigatr",
+            "model_name": "Wi-GATr",
+            "implementation_status": "official-code-adaptation",
+            "source_revision": "revision",
+            "command": command,
+        }
+        execution = {
+            "schema_version": "csi-pairs-v6-external-execution-v2",
+            "adapter_id": "wigatr",
+            "model_name": "Wi-GATr",
+            "implementation_status": "official-code-adaptation",
+            "source_revision": "revision",
+            "dataset_sha256": sha256_file(self.path),
+            "adapter_config_path": config_path.name,
+            "adapter_config_sha256": sha256_file(config_path),
+            "training_record_path": training_path.name,
+            "training_record_sha256": sha256_file(training_path),
+            "checkpoint_path": checkpoint_path.name,
+            "checkpoint_sha256": sha256_file(checkpoint_path),
+            "command_sha256": hashlib.sha256(
+                json.dumps(command, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+            "results_sha256": sha256_file(result_path),
+        }
+        write_json(output / "execution_manifest.json", execution)
+        validate_external_execution_manifest(
+            adapter, output, result_path, self.dataset
+        )
+        training = json.loads(training_path.read_text())
+        training["target_roles_read"] = ["target"]
+        write_json(training_path, training)
+        execution["training_record_sha256"] = sha256_file(training_path)
+        write_json(output / "execution_manifest.json", execution)
+        with self.assertRaisesRegex(RuntimeError, "source-only"):
+            validate_external_execution_manifest(
+                adapter, output, result_path, self.dataset
+            )
+
+    def test_inverse_localizer_api_has_no_true_position_argument(self):
+        parameters = inspect.signature(inverse_localize_power).parameters
+        self.assertNotIn("true_position", parameters)
+
+    def test_inverse_localizer_optimizes_only_from_public_bounds_and_power(self):
+        class ToyBatch:
+            @classmethod
+            def from_data_list(cls, _values):
+                return cls()
+
+            def to(self, _device):
+                return self
+
+        class ToyPowerModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.anchor = torch.nn.Parameter(torch.zeros(()))
+
+            def forward(self, _batch, overrides):
+                receiver = overrides["rx"]
+                value = receiver[0] + 0.5 * receiver[1] + 0.0 * self.anchor
+                return value.reshape(1, 1)
+
+        runtime = {
+            "torch": torch,
+            "Batch": ToyBatch,
+            "tokenize_scene": lambda *_args, **_kwargs: object(),
+        }
+        config = load_wigatr_config(
+            ROOT / "formal_v2/configs/wigatr_official_v1.json"
+        )
+        config["inverse"]["steps"] = 80
+        config["inverse"]["restarts"] = 3
+        prediction = inverse_localize_power(
+            runtime,
+            ToyPowerModel(),
+            self.dataset,
+            self.dataset.maps[0, 0],
+            self.dataset.bs_pose[0, :3],
+            observed_power=1.25,
+            bounds=((-4.0, 4.0), (-4.0, 4.0)),
+            config=config,
+            num_materials=int(
+                self.dataset.metadata["assets"]["material_category_count"]
+            ),
+            restart_salt="test-without-target-position",
+        )
+        self.assertTrue(np.all(np.isfinite(prediction)))
+        self.assertTrue(np.all(prediction >= -4.0))
+        self.assertTrue(np.all(prediction <= 4.0))
+        self.assertLess(
+            abs(float(prediction[0] + 0.5 * prediction[1]) - 1.25), 0.05
+        )
 
 
 def _archive_arrays(path: Path) -> dict[str, np.ndarray]:

@@ -24,3 +24,10 @@ python3 -m formal_v2.formal_cli --help
 ```
 
 `all` is the complete evidence chain. It requires the verifier, risk archive, external-baseline, resource-control, scene-ID, external-validity, literature, RT-calibration, shuffled-pair, and retention manifests. Missing inputs fail at argument parsing; no independent stage is silently skipped. Fixtures remain `FORBIDDEN` at every artifact layer. Code and tests do not constitute scientific evidence.
+
+The first concrete external baseline is under `external_adapters/`: an authenticated adaptation of
+the official Wi-GATr snapshot for the V6 six-condition localization audit. It retains the official
+geometric tokenizer/GATr architecture and inverse-coordinate objective, and deterministically
+converts CSI-PAIRS 2.5D maps to triangular meshes (columns map to x, rows map to y, and height to
+z). See `external_adapters/README.md`. Its presence does not pass C1: a formal non-fixture run and
+at least one other distinct executed map-conditioned model are still required.
