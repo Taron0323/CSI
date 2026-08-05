@@ -1,0 +1,9 @@
+{
+  "schema_version": "csi-pairs-v6-data-verifier-v1",
+  "command": ["{python}", "-m", "formal_v2.formal_fixture_verifier", "--dataset", "{dataset}", "--output", "{output}"],
+  "engine_source_revision": "fixture-source-revision",
+  "engine_license_id": "GENERATED-FIXTURE-NO-EXTERNAL-ASSET",
+  "asset_license_ids": ["GENERATED-FIXTURE-NO-EXTERNAL-ASSET"],
+  "rtol": 0.0,
+  "atol": 0.0
+}

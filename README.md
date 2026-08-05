@@ -1,0 +1,25 @@
+# CSI-PAIRS
+
+This repository contains the CSI-PAIRS V2.1 implementation of the frozen V6 research protocol.
+
+The authoritative protocol is
+[`Idea1-CSI-PAIRS-冻结版-零基础阅读稿-v6_VSCode兼容版.md`](Idea1-CSI-PAIRS-冻结版-零基础阅读稿-v6_VSCode兼容版.md).
+The executable server package is under
+[`code/CSI-PAIRS-v2.0-server`](code/CSI-PAIRS-v2.0-server); the directory name is retained as a compatibility path, while the runtime, schemas, paper draft, and generated bundle are V2.1.
+
+Current status:
+
+- engineering: `READY_FOR_DATA`;
+- protocol implementation: V2.1 frozen-V6 path;
+- scientific claims: blocked until all required non-fixture gates and independent adapters pass;
+- fixture outputs: permanently `scientific_use=FORBIDDEN`.
+
+Start with the [server README](code/CSI-PAIRS-v2.0-server/README.md) and verify the package before use:
+
+```bash
+cd code/CSI-PAIRS-v2.0-server
+sha256sum --check SHA256SUMS
+python3 -m unittest discover -s formal_v2/tests -v
+```
+
+Historical V1 code, local experiment runs, external reference downloads, environments, and generated archives are intentionally excluded from the current-code repository.

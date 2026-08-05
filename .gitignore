@@ -1,0 +1,10 @@
+code/CSI-PAIRS-v2.0-server/.venv/
+code/CSI-PAIRS-v2.0-server/runs/
+code/CSI-PAIRS-v2.0-server/waibu/
+archive/
+*.zip
+SERVER_README_V2.0.md
+v2_0_server_bundle_verification.md
+**/__pycache__/
+**/.ruff_cache/
+*.py[cod]

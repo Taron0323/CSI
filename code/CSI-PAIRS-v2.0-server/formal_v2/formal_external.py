@@ -1,0 +1,261 @@
+from __future__ import annotations
+
+import csv
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+
+import numpy as np
+
+from .formal_evidence import bind_rows, evidence_context
+from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_csv, write_json
+from .formal_wrong_map import CONDITIONS
+
+
+ALLOWED_IMPLEMENTATION_STATUS = {
+    "official-code-adaptation",
+    "paper-spec-controlled-implementation",
+    "style-controlled-implementation",
+}
+REQUIRED_BASELINE_NAMES = {
+    "CSI-MAE",
+    "CSI-CLIP",
+    "CSI-CLIP++",
+    "ContraWiMAE",
+    "WWM",
+    "SigMap",
+    "Wi-GATr",
+    "WiSER",
+    "CSI-only",
+    "oracle-x",
+    "RFIR",
+}
+BASELINE_STATUSES = {"executed", "not_executed", "not_applicable", "oracle_only"}
+
+
+def run_external_baselines(config, dataset, manifest_path, output_root):
+    from .formal_data_verification import require_verified_roles_from_root
+
+    require_verified_roles_from_root(
+        output_root,
+        config,
+        dataset,
+        ("source_final_unseen_bank", "target"),
+    )
+    manifest = read_strict_json(manifest_path)
+    _validate_manifest(manifest)
+    output_dir = Path(output_root) / "external_baselines"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    evidence = evidence_context(
+        config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
+    )
+    status_rows = []
+    all_rows = []
+    for adapter in manifest["adapters"]:
+        adapter_output = output_dir / "adapters" / adapter["adapter_id"]
+        adapter_output.mkdir(parents=True, exist_ok=True)
+        command = [
+            value.format(
+                dataset=str(dataset.source_path),
+                output=str(adapter_output),
+            )
+            for value in adapter["command"]
+        ]
+        completed = subprocess.run(command, check=False, capture_output=True, text=True)
+        (adapter_output / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
+        (adapter_output / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
+        result_path = adapter_output / "six_condition_results.csv"
+        if completed.returncode != 0 or not result_path.is_file():
+            status_rows.append(
+                {
+                    "adapter_id": adapter["adapter_id"],
+                    "model_name": adapter["model_name"],
+                    "implementation_status": adapter["implementation_status"],
+                    "status": "FAIL",
+                    "return_code": completed.returncode,
+                }
+            )
+            continue
+        with result_path.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        _validate_six_condition_rows(adapter, rows, dataset)
+        _validate_execution_manifest(adapter, adapter_output, result_path)
+        all_rows.extend(rows)
+        status_rows.append(
+            {
+                "adapter_id": adapter["adapter_id"],
+                "model_name": adapter["model_name"],
+                "implementation_status": adapter["implementation_status"],
+                "status": "PASS",
+                "return_code": completed.returncode,
+            }
+        )
+    write_csv(output_dir / "adapter_status.csv", bind_rows(status_rows, evidence))
+    write_csv(output_dir / "literature_baseline_registry.csv", bind_rows(manifest["literature_registry"], evidence))
+    write_csv(output_dir / "six_condition_results.csv", bind_rows(all_rows, evidence))
+    passed_models = {
+        row["model_name"] for row in status_rows if row["status"] == "PASS"
+    }
+    passed = len(passed_models) >= 2
+    gate = {
+        "schema_version": "csi-pairs-v6-external-baseline-gate-v2",
+        "status": "PASS" if passed else "BLOCKED",
+        "passed": passed,
+        **evidence,
+        "gate_scope": "C1 six-condition domain evidence",
+        "passing_map_conditioned_models": len(passed_models),
+        "unique_passing_model_count": len(passed_models),
+        "unique_passing_models": sorted(passed_models),
+    }
+    write_json(output_dir / "gate.json", gate)
+    write_json(
+        output_dir / "manifest.json",
+        {
+            "schema_version": "csi-pairs-formal-stage-manifest-v2.1-v6",
+            **evidence,
+            "files": artifact_manifest(output_dir, evidence=evidence),
+        },
+    )
+    return gate
+
+
+def _validate_manifest(manifest):
+    if not isinstance(manifest, dict) or set(manifest) != {"schema_version", "adapters", "literature_registry"}:
+        raise ValueError("external adapter manifest fields must be exact")
+    if manifest["schema_version"] != "csi-pairs-v6-external-adapters-v2":
+        raise ValueError("external adapter manifest schema mismatch")
+    adapters = manifest["adapters"]
+    if not isinstance(adapters, list) or len(adapters) < 2:
+        raise ValueError("at least two external map-conditioned adapters are required")
+    seen = set()
+    for adapter in adapters:
+        required = {
+            "adapter_id",
+            "model_name",
+            "implementation_status",
+            "license_id",
+            "citation_key",
+            "source_revision",
+            "map_conditioned",
+            "command",
+        }
+        if not isinstance(adapter, dict) or set(adapter) != required:
+            raise ValueError("external adapter fields must be exact")
+        if adapter["adapter_id"] in seen:
+            raise ValueError("external adapter IDs must be unique")
+        seen.add(adapter["adapter_id"])
+        if adapter["implementation_status"] not in ALLOWED_IMPLEMENTATION_STATUS:
+            raise ValueError("external adapter implementation status is inaccurate or unsupported")
+        if adapter["map_conditioned"] is not True:
+            raise ValueError("C1 adapters must actually be map-conditioned")
+        if not isinstance(adapter["command"], list) or not adapter["command"]:
+            raise ValueError("external adapter command must be a nonempty argv list")
+        if not all(isinstance(adapter[key], str) and adapter[key].strip() for key in ("citation_key", "source_revision", "license_id")):
+            raise ValueError("external adapter provenance fields must be nonempty")
+    registry = manifest["literature_registry"]
+    if not isinstance(registry, list) or {row.get("baseline_name") for row in registry} != REQUIRED_BASELINE_NAMES:
+        raise ValueError("literature registry must contain every frozen V6 baseline name")
+    for row in registry:
+        if set(row) != {"baseline_name", "status", "adapter_id", "reason"}:
+            raise ValueError("literature baseline registry fields must be exact")
+        if row["status"] not in BASELINE_STATUSES:
+            raise ValueError("literature baseline registry has an invalid status")
+        if row["status"] == "executed" and row["adapter_id"] not in seen:
+            raise ValueError("executed literature baseline must reference an adapter")
+        if row["status"] != "executed" and row["adapter_id"] != "":
+            raise ValueError("unexecuted literature baseline may not claim an adapter")
+
+
+def _validate_six_condition_rows(adapter, rows, dataset):
+    if not rows:
+        raise ValueError("external adapter emitted no result rows")
+    by_unit = {}
+    required_columns = {
+        "unit_id",
+        "model_name",
+        "condition",
+        "city_id",
+        "bank_id",
+        "position_id",
+        "localization_error_m",
+        "csi_context_sha256",
+        "query_count",
+    }
+    for row in rows:
+        if set(row) != required_columns:
+            raise ValueError("external result columns must be exact")
+        if row.get("model_name") != adapter["model_name"]:
+            raise ValueError("external result model name does not match its manifest")
+        if not row.get("unit_id") or not row.get("bank_id") or not row.get("position_id"):
+            raise ValueError("external result unit keys must be nonempty")
+        scene_matches = [
+            index for index, value in enumerate(dataset.bank_ids.tolist()) if str(value) == row["bank_id"]
+        ]
+        if len(scene_matches) != 1:
+            raise ValueError("external result bank_id is not unique in the current dataset")
+        scene = scene_matches[0]
+        if row["city_id"] != str(dataset.city_ids[scene]):
+            raise ValueError("external result city_id does not match its bank")
+        if row["position_id"] not in set(dataset.position_ids[scene].tolist()):
+            raise ValueError("external result position_id is absent from its bank")
+        position = int(np.flatnonzero(dataset.position_ids[scene] == row["position_id"])[0])
+        if str(dataset.scene_roles[scene]) == "target" and str(dataset.position_roles[scene, position]) != "query":
+            raise ValueError("external baseline includes target support_pool in its denominator")
+        try:
+            value = float(row["localization_error_m"])
+        except ValueError as error:
+            raise ValueError("external localization error must be numeric") from error
+        if value < 0:
+            raise ValueError("external localization error must be nonnegative")
+        by_unit.setdefault(row.get("unit_id"), set()).add(row.get("condition"))
+    required = set(CONDITIONS)
+    if any(conditions != required for conditions in by_unit.values()):
+        raise ValueError("every external unit must contain exactly the six frozen conditions")
+    for unit_id in by_unit:
+        selected = [row for row in rows if row["unit_id"] == unit_id]
+        if len({row["csi_context_sha256"] for row in selected}) != 1:
+            raise ValueError("six-condition unit changes the frozen CSI/radio context")
+        if len({row["query_count"] for row in selected}) != 1:
+            raise ValueError("six-condition unit changes the evaluation denominator")
+        digest = selected[0]["csi_context_sha256"]
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise ValueError("external CSI context digest must be lowercase SHA-256")
+        if int(selected[0]["query_count"]) <= 0:
+            raise ValueError("external query_count must be positive")
+
+
+def _validate_execution_manifest(adapter, output_dir, result_path):
+    path = output_dir / "execution_manifest.json"
+    if not path.is_file():
+        raise RuntimeError("external adapter omitted execution_manifest.json")
+    payload = read_strict_json(path)
+    required = {
+        "schema_version",
+        "adapter_id",
+        "model_name",
+        "source_revision",
+        "checkpoint_path",
+        "checkpoint_sha256",
+        "command_sha256",
+        "results_sha256",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise RuntimeError("external execution manifest fields must be exact")
+    if payload["schema_version"] != "csi-pairs-v6-external-execution-v1":
+        raise RuntimeError("external execution manifest schema mismatch")
+    for key in ("adapter_id", "model_name", "source_revision"):
+        if payload[key] != adapter[key]:
+            raise RuntimeError(f"external execution {key} mismatch")
+    command_digest = hashlib.sha256(
+        json.dumps(adapter["command"], separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    if payload["command_sha256"] != command_digest:
+        raise RuntimeError("external execution command hash mismatch")
+    checkpoint = (output_dir / payload["checkpoint_path"]).resolve()
+    if output_dir.resolve() not in checkpoint.parents or not checkpoint.is_file():
+        raise RuntimeError("external checkpoint is missing or escapes adapter output")
+    if sha256_file(checkpoint) != payload["checkpoint_sha256"]:
+        raise RuntimeError("external checkpoint hash mismatch")
+    if sha256_file(result_path) != payload["results_sha256"]:
+        raise RuntimeError("external result hash mismatch")

@@ -1,0 +1,714 @@
+\documentclass{article}
+
+\usepackage{iclr2027_conference,times}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{xcolor}
+
+\title{\raggedright CSI-PAIRS: Paired Alignment and Intervention-Response
+Supervision for Map-Conditioned Wireless Localization}
+
+\author{Anonymous Authors}
+
+% Keep disabled for double-blind review.
+% \iclrfinalcopy
+
+\newcommand{\method}{CSI-PAIRS}
+\newcommand{\csi}{H}
+\newcommand{\map}{M}
+\newcommand{\enc}{F_{\theta}}
+\newcommand{\teacher}{T}
+\newcommand{\score}{s_{\theta,\psi}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\route}{\operatorname{Route}}
+\newcommand{\rms}{\operatorname{RMS}}
+\newcommand{\notrun}{\textsc{Not Run}}
+\newcommand{\draftplaceholder}[1]{%
+\fbox{\parbox[c][0.62in][c]{0.94\linewidth}{\centering\small
+\textbf{DRAFT PLACEHOLDER / NOT A RESULT}\\[2pt]#1}}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Map-conditioned wireless models are usually trained and evaluated on correctly
+matched signal--scene pairs.  Such performance does not specify how their
+representations should change when local geometry changes while receiver state
+and radio configuration are held fixed.  We formulate a paired audit that
+separates physically effective (active), ambiguous (gray), and below-noise
+(null) map interventions, and introduce \method{}, a supervision framework on
+reusable scene-level world banks.  For each Hamming-1 scene edit, Alignment asks
+which adjacent map better explains the observed channel, whereas Response
+predicts the ray-traced target channel under a signed edit.  Both objectives
+update one retained map-conditioned state encoder; Response predicts both a
+frozen-teacher latent patch and the corresponding clean, pair-consistent
+physical CSI patch, while the CSI-only teacher audits route sensitivity,
+and the headline model never receives receiver position.  We specify a strict $2\times2$ experiment, scene-clustered
+statistics, shortcut controls, and claim-evidence gates that distinguish local
+paired sensitivity from global map validity, joint supervision from extra
+compute, and simulator-defined effects from real-world causality.  This draft
+does not report a scientific result: both the initial and stricter post-audit
+synthetic qualification runs failed the no-position Response gate, so efficacy
+claims remain withheld pending qualified ray tracing, final baselines, and new
+independent scene banks.
+\end{abstract}
+
+\section{Introduction}
+
+Channel state information (CSI) contains a structured record of propagation
+through the physical environment.  Recent channel foundation models learn from
+masked CSI reconstruction or multiple deterministic views of the same channel
+\citep{jiang2026csimae,jiang2025csiclip,jiang2026csiclippp}, while multimodal
+systems combine signals with scene geometry or motion
+\citep{chen2026wwm,chu2026sigmap}.  These objectives can yield useful matched-pair
+representations.  They do not, by themselves, identify how a representation
+should respond to an intervention on the scene: two predictors can agree on
+every observed zero-edit example and disagree arbitrarily after a wall is
+inserted, removed, or changed.
+
+The distinction matters for localization.  A map-conditioned predictor may use
+coarse city context, scene identity, or map artifacts without encoding the
+local geometry responsible for a particular channel.  Conversely, degradation
+under an arbitrary wrong map does not prove physical grounding: the corruption
+may be far outside the training distribution, and a local edit may have no
+measurable effect at the receiver.  A useful audit must therefore hold the
+receiver state, radio configuration, and propagation nuisance variables fixed;
+retrace the edited world; and avoid labeling every alternate map as physically
+incompatible.
+
+We study this problem with \emph{paired scene interventions}.  A scene-level
+world bank contains canonical states of a small edit hypercube and is reused
+across many receiver positions.  Only adjacent Hamming-1 worlds are compared.
+Each edge-position unit is routed by both a full-channel physical distance and
+a frozen-teacher distance.  Active edges support relative Alignment; gray edges
+carry target regression but no strong compatibility label; null edges receive
+a tolerance constraint rather than a negative label.
+
+\method{} adds two distinct constraints to a shared state encoder.  Alignment
+selects the generating side of an active paired edge.  Response predicts the
+direction and magnitude of the retraced raw-CSI target under a signed edit.  The
+target is loaded only after source inputs are fixed; the route teacher reads CSI
+only, preventing the target map or receiver coordinate from leaking the answer.
+At localization time, only the retained state encoder and
+position head remain.  The method therefore succeeds only if both skills are
+present in the shared representation, not merely in disposable audit heads.
+
+This evidence-gated V2.1 draft makes three methodological contributions:
+
+\begin{itemize}
+    \item We define a six-condition wrong-map audit and a paired compatibility
+    protocol that distinguish active, gray, and null edits from arbitrary
+    wrong-city, geometry-destroyed, and empty-map stress tests.
+    \item We formulate node-balanced, bidirectional scene-level world banks and
+    shared Alignment/Response supervision with a CSI-only target, no receiver
+    position in the headline input, and explicit null dead zones.
+    \item We preregister a strict $2\times2$ comparison, equal-resource and
+    shortcut controls, scene-level inference, and downgrade rules.  These tests,
+    rather than the objective alone, determine whether joint value,
+    cross-city localization, or bounded paired-context risk may be claimed.
+\end{itemize}
+
+We do not claim priority, calibrated deployment risk, label efficiency,
+real-world causal grounding, or superiority in this draft.  The present code
+qualification is useful because it exposes a preliminary no-position failure;
+it is not paper evidence.
+
+\begin{figure}[t]
+\centering
+\draftplaceholder{Paired intervention audit. Replace with six-condition results
+for at least two named external models: active and null paired alternatives,
+wrong city, geometry-destroyed, and empty map. Show paired bank-level intervals.}
+\caption{Planned paired-intervention audit. The final caption must state model
+information budgets, independent scene banks, seeds, paired interval, and the
+active/null thresholds. No synthetic fixture value may enter this panel.}
+\label{fig:paired-audit-placeholder}
+\end{figure}
+
+\section{Related Work}
+
+\paragraph{Wireless self-supervision and world models.}
+CSI-MAE masks and reconstructs CSI to learn channel representations
+\citep{jiang2026csimae}.  CSI-CLIP and CSI-CLIP++ align frequency-domain CSI
+with its delay-domain CIR view \citep{jiang2025csiclip,jiang2026csiclippp}.
+The Wireless World Model combines CSI, point clouds, and trajectories through
+same-world predictive learning \citep{chen2026wwm}.  These are strong starting
+points, but same-world completion and deterministic transforms of one channel
+do not supervise the response to a retraced scene edit.  When source code is
+unavailable, our protocol names the corresponding control
+``WWM-inspired same-world matched prediction,'' not a faithful reproduction.
+
+\paragraph{Map-conditioned localization.}
+SigMap uses a geographic map as a prompt for cross-scenario wireless
+localization \citep{chu2026sigmap}.  This makes it a direct diagnostic neighbor:
+our question is not whether a map improves matched localization, but whether
+the model responds correctly to local paired edits and remains stable on null
+edits.  We evaluate external methods only under accurately named implementation
+status---official-code adaptation, paper-spec controlled implementation, or
+inspired control---and do not transfer numbers across datasets.
+
+\paragraph{Geometry-aware wireless prediction.}
+Wi-GATr predicts wireless quantities from scene primitives and transmitter/
+receiver geometry \citep{hehn2024wigatr}; WiSER predicts radiomaps and CIRs
+from a transmitter-conditioned scene memory \citep{qiao2026wiser}; RF inverse
+rendering explicitly models editable geometry and materials
+\citep{wang2026rfir}.  These works motivate geometry-aware forward modeling.
+Their information budget differs from our headline setting: receiver position
+is excluded from \method{} and appears only in a privileged oracle.  Our
+contribution is not a new ray tracer or ranking loss, but the paired supervision
+and evidence protocol applied to a retained localization representation.
+
+\section{Paired Problem Setup}
+
+\subsection{Simulator-defined physical units}
+
+Let $b$ index an independent scene tile, $u$ a world state, $x$ a receiver
+position, $c$ the radio configuration, and $\xi_{\mathrm{phys}}$ all propagation
+nuisance variables that must remain shared across a pair.  A deterministic
+ray-tracing backend produces the noise-free channel
+\begin{equation}
+    \csi^{\star}_{b,u}(x,c,\xi_{\mathrm{phys}})
+    =\mathcal{R}(\map_{b,u},x,c,\xi_{\mathrm{phys}}).
+\end{equation}
+An observed CSI sample adds an independently seeded observation process.  For
+an intervention $u\leftrightarrow v$, the two calls share
+$(b,x,c,\xi_{\mathrm{phys}})$ and differ only in one registered scene primitive.
+This is a simulator-defined paired unit.  It does not establish a real-world
+counterfactual without an external engine or controlled measurement.
+
+\subsection{Reusable scene-level world banks}
+
+Each bank has $K=2^d$ canonical worlds indexed by $u\in\{0,1\}^d$.  A bit
+selects one of two physically admissible states for a registered primitive.
+Every world is rendered from its complete state description, never by replaying
+an edit history.  The bank reuses one common receiver set $X_b$ across all
+worlds, and all siblings remain in the same split.  Training uses only
+\begin{equation}
+    E_b=\{\{u,v\}:\operatorname{Ham}(u,v)=1\},
+\end{equation}
+with both directions sampled equally.  Sampling is uniform over bank, node,
+position, and response query in that order.  This construction removes the
+direct shortcut in which a per-position map uniquely identifies $x$, while
+unseen-bank, map-only, scene-ID, and variant-ID controls test residual shortcuts.
+
+\subsection{Effect routing}
+
+Let $\Phi(\csi)$ be a frozen physical channel representation and
+$z=\teacher(\csi)$ a frozen CSI-only teacher token.  Source-only constants
+normalize the two symmetric distances
+\begin{equation}
+ \delta_{uv}=d_{\mathrm{phys}}\!\left(\Phi(\csi_u),\Phi(\csi_v)\right),
+ \qquad
+ \gamma_{uv}=d_z(z_u,z_v).
+\end{equation}
+Full-channel distances route Alignment; query-level distances route Response.
+Thresholds come from source repeat noise and a source-only practical-effect
+floor, then remain frozen:
+\begin{equation}
+\route(\delta,\gamma)=
+\begin{cases}
+\mathrm{null}, & \delta\le\epsilon_0\ \land\ \gamma\le\tau_0,\\
+\mathrm{active}, & \delta\ge\epsilon_1\ \land\ \gamma\ge\tau_1,\\
+\mathrm{gray}, & \text{otherwise}.
+\end{cases}
+\label{eq:route}
+\end{equation}
+Route labels control losses and audit strata but are never model inputs.  We
+report raw counts and scene coverage, physical-active/teacher-sensitive
+agreement, and physical-null/teacher-null agreement.  Empty conditional means
+are qualification failures, not zeros.
+
+\subsection{What compatibility means}
+
+For an active edge $\{u,v\}$ at a fixed physical unit, the matched pairs are
+$\{(\csi_u,\map_u),(\csi_v,\map_v)\}$ and paired alternatives are
+$\{(\csi_u,\map_v),(\csi_v,\map_u)\}$.  CSI and map marginals are identical
+between labels.  A fixed-budget probe score on this support defines
+\emph{compatibility decodability}, not global physical validity.  Gray edges do
+not enter active AUROC.  Null edges are evaluated for over-discrimination, not
+treated as negatives.  Wrong-city, geometry-destroyed, and empty maps are
+stress tests and receive no calibrated probability unless their corruption
+families were included in source-only calibration.
+
+\section{CSI-PAIRS}
+
+\subsection{Shared retained state}
+
+For a source world $u$ and mask $m$, the retained state is
+\begin{equation}
+ C_u^m=\enc\!\left(V_m(\csi_u),G(\map_u),c,m\right),
+\end{equation}
+where $V_m$ exposes only unmasked source CSI, $G$ is a map encoder, and the
+fusion module is shared by every arm.  A predictor $P_\psi$ receives
+$(C_u^m,e_{uv},q)$, where $e_{uv}$ encodes the signed primitive edit and $q$ is
+a target query.  Zero action gives an identity prediction.  The V2.1 primary
+target $y_v^q=\Psi(\csi_v)^q$ is the source-normalized clean raw-CSI patch under
+the pair-consistent gauge.  The frozen CSI-only teacher is used for route and
+readout qualification, not as a substitute for this physical target.  Target
+CSI, position, route, and labels cannot enter a source predictor.
+
+After pretraining, action encoder, predictor, teacher, and audit readouts are
+discarded.  Localization uses only
+\begin{equation}
+ r=\enc(\csi,\map,c),\qquad \widehat{x}=g(r),
+\end{equation}
+where $g$ is trained with the same source-position labels and update budget for
+all arms.  Thus any downstream difference must pass through the shared state.
+
+\begin{figure}[t]
+\centering
+\draftplaceholder{Architecture. Draw source CSI/mask and source map entering
+shared $F_\theta$; zero-action endpoint/Alignment and signed-edit Response
+entering one predictor; CSI-only target labels; discard all auxiliary heads
+before the common localization probe. Mark receiver $x$ as oracle-only.}
+\caption{Planned CSI-PAIRS architecture. This is a method schematic, not
+evidence of efficacy. The final diagram must expose the input allowlist,
+stop-gradient target path, and the modules retained downstream.}
+\label{fig:architecture-placeholder}
+\end{figure}
+
+\subsection{Common endpoint objective}
+
+All four arms first learn the same matched endpoint objective.  For a frozen
+query bank $Q(m)$ with $q\in m$,
+\begin{equation}
+ \mathcal{L}_{B}=\E_{b,u,x,m,q}
+ \rho_y\!\left(P_\psi(C_u^m,e_{uu},q),y_u^q\right).
+\end{equation}
+Any common raw-CSI reconstruction term is identical across arms.  Endpoint is
+therefore both a useful initialization and the $00$ arm in the factorial test;
+it is not evidence of intervention response.
+
+\subsection{Paired Alignment}
+
+The same predictor defines an intrinsic energy
+\begin{equation}
+ \score(\csi_u,\map_v)
+ =-\frac{1}{|Q|}\sum_{q\in Q}
+ \rho_y\!\left(P_\psi(C_u,e_{vv},q),y_u^q\right),
+\end{equation}
+where the candidate map determines a registered proposal from the supplied-map
+side only.  On an active undirected edge, the symmetric margin loss is
+\begin{align}
+ \ell_A^{uv}={}&
+ [m_{uv}-\score(\csi_u,\map_u)+\score(\csi_u,\map_v)]_+\\
+ &+[m_{uv}-\score(\csi_v,\map_v)+\score(\csi_v,\map_u)]_+ .
+\end{align}
+The margin is fixed or a source-frozen monotone function of physical effect.
+For null edges we instead penalize score gaps beyond a no-edit tolerance
+$\kappa_s$; gray edges receive no Alignment loss.  Expectations first average
+within eligible banks and then across banks so route prevalence cannot silently
+reweight scenes.
+
+\subsection{Intervention Response}
+
+For every directed edge, including active, gray, and null, the predictor
+regresses the retraced target:
+\begin{equation}
+ \ell_{\mathrm{target}}^{uv,m,q}
+ =\rho_y\!\left(\widehat y_{u\rightarrow v}^{m,q},y_v^q\right).
+\end{equation}
+Let $\widehat{\Delta y}_{uv}=\widehat y_{u\rightarrow v}-
+\widehat y_{u\rightarrow u}$ and $\Delta y_{uv}=y_v-y_u$. Active edges add
+direction-and-magnitude regression
+\begin{equation}
+ \ell_\Delta^{uv}=\rho_y(\widehat{\Delta y}_{uv},\Delta y_{uv}).
+\end{equation}
+Null edges still regress their exact target but penalize hallucinated changes
+outside source-frozen dead zones:
+\begin{equation}
+ \ell_{0R}^{uv}=
+ [\|\widehat{\Delta y}_{uv}\|_{\mathrm{phys}}-\kappa_y]_+^2.
+\end{equation}
+Gray edges carry only target regression.  The target-world CSI is used to form
+frozen targets, physical labels, routes, and metrics; it never enters a source
+predictor.
+
+\subsection{Factorial objective}
+
+Let $a,r\in\{0,1\}$ enable Alignment and Response.  Each arm optimizes
+\begin{equation}
+ \mathcal L_{a,r}=\mathcal L_B+a\lambda_A\mathcal L_A
+ +r\lambda_R\mathcal L_R.
+\end{equation}
+The four arms share initialization, backbone, raw world banks, teacher,
+mask/query bank, source-only selection budget, downstream head, and random
+draws.  Factor weights are normalized from a source-only pilot and remain the
+same in a single branch and Full.  We report effective updates, gradient norms,
+parameters, FLOPs, and wall time.  Full is a valid headline only if the two
+single branches first solve their own tasks, Full preserves both, and
+equal-resource/mechanical-concatenation controls do not explain downstream
+performance.
+
+\section{What the Objective Does and Does Not Identify}
+
+\paragraph{Matched support does not identify interventions.}
+Correct-pair training observes only zero action.  Any two predictors equal
+almost everywhere on that support have the same matched risk while remaining
+arbitrarily different for nonzero action.  This establishes a supervision gap,
+not that every off-diagonal pair is impossible.
+
+\paragraph{Symmetric quartets match unimodal marginals.}
+For an active edge, matched and alternative quartets each contain
+$\{\csi_u,\csi_v\}$ and $\{\map_u,\map_v\}$.  Therefore a CSI-only or map-only
+statistic cannot solve the label.  Joint world-ID matching remains possible and
+must be tested empirically through bank reuse, unseen banks, and ID controls.
+
+\paragraph{Response specifies more than rank.}
+Zero active ranking loss requires only that matched scores exceed alternatives
+by a margin.  Exact identity and target regression additionally imply
+$\widehat{\Delta z}_{uv}=\Delta z_{uv}$.  This is a directional and magnitude
+constraint, not a proof that the two tasks are synergistic.
+
+\paragraph{Action and source-CSI value are empirical questions.}
+For state $S$, edit $A$, and target $Z$, squared-loss Bayes risks satisfy
+\begin{equation}
+R_{\mathrm{noA}}^*-R_A^*
+=\E\!\left[\operatorname{tr}\operatorname{Cov}
+(\E[Z\mid S,A]\mid S)\right]\ge0.
+\end{equation}
+The inequality is strict only if conditional targets vary with action.  A
+learned action encoder may still collapse.  Likewise adding visible source CSI
+cannot increase Bayes risk over map/edit-only input, but finite models may not
+use it.  No-action, action-swap, map/edit-only, CSI-only, and privileged-$x$
+experiments are therefore required.
+
+\section{Experimental Protocol}
+
+\begin{figure}[t]
+\centering
+\draftplaceholder{Split and gate flow. Show immutable bank roles:
+source-encoder train $\rightarrow$ method selection $\rightarrow$ calibration
+$\rightarrow$ target support/query in two cities. Show G0 data, G1 RT,
+G2 readout/oracle, G3 No-X/null, G4 four-arm, and G8 external validity exits.}
+\caption{Planned split, gate, and claim flow. The highest independent unit is
+the scene bank. A failed upstream gate removes downstream claims rather than
+triggering threshold changes on held-out target data.}
+\label{fig:gates-placeholder}
+\end{figure}
+
+\subsection{Questions and independent units}
+
+The experiment answers four questions in order.  RQ1 asks whether at least two
+runnable map-conditioned models exhibit an active/null wrong-map pattern.  RQ2
+asks whether Alignment learns paired compatibility without null
+over-discrimination.  RQ3 asks whether masked no-position Response predicts
+retraced targets better than copy, no-action, and action-swap in each held-out
+selection scene.  RQ4, reached only after the earlier gates, asks whether Full
+improves localization in two unseen cities beyond both single branches and
+resource-matched controls.
+
+The highest independent unit is the scene tile/world bank.  All positions,
+worlds, edges, directions, masks, and augmentations from a bank remain in one
+cluster.  We first compute within-bank numerators, denominators, and location
+summaries, then perform scene-macro aggregation and scene-cluster bootstrap.
+Position-level confidence intervals are descriptive only and never substitute
+for independent scenes.
+
+\subsection{Six-condition map audit}
+
+For fixed channel samples and denominators, each model receives: correct map,
+paired active alternative, paired null alternative, wrong-city map,
+geometry-destroyed map with preserved low-order statistics, and empty map.
+Primary localization outcomes are median and P90 error, reported per city and
+bank.  Active compatibility uses a frozen, equal-budget probe AUROC.  Gray
+score gaps and null over-discrimination are separate.  The latter three
+arbitrary corruptions are stress tests, not paired causal evidence.
+
+\subsection{Strict controls}
+
+Table~\ref{tab:controls} fixes the minimum control suite.  External baselines
+come after the internal four arms because different backbones cannot isolate
+the two supervision factors.
+
+\begin{table}[t]
+\caption{Required controls and the alternative explanation each tests.}
+\label{tab:controls}
+\centering
+\small
+\begin{tabular}{p{0.29\linewidth}p{0.61\linewidth}}
+\toprule
+Control & Purpose \\
+\midrule
+Endpoint/A/R/Full & Isolate Alignment, Response, and their interaction \\
+copy; no-action; action-swap & Test target predictability and use of signed edits \\
+without-map; CSI-only & Test whether geometry enters Response \\
+map-only; edit-only & Test average-edit and map lookup shortcuts \\
+scene-ID; variant-ID & Detect world-bank identity leakage \\
+oracle-$x$ & Quantify the privileged-position information gap \\
+shuffled pairing & Detect gains from generic extra supervision \\
+equal-FLOP single branches & Separate task value from compute \\
+parameter/FLOP-matched concat & Separate sharing from mechanical concatenation \\
+full-width $2\times$ concat & Generous two-encoder upper control \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Metrics and gates}
+
+Alignment's primary diagnostic is active paired CGS AUROC under a unified
+probe; Response's primary diagnostic is active, full-channel, target-free
+physical-patch NMSE.  Secondary Response metrics include latent NMSE, delta
+cosine, magnitude ratio, and null hallucination.  Localization reports
+median/P90 at $k\in\{0,8,32,128\}$ unique target positions, with support and
+query siblings isolated.  A paired-proposal failure score may report AURC,
+ECE, Brier, and NLL only on frozen source-calibration support; arbitrary
+single-map deployment is outside this probability claim.
+
+The gate order is: (i) each single branch beats its task control; (ii) Full is
+non-inferior on both native skills; (iii) Full improves preregistered
+$-\log$ bank-median localization utility over both single branches; (iv) the
+factorial interaction is positive; and (v) no target city or $k=0/8$ setting
+has an excessive reverse effect.  Multiplicity within a gate is controlled by
+Holm correction or simultaneous scene-cluster intervals.  A failed upstream
+gate makes downstream tests exploratory.
+
+\section{Current Evidence Status}
+
+Table~\ref{tab:status} records what this draft can support.  It is intentionally
+not a performance table.  The frozen synthetic runs validate file formats,
+samplers, allowlists, metrics, checkpoints, and failure reporting.  They do not
+qualify the RT backend or external baselines.  The initial predictor failed its
+kill test; a signed-edit post-audit rerun with an independent physical head also
+failed in both new holdout scenes and hallucinated changes on null units.  We
+therefore withhold all method-efficacy and localization claims.
+
+\begin{figure}[t]
+\centering
+\draftplaceholder{Formal result panel. A: external six-condition wrong-map.
+B: No-X vs copy/no-action/action-swap active NMSE. C: null violation rate with
+the frozen tolerance. D: Endpoint/A/R/Full localization at $k=0,8$ in both
+target cities. Optional E: preregistered interaction with cluster CI.}
+\caption{Planned formal results. Replace only from non-fixture per-sample files
+whose config and checkpoint hashes are recorded. Every panel must report scene
+banks, training seeds, label draws where applicable, units, confidence
+interval, and frozen pass threshold.}
+\label{fig:formal-results-placeholder}
+\end{figure}
+
+\begin{table}[t]
+\caption{Evidence gates at the time of this draft. ``Passed'' means software
+qualification only unless explicitly stated.}
+\label{tab:status}
+\centering
+\small
+\begin{tabular}{p{0.29\linewidth}p{0.17\linewidth}p{0.44\linewidth}}
+\toprule
+Gate & Status & Consequence \\
+\midrule
+Official format/policy & Passed & Anonymous official style; AI statement present \\
+Canonical world-bank code & Smoke passed & Formal RT qualification still required \\
+Six-condition pipeline & Smoke passed & No domain claim; external models unavailable \\
+Teacher/route plumbing & Smoke passed & Synthetic teacher is not a final teacher \\
+Masked no-$x$ Response & Post-audit No-Go & Do not launch or claim deterministic Response \\
+Strict four arms & Not run & No Alignment, Full, or interaction claim \\
+Unseen-city localization & Not run & No accuracy or label-efficiency claim \\
+External validity & Not run & No real-world or cross-engine claim \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The next legitimate step is not to tune on these held-out smoke scenes.  It is
+to obtain a qualified RT engine and independent assets, freeze a final raw or
+teacher target using source-only partitions, and repeat the no-position gate on
+newly generated scene banks.  If it fails again while a qualified oracle succeeds, deterministic
+Response is removed and the project falls back to the paired compatibility
+diagnostic.
+
+\section{Limitations and Conclusion}
+
+\paragraph{Limitations.}
+Scene edits in one simulator need not represent interventions in deployed
+networks.  A CSI-only route teacher can discard physically meaningful effects,
+so raw physical targets and teacher/physical agreement must both be reported;
+source CSI without receiver position can leave irreducible ambiguity; map and
+material assets may be misregistered; and scene-level samples are expensive,
+limiting statistical power.  Compatibility is defined only within a frozen
+paired proposal set.  Joint supervision can interfere rather than cooperate,
+and any gain can be explained by extra compute unless the specified controls
+pass.  These are failure conditions, not caveats that can be repaired by
+wording.
+
+\section*{Ethics Statement}
+Wireless localization can expose sensitive movement and location information
+and can be used for surveillance.  Any real measurements must follow consent,
+privacy, institutional, and data-governance requirements.  Released artifacts
+must remove device identifiers, private coordinates, credentials, and
+proprietary infrastructure paths.  Licenses and permitted uses for maps,
+simulator assets, datasets, and baseline code must be documented.  The method
+is not a safety or deployment certification.
+
+\paragraph{Conclusion.}
+\method{} turns a vague expectation---that a map-conditioned wireless model
+should react to geometry---into a paired, routed, and falsifiable supervision
+problem.  Scene-level reuse restricts position lookup; symmetric active
+quartets support relative Alignment; CSI-only retraced targets define Response;
+and strict controls determine whether the information survives in the retained
+localization state.  The current outcome is a candidate protocol implementation
+with code-level semantic tests, not a completed qualification run and not
+evidence that the method works.  That
+distinction is central to the proposed study.
+
+\section*{AI Use Statement}
+
+In this work, we used generative AI tools to assist in developing and refining
+the conceptual framework and hypotheses, obtaining feedback on research
+methodology and experimental design, drafting and debugging software code,
+discovering and summarizing related literature, organizing the manuscript, and
+improving translation and readability.  We did not treat AI-generated
+suggestions as evidence.  The authors checked related-work claims against the
+original papers, manually reviewed the mathematical statements and proof
+arguments, audited the experimental protocol for leakage and post-hoc
+selection, and tested AI-assisted code using unit tests and controlled
+baselines.  No experimental result was generated or accepted solely on the
+basis of an AI response.  We take responsibility for the final content,
+claims, code, and artifacts of this work.
+
+\section*{Reproducibility Statement}
+
+The current supplement contains the world-bank schema, frozen configuration,
+model allowlists, code-level semantic tests, run scripts, and claim-evidence
+contracts.  It contains no qualified formal dataset or scientific result.
+A result-bearing release must additionally include the independent renderer
+adapter and regeneration gate, RT configuration and calibration report,
+asset-permission ledger, seven-way source split ledger, teacher/readout
+qualification, per-sample outputs, checkpoints, cluster-level sufficient
+statistics, external-baseline adaptation records, and signed SHA-256 manifests.
+
+\bibliography{references}
+\bibliographystyle{iclr2027_conference}
+
+\appendix
+
+\section{Proof Sketches and Boundaries}
+
+\subsection{Same-world non-identification}
+Let $\mathcal S_0$ be the support of inputs with zero action.  If predictors
+$f$ and $g$ agree almost everywhere on $\mathcal S_0$, then for any matched
+loss $\ell$, their matched risks are equal by substitution.  Define $g$ to
+equal $f$ on $\mathcal S_0$ and take any measurable value on disjoint nonzero
+action support $\mathcal S_1$.  Matched risk cannot distinguish the extension.
+The result establishes only underdetermination off support.
+
+\subsection{Marginal equality of active quartets}
+For a fixed active edge, matched and alternative multisets are
+\begin{align*}
+Q_+&=\{(\csi_u,\map_u),(\csi_v,\map_v)\},\\
+Q_-&=\{(\csi_u,\map_v),(\csi_v,\map_u)\}.
+\end{align*}
+Projection onto CSI gives $\{\csi_u,\csi_v\}$ for both; projection onto maps
+gives $\{\map_u,\map_v\}$ for both.  Direction-symmetric routing and equal
+weighting preserve the equality.  Hence a statistic of only one projection
+cannot distinguish labels.  A joint identifier is not ruled out.
+
+\subsection{Bayes-risk value of action}
+For squared loss, the optimal predictors are conditional means.  Applying the
+law of total covariance to $\E[Z\mid S,A]$ conditioned on $S$ yields
+\begin{equation*}
+ R_{\mathrm{noA}}^*-R_A^*
+ =\E\|\E[Z\mid S,A]-\E[Z\mid S]\|_2^2
+ =\E\operatorname{tr}\operatorname{Cov}(\E[Z\mid S,A]\mid S)\ge0.
+\end{equation*}
+Strictness requires action-dependent conditional means on positive measure.
+It neither guarantees that a finite network reaches Bayes risk nor that a
+learned action embedding retains the raw action.
+
+\section{Complete Sampling and Leakage Contract}
+
+For each optimization draw: sample an eligible bank uniformly; sample a source
+node uniformly; sample a common position uniformly without route conditioning;
+sample each legal Hamming-1 target branch with positive probability; and reuse
+the same observation augmentation, mask, and query across the branch bundle.
+Target CSI is loaded only after the source-predictor inputs are finalized.  The
+data loader asserts the following no-position allowlist:
+\begin{equation*}
+\{V_m(\csi_u),G(\map_u),\Delta_{uv},c,m,q\}.
+\end{equation*}
+It rejects $x$, target CSI, target latent before label construction, route,
+effect magnitude, bank/world ID, and any user-centered crop.  The oracle-$x$
+loader is a separate code path and checkpoint.
+
+Siblings remain clustered across source-encoder-train, source-method-selection,
+source-probe-train, source-probe-selection, source-calibration-fit,
+source-calibration-selection, source-final-unseen-bank, target adaptation
+support, and final target query.  No partition may be
+renamed ``pilot'' to bypass this ledger.
+
+\section{Archived V1 Synthetic Software Qualification (Not V2 Evidence)}
+
+The following paragraph records archived V1/V1.26 behavior for failure
+traceability only.  Those functions and fixtures are not invoked by the V2
+runner and cannot fill a missing V2 artifact.  The initial frozen configuration has three synthetic banks; the post-audit
+configuration has five.  Each bank has four worlds, 24 common positions,
+$16\times16$ maps, and 32-dimensional channel vectors.  Scene 0 fits the PCA
+teacher and ridge predictors.  Initial scenes 1--2 were disclosed after the
+first failure; signed-edit evaluation uses new scenes 3--4.  The six-condition
+diagnostic uses a held-out position split in scene 0.  These choices test
+interfaces cheaply and do not approximate the planned formal sample size.
+
+The run completed all six map conditions for two controlled adapters, emitted
+equal per-condition denominators, and created per-sample outputs, bootstrap
+summaries, checkpoints, failure cases, plots, run records, and manifests.  The
+Response pipeline produced nonempty active and null strata in every bank,
+teacher/readout audits, ten controls, and separate scientific gates.  The
+initial gate records \texttt{PRELIMINARY\_NO\_GO}.  The stricter signed-edit
+rerun adds an independent physical target, DFT readout, shortcut audit, and
+null audit; both latent and physical gates fail in scenes 3--4, yielding
+\texttt{POST\_AUDIT\_NO\_GO}.  No-$x$ exceeds the null physical tolerance for
+all null units in both scenes.  Absolute-map shift, variant-ID signal, an
+unhelpful oracle, and an insensitive beam readout remain qualification
+warnings.  These facts block an efficacy claim; they do not estimate formal
+model performance.
+
+\section{Planned Main Tables}
+
+\begin{table}[h]
+\caption{Alignment and Response result schema. All entries require formal
+scene-bank experiments; dashes are intentionally not imputed.}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+Arm & Active CGS $\uparrow$ & Null gap $\downarrow$ & Response NMSE $\downarrow$ & FLOPs \\
+\midrule
+Endpoint & \notrun & \notrun & \notrun & \notrun \\
+Alignment only & \notrun & \notrun & \notrun & \notrun \\
+Response only & \notrun & \notrun & \notrun & \notrun \\
+Full & \notrun & \notrun & \notrun & \notrun \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\caption{Unseen-city localization and paired-risk result schema. Risk columns
+are permitted only for the frozen $k=0$ paired-proposal audit.}
+\centering
+\small
+\begin{tabular}{llcccc}
+\toprule
+City & $k$ & Median $\downarrow$ & P90 $\downarrow$ & AURC $\downarrow$ & ECE $\downarrow$ \\
+\midrule
+City A & 0/8/32/128 & \notrun & \notrun & \notrun & \notrun \\
+City B & 0/8/32/128 & \notrun & \notrun & \notrun & \notrun \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Artifact-to-Claim Checklist}
+
+Before replacing any dash, the artifact must include scene IDs, split role,
+route counts, sample denominator, seed, model/input allowlist, checkpoint hash,
+configuration hash, sufficient statistics, and failure cases.  A result enters
+the abstract only after its corresponding gate passes.  Specifically: a
+wrong-map domain claim needs at least two runnable map-conditioned models;
+Response needs teacher agreement and per-scene wins over copy, no-action, and
+action-swap; joint value needs both native skills, equal-resource controls, and
+a positive preregistered interaction; cross-city claims need both target cities;
+and any simulator-consistent wording needs qualified RT plus an external engine
+or controlled real intervention.
+
+\end{document}

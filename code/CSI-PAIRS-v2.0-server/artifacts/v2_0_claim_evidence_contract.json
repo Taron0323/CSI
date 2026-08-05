@@ -1,0 +1,77 @@
+{
+  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.2",
+  "artifact_label": "csi-pairs-formal-v2.1-v6",
+  "status": "CODE_READY_EVIDENCE_NOT_RUN",
+  "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
+  "inherited_frozen_evidence": {
+    "status": "POST_AUDIT_NO_GO",
+    "scientific_use": "FORBIDDEN",
+    "no_x_null_failure": {
+      "scene_3": "82/82 above 0.018",
+      "scene_4": "84/84 above 0.018"
+    },
+    "warnings": [
+      "map_feature_hurts",
+      "variant_id_signal",
+      "oracle_x_not_helpful",
+      "beam_readout_insensitive_to_copy"
+    ]
+  },
+  "gate_sequence": [
+    "G0_LITERATURE_AND_RESOURCES",
+    "G1_WORLD_BANK_AND_RT_QUALIFICATION",
+    "G2_TEACHER_AND_NO_X",
+    "G3_SINGLE_BRANCHES",
+    "G4_FULL_SEVEN_SYNERGY_GATES",
+    "G5_TWO_CITY_LOCALIZATION",
+    "G6_PAIRED_CONTEXT_RISK",
+    "G7_PATH_MECHANISM",
+    "G8_EXTERNAL_VALIDITY"
+  ],
+  "claims": [
+    {"claim_id":"C1","status":"BLOCKED","requires":["two external map-conditioned models","active/null six-condition audit"]},
+    {"claim_id":"C2","status":"BLOCKED","requires":["held-out-position scene-ID prompt parity","map-swap/ID-swap response agreement"]},
+    {"claim_id":"C3","status":"BLOCKED","requires":["unified probes","active quartet marginal audit","null equivalence","unseen bank/city"]},
+    {"claim_id":"C4","status":"BLOCKED","requires":["Alignment beats Endpoint","shortcut controls","shuffled-pair gain disappears"]},
+    {"claim_id":"C5","status":"BLOCKED","requires":["target-free mask cover","latent and physical metrics","copy/no-action/action-swap","teacher/readout"]},
+    {"claim_id":"C6","status":"BLOCKED","requires":["source-map removal/swap","unified compatibility and response probes","downstream F-only audit"]},
+    {"claim_id":"C7","status":"BLOCKED","requires":["all seven G4 subgates"]},
+    {"claim_id":"C8","status":"BLOCKED","requires":["two target cities","strict k=0 and city-level k=8","minimum practical improvement"]},
+    {"claim_id":"C9","status":"BLOCKED","requires":["frozen map-only proposals","k=0 common support","calibration and risk-coverage gates"]},
+    {"claim_id":"C10","status":"BLOCKED","requires":["A_path matching","balanced strata","zero-path equivalence","A_path_loc preregistration"]},
+    {"claim_id":"C11","status":"BLOCKED","requires":["independent RT calibration","four validation statistics"]},
+    {"claim_id":"C12","status":"BLOCKED","requires":["second RT engine or controlled real intervention"]},
+    {"claim_id":"C13","status":"BLOCKED","requires":["current prior-work search with auditable evidence"]}
+  ],
+  "g4_subgates": [
+    "Full J beats Alignment-only and Response-only",
+    "Full CGS is non-inferior to Alignment-only",
+    "Full native target-free response is non-inferior to Response-only",
+    "paired hierarchical interaction CI lower bound exceeds zero and the practical threshold",
+    "no target city at k=0 or k=8 reverses beyond tolerance",
+    "Full beats both equal-FLOP single branches",
+    "Full beats parameter-matched and FLOP-matched independent concat controls"
+  ],
+  "runtime_claim_dependencies": {
+    "C1": ["external_baselines"],
+    "C2": ["scene_id_mechanism"],
+    "C3": ["G1_G2", "G3"],
+    "C4": ["G1_G2", "G3", "shuffled_pair"],
+    "C5": ["G1_G2", "G3"],
+    "C6": ["G1_G2", "G3", "retention"],
+    "C7": ["G1_G2", "G3", "G4", "G5"],
+    "C8": ["G1_G2", "G5"],
+    "C9": ["G1_G2", "G3", "G6"],
+    "C10": ["G1_G2", "G3", "G7"],
+    "C11": ["rt_calibration"],
+    "C12": ["G8"],
+    "C13": ["G0"]
+  },
+  "c9_subgates": [
+    "frozen candidate set, strict k=0 and common four-arm denominator",
+    "ECE, Brier, NLL and reliability confidence intervals pass",
+    "common-support coverage and Full out-of-support noninferiority pass",
+    "joint AURC beats random and u-only at every registered point and 90/75/50 coverage errors are monotone"
+  ],
+  "rule": "Missing, NOT_ASSESSED, BLOCKED, fixture, hash-mismatched, or schema-mismatched evidence never counts as PASS."
+}
