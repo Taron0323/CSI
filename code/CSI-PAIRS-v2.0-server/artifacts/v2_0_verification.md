@@ -14,23 +14,23 @@ This record supersedes the previous V2.0 dry-run report. Archived V1/V1.26 fixtu
 |---|---|---|
 | Static compilation | `python3 -m py_compile formal_v2/*.py formal_v2/external_adapters/*.py formal_v2/tests/test_formal_v2.py` | PASS |
 | Static lint | `ruff check formal_v2 --exclude formal_v2/external_adapters/vendor` | PASS |
-| Pure schema/semantic tests | `python3 -m unittest discover -s formal_v2/tests -v` | 73/73 PASS |
+| Pure schema/semantic tests | `python3 -m unittest discover -s formal_v2/tests -v` | 77/77 PASS |
 | Supplied external-resource authentication | `formal_cli verify-waibu-resources` | 10/10 PASS; authenticates bytes only |
 | Vendored Wi-GATr integrity | `sha256sum --check VENDOR_SHA256SUMS` from the vendored snapshot root | 45/45 PASS |
-| Wi-GATr isolated runtime | Python 3.10 `uv.lock` offline sync and `import gatr, torch_geometric, wigatr` | PASS: Torch 2.0.1+cu117, GATr 1.2.2, Wi-GATr 1.0.0; CUDA unavailable on this host, no formal training |
+| Wi-GATr isolated runtime | Python 3.10 `uv.lock` offline sync, imports, and official-model CPU mutation | environment PASS: Torch 2.0.1+cu117, GATr 1.2.2, Wi-GATr 1.0.0; formal forward correctly requires CUDA because frozen xFormers has no compatible CPU kernel; CUDA unavailable on this host, no formal training |
 | Fixture independent regeneration | `formal_cli verify-data` with `fixture_verifier.json` | PASS, `scientific_use=FORBIDDEN` |
 | Fixture qualification | `formal_cli qualify` before the smoke-only batch reduction | expected FAIL on branch coverage, geometry-matched wrong-action coverage, and B_audit_hold reconstruction; the final batch-4 retry was SIGKILLed by the 2 GiB cgroup after writing Stage-0, so it is not recorded as a second gate result |
 | Current-tree test-only four-arm execution | factorial with an authenticated temporary fixture gate and smoke batch 4 | 12 checkpoints completed; 13 state + 15 predictor calls/step; 95,289,024 dispatch-counted FLOPs/step for the common branch plan; G5 FAIL; all artifacts fixture/FORBIDDEN |
 | Current-tree unified evaluation attempt | evaluation from the 12 fixture checkpoints | NOT COMPLETED: the 2 GiB verification cgroup sent SIGKILL before any evaluation artifact was emitted; this is not recorded as an evaluation PASS or FAIL |
 | Claim mutation check | `formal_cli assemble-claims` | `INCOMPLETE_FAIL_CLOSED`; no C1-C13 support |
-| Representation fixture integration | verifier, qualification, CSI-MAE smoke pretraining/selection/unified localization probe | PASS; `scientific_use=FORBIDDEN`, one smoke model only |
+| Representation fixture integration | role verifier plus downscaled pretraining/selection/unified localization probe for all five registered models | PASS: 5/5 models and 5 checkpoints; `scientific_use=FORBIDDEN`, not paper dose |
 | External-model semantic mutations | per-sample MAE masks, ContraWiMAE source-only warm-start, WiSER learned-query/Hungarian path, RFIR visibility, C1 eligibility | PASS; no style-controlled adapter can support C1 |
-| Sionna RT/LRM runtime | authenticated source setup plus `formal_v2.sionna_facility verify` | PASS: Sionna 2.0.1 metadata, Sionna RT 1.2.1, LRM revision `1ba19ae1...`; RT-only environment intentionally excludes unrelated Sionna PHY/PyTorch CUDA dependencies |
-| Sionna scene export/load | material PLY/XML, asset licenses/hashes, complete external-world manifest, reverse schema validation, and `sionna.rt.load_scene` | PASS on generated fixture extension; loaded a 2-object scene; no G8 effect result |
+| Sionna RT/LRM runtime | authenticated source setup, dependency consistency, and `formal_v2.sionna_facility verify` | PASS: Sionna 2.0.1, RT 1.2.1, LRM revision `1ba19ae1...`, CPU Torch 2.9.1, h5py 3.15.1; CUDA dependencies excluded |
+| Sionna scene export/CFR | material PLY/XML, asset licenses/hashes, complete external-world manifest, reverse schema validation, `load_scene`, and `PathSolver.cfr(out_type="numpy")` | PASS on generated fixture extension: four sibling worlds, each `(16 positions, 16 CSI channels)`, all finite; no G8 effect result |
 | Reproducible paper build | `paper_v2/build_reproducible.sh` | PASS, 10-page placeholder draft |
-| Server bundle build and extraction | `build_server_bundle.sh`, followed by clean extraction, package-root SHA, compilation, and unit checks | PASS: 151/151 SHA entries and 73/73 tests |
+| Server bundle build and extraction | `build_server_bundle.sh`, followed by clean extraction, package-root SHA, compilation, and unit checks | PASS: 147/147 SHA entries and 77/77 tests; runtime-generated `*.egg-info` is excluded |
 
-The tests cover strict JSON, the seven-role permission ledger, downstream per-role regeneration blocking, target query-only denominators, typed maps/actions, 2D patch tiling, complete teacher-encoder initialization, BS-pose sensitivity, model input allowlist and batch isolation, dual outputs, empty conditional failure, city-level k, base-map-cluster macro utility, hierarchical bootstrap layers, gate/claim authentication, checkpoint hashes, q_comp order/complement, selection-frozen risk support, coverage monotonicity, path/no-op primitives, fail-closed control manifests, Wi-GATr power/mesh conversion, target-free inverse input, common six-condition units, external execution-manifest mutation, fixed CSI-MAE positions/per-sample masks, ContraWiMAE warm-start, WiSER set matching, RFIR visibility, C1 model identity, and authenticated Sionna scene export.
+The tests cover strict JSON, the seven-role permission ledger, downstream per-role regeneration blocking, target query-only denominators, typed maps/actions, 2D patch tiling, complete teacher-encoder initialization, BS-pose sensitivity, model input allowlist and batch isolation, dual outputs, empty conditional failure, city-level k, base-map-cluster macro utility, hierarchical bootstrap layers, gate/claim authentication, checkpoint hashes, q_comp order/complement, selection-frozen risk support, coverage monotonicity, path/no-op primitives, fail-closed control manifests, Wi-GATr power/mesh conversion, target-free inverse input, CUDA fail-fast, common six-condition units, external execution-manifest mutation, all-five representation gradients, fixed CSI-MAE positions/per-sample masks, ContraWiMAE warm-start, WiSER set matching, RFIR visibility, C1 model identity, authenticated Sionna scene export, NumPy CFR, and Mitsuba coordinate conversion.
 
 The test-only four-arm run is not qualification bypass evidence. It used `/tmp`, retained `fixture=true` and `scientific_use=FORBIDDEN`, and exists only to exercise code after the real fixture qualification correctly stopped. Endpoint/Alignment/Response/Full used identical branch plans and measured forward counts; disabled A/R terms had zero weighted gradient while their raw gradients remained nonzero. The first arm used PyTorch's dispatch FLOP counter and later isomorphic arm plans explicitly reused that measured FLOP value while independently measuring their forward-call counts.
 
@@ -38,7 +38,7 @@ An earlier pre-final test-only revision reached evaluation and path and failed G
 
 ## Explicitly not run
 
-- independent RT regeneration;
+- non-fixture independent RT regeneration;
 - non-fixture Stage-0 teacher training or qualification;
 - wrong-map models;
 - non-fixture four-arm training or localization;

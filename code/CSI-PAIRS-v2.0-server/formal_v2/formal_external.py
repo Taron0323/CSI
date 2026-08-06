@@ -11,6 +11,7 @@ import numpy as np
 from .formal_evidence import bind_rows, evidence_context
 from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_csv, write_json
 from .formal_wrong_map import CONDITIONS
+from .formal_resources import validate_resource_registry
 
 
 ALLOWED_IMPLEMENTATION_STATUS = {
@@ -41,6 +42,11 @@ C1_ELIGIBLE_IDENTITIES = {
 def run_external_baselines(config, dataset, manifest_path, output_root):
     from .formal_data_verification import require_verified_roles_from_root
 
+    project_root = Path(__file__).resolve().parents[1]
+    resource_registry_path = Path(__file__).resolve().parent / "configs/waibu_resources_v1.json"
+    validate_resource_registry(
+        read_strict_json(resource_registry_path), project_root / "waibu"
+    )
     require_verified_roles_from_root(
         output_root,
         config,
@@ -187,6 +193,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
         "c1_eligible_models": sorted(c1_eligible_models),
         "adapter_manifest_sha256": sha256_file(adapter_manifest_copy),
         "adapter_manifest_path": adapter_manifest_copy.name,
+        "resource_registry_sha256": sha256_file(resource_registry_path),
     }
     write_json(output_dir / "gate.json", gate)
     write_json(

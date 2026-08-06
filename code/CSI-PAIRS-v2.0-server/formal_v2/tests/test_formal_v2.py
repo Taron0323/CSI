@@ -54,10 +54,15 @@ from formal_v2.external_adapters.controlled_map_adapter import (
 )
 from formal_v2.external_adapters.representation_models import CSIMAE, build_representation_model
 from formal_v2.external_adapters.wigatr_adapter import (
+    _require_official_cuda,
     _verify_vendor_tree,
     inverse_localize_power,
 )
-from formal_v2.external_adapters.sionna_external_validity import load_scene_manifest
+from formal_v2.external_adapters.sionna_external_validity import (
+    _numpy_cfr as sionna_numpy_cfr,
+    _point3 as sionna_point3,
+    load_scene_manifest,
+)
 from formal_v2.external_adapters.wigatr_protocol import (
     SIX_CONDITIONS,
     build_six_condition_units,
@@ -805,6 +810,13 @@ class WiGATrAdapterTests(unittest.TestCase):
         _verify_vendor_tree(vendor)
         self.assertTrue((vendor / "LICENSE").is_file())
 
+    def test_official_wigatr_fails_before_training_without_cuda_attention(self):
+        unavailable = {"torch": SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))}
+        with self.assertRaisesRegex(RuntimeError, "requires an NVIDIA CUDA device"):
+            _require_official_cuda(unavailable)
+        available = {"torch": SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True))}
+        _require_official_cuda(available)
+
     def test_relative_total_power_is_invariant_to_common_phase(self):
         real = np.asarray([1.2, -0.4, 0.7, 2.1])
         imaginary = np.asarray([-0.3, 0.8, 1.1, -0.6])
@@ -1130,6 +1142,53 @@ class WaibuIntegrationTests(unittest.TestCase):
         self.assertTrue(torch.all(masks.sum(dim=1) == round(config["mask_fraction"] * spec.patch_count)))
         self.assertGreater(torch.unique(masks, dim=0).shape[0], 1)
 
+    def test_all_representation_models_run_backward_with_real_gradients(self):
+        rows = load_representation_config(
+            ROOT / "formal_v2/configs/representation_baselines_v1.json"
+        )["models"]
+        spec = PatchSpec.from_metadata(self.dataset.metadata)
+        normalizer = fit_representation_normalizer(
+            self.dataset, self.dataset.indices_for_role("source_encoder_train")
+        )
+        scene = int(self.dataset.indices_for_role("source_encoder_train")[0])
+        batch = make_representation_batch(
+            self.dataset,
+            [(scene, 0, 0), (scene, 1, 1)],
+            normalizer,
+            torch.device("cpu"),
+        )
+        for source in rows:
+            with self.subTest(model=source["model_name"]):
+                row = dict(source)
+                row.update(
+                    dim=8,
+                    heads=2,
+                    encoder_layers=1,
+                    decoder_layers=1,
+                    decoder_dim=8,
+                    resnet_width=2,
+                )
+                model = build_representation_model(
+                    row["model_name"],
+                    spec,
+                    self.dataset.maps.shape[2],
+                    self.dataset.radio_config.shape[1] + self.dataset.bs_pose.shape[1] + 2,
+                    row,
+                )
+                loss = model.pretraining_loss(
+                    batch, min(float(row["mask_fraction"]), 0.75)
+                )
+                loss.backward()
+                gradients = [
+                    parameter.grad
+                    for parameter in model.parameters()
+                    if parameter.requires_grad and parameter.grad is not None
+                ]
+                self.assertTrue(torch.isfinite(loss))
+                self.assertTrue(gradients)
+                self.assertTrue(any(torch.any(gradient != 0) for gradient in gradients))
+                self.assertEqual(model.encode(batch).shape, (2, 8))
+
     def test_formal_contrawimae_requires_wimae_warm_start(self):
         config = parse_strict_json(
             (ROOT / "formal_v2/configs/representation_baselines_v1.json").read_text()
@@ -1353,6 +1412,33 @@ class WaibuIntegrationTests(unittest.TestCase):
         expected = len(dataset.indices_for_role("external_validation")) * dataset.world_count
         self.assertEqual(len(manifest["worlds"]), expected)
         self.assertTrue(all(Path(row["scene_xml"]).is_file() for row in manifest["worlds"]))
+        changed = dict(manifest)
+        changed["sionna_revision"] = "not-the-frozen-revision"
+        changed_path = Path(self.temporary.name) / "changed-sionna-manifest.json"
+        write_json(changed_path, changed)
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            load_scene_manifest(changed_path, dataset)
+
+    def test_sionna_device_positions_cross_the_mitsuba_boundary_as_python_floats(self):
+        point = sionna_point3(np.asarray([1.0, 2.0, 3.0], dtype=np.float64))
+        self.assertEqual(point, [1.0, 2.0, 3.0])
+        self.assertTrue(all(type(value) is float for value in point))
+        with self.assertRaisesRegex(ValueError, "three finite"):
+            sionna_point3((1.0, 2.0, np.inf))
+
+    def test_sionna_cfr_uses_numpy_without_a_torch_runtime_dependency(self):
+        class Paths:
+            arguments = None
+
+            def cfr(self, **arguments):
+                self.arguments = arguments
+                return np.ones((1, 1, 1, 1, 1, 2), dtype=np.complex64)
+
+        paths = Paths()
+        values = sionna_numpy_cfr(paths, np.asarray([0.0, 1.0]), 2.0)
+        self.assertEqual(values.shape, (1, 1, 1, 1, 1, 2))
+        self.assertEqual(paths.arguments["out_type"], "numpy")
+        self.assertEqual(paths.arguments["num_time_steps"], 1)
 
     def test_cli_exposes_resource_and_representation_stages(self):
         parser = build_parser()

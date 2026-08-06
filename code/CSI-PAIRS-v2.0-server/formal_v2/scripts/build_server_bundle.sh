@@ -39,9 +39,11 @@ cp -p "${PROJECT_ROOT}/README.md" "${BUNDLE_ROOT}/README.md"
 cp -p "${PROJECT_ROOT}/artifacts/v2_0_claim_evidence_contract.json" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v2_0_verification.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/iclr2027_official_policy_recheck_2026-08-05.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/waibu_integration_audit_2026-08-06.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/output/pdf/CSI-PAIRS-paper-v2.1-draft.pdf" "${BUNDLE_ROOT}/output/pdf/"
 
 find "${BUNDLE_ROOT}" -type d -name __pycache__ -prune -exec rm -rf {} +
+find "${BUNDLE_ROOT}" -type d -name '*.egg-info' -prune -exec rm -rf {} +
 find "${BUNDLE_ROOT}/formal_v2/external_adapters" -maxdepth 1 -type d \
   \( -name '.venv-wigatr' -o -name '.runtime-sionna' \) -prune -exec rm -rf {} +
 find "${BUNDLE_ROOT}" -type f \( -name '*.pyc' -o -name '.DS_Store' \) -delete

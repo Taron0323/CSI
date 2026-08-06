@@ -84,6 +84,7 @@ def run_adapter(args) -> dict:
     )
 
     runtime = _load_official_runtime()
+    _require_official_cuda(runtime)
     _seed_runtime(runtime, int(config["training"]["seed"]))
     adapter_config_path = output / "adapter_config.json"
     write_json(adapter_config_path, config)
@@ -231,6 +232,15 @@ def _seed_runtime(runtime, seed):
     np.random.seed(int(seed))
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(int(seed))
+
+
+def _require_official_cuda(runtime):
+    torch = runtime["torch"]
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "formal Wi-GATr requires an NVIDIA CUDA device because the frozen "
+            "xFormers attention has no compatible CPU kernel"
+        )
 
 
 def _fit_source_only_model(

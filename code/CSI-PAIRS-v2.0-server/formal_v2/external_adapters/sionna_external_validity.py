@@ -13,11 +13,18 @@ from formal_v2.formal_dataset import FormalDataset
 from formal_v2.formal_evidence import evidence_context, require_manifested_formal_qualification
 from formal_v2.formal_io import read_strict_json, sha256_file, write_csv
 from formal_v2.formal_protocol import PatchSpec
+from formal_v2.formal_resources import validate_resource_registry
 from formal_v2.formal_routing import fit_route_normalization, route_dataset
 from formal_v2.formal_teacher import load_teacher_bundle
 
 
 SCHEMA = "csi-pairs-v6-sionna-scene-manifest-v1"
+SIONNA_REVISION = "04ddb9312116b408093b9d3ad363a3df355093a6"
+SIONNA_RT_VERSION = "1.2.1"
+SIONNA_ARCHIVES = {
+    "sionna-main.zip": "fdbf89f307cc8933535af1587f00f1bcbd4b5edf7715275cd461bd4779f1fac7",
+    "sionna-large-radio-maps-main.zip": "694ad17e7977e1c1adbdc8f93e6dcb1856e14cdf1b25f33da14c0e7aca80c33b",
+}
 
 
 def main(argv=None) -> int:
@@ -35,6 +42,7 @@ def main(argv=None) -> int:
 
 
 def run(args):
+    _verify_sionna_resources()
     dataset = FormalDataset.load(args.dataset)
     run_root = Path(args.run_root).resolve()
     qualification = read_strict_json(run_root / "qualification" / "gate.json")
@@ -131,8 +139,10 @@ def load_scene_manifest(path: str | Path, dataset) -> dict:
         raise ValueError("Sionna scene manifest dataset hash mismatch")
     if payload["engine_config_sha256"] != dataset.metadata["engine"]["config_sha256"]:
         raise ValueError("Sionna scene manifest engine config hash mismatch")
-    if payload["license_id"] != "Apache-2.0" or not str(payload["sionna_revision"]).strip():
+    if payload["license_id"] != "Apache-2.0" or payload["sionna_revision"] != SIONNA_REVISION:
         raise ValueError("Sionna engine provenance is invalid")
+    if payload["sionna_rt_version"] != SIONNA_RT_VERSION:
+        raise ValueError("Sionna RT version is not frozen")
     spec = PatchSpec.from_metadata(dataset.metadata)
     for key in ("carrier_frequency_hz", "bandwidth_hz", "subcarrier_spacing_hz", "receiver_z_m"):
         if not isinstance(payload[key], (int, float)) or not np.isfinite(payload[key]) or payload[key] <= 0:
@@ -194,8 +204,22 @@ def _validate_assets(payload, root):
             raise ValueError("Sionna scene asset license is missing")
 
 
+def _verify_sionna_resources():
+    project_root = Path(__file__).resolve().parents[2]
+    rows = validate_resource_registry(
+        read_strict_json(project_root / "formal_v2/configs/waibu_resources_v1.json"),
+        project_root / "waibu",
+    )
+    actual = {
+        row["file"]: row["actual_sha256"]
+        for row in rows
+        if row["file"] in SIONNA_ARCHIVES
+    }
+    if actual != SIONNA_ARCHIVES:
+        raise RuntimeError("Sionna source archive authentication failed")
+
+
 def _trace_all(dataset, manifest, scenes):
-    import torch
     from sionna.rt import PathSolver, PlanarArray, Receiver, Transmitter, load_scene, subcarrier_frequencies
 
     entries = {(row["scene_id"], int(row["world"])): row for row in manifest["worlds"]}
@@ -217,27 +241,37 @@ def _trace_all(dataset, manifest, scenes):
             scene.add(
                 Transmitter(
                     "tx",
-                    position=dataset.bs_pose[scene_index, :3],
+                    position=_point3(dataset.bs_pose[scene_index, :3]),
                     orientation=_quaternion_to_euler(dataset.bs_pose[scene_index, 3:]),
                 )
             )
             for position in range(dataset.position_count):
                 xy = dataset.positions[scene_index, position]
-                scene.add(Receiver(f"rx-{position}", position=[xy[0], xy[1], manifest["receiver_z_m"]]))
+                scene.add(
+                    Receiver(
+                        f"rx-{position}",
+                        position=_point3((xy[0], xy[1], manifest["receiver_z_m"])),
+                    )
+                )
             paths = solver(
                 scene,
                 max_depth=int(manifest["max_depth"]),
                 refraction=bool(manifest["refraction"]),
             )
-            values = paths.cfr(
-                frequencies=frequencies,
-                sampling_frequency=float(manifest["bandwidth_hz"]),
-                num_time_steps=1,
-                out_type="torch",
-            )
-            array = values.detach().cpu().numpy() if isinstance(values, torch.Tensor) else np.asarray(values)
-            output[(scene_index, world)] = _flatten_cfr(array, dataset.channel_count)
+            values = _numpy_cfr(paths, frequencies, float(manifest["bandwidth_hz"]))
+            output[(scene_index, world)] = _flatten_cfr(values, dataset.channel_count)
     return output
+
+
+def _numpy_cfr(paths, frequencies, sampling_frequency):
+    return np.asarray(
+        paths.cfr(
+            frequencies=frequencies,
+            sampling_frequency=float(sampling_frequency),
+            num_time_steps=1,
+            out_type="numpy",
+        )
+    )
 
 
 def _flatten_cfr(array, channel_count):
@@ -258,6 +292,13 @@ def _quaternion_to_euler(quaternion):
     pitch = math.asin(max(-1.0, min(1.0, 2 * (w * y - z * x))))
     yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
     return [yaw, pitch, roll]
+
+
+def _point3(values):
+    point = [float(value) for value in values]
+    if len(point) != 3 or not all(math.isfinite(value) for value in point):
+        raise ValueError("Sionna device position must contain three finite coordinates")
+    return point
 
 
 def _relative_effect(source, target):

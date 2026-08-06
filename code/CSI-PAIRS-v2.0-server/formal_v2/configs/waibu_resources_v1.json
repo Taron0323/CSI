@@ -87,7 +87,7 @@
       "resource_id": "github:NVlabs/sionna@04ddb9312116b408093b9d3ad363a3df355093a6",
       "title": "Sionna 2.0 official source archive",
       "kind": "official-source-archive",
-      "integration_role": "PHY and RT environment bootstrap",
+      "integration_role": "Sionna RT provenance and environment bootstrap",
       "implementation_status": "official-code-adaptation",
       "allowed_name": "Sionna official source facility"
     },

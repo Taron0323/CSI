@@ -58,6 +58,9 @@ environment:
 formal_v2/external_adapters/setup_wigatr.sh
 ```
 
+The setup authenticates and imports the frozen environment. Formal Wi-GATr execution requires an
+NVIDIA CUDA device because its frozen xFormers attention has no compatible CPU kernel.
+
 Sionna RT and the official large-radio-map tools use a separate Python 3.12 environment because of
 their Mitsuba/Dr.Jit/Open3D stack:
 
@@ -68,13 +71,14 @@ formal_v2/external_adapters/setup_sionna.sh
   --runtime-root "$PWD/formal_v2/external_adapters/.runtime-sionna" verify
 ```
 
-The top-level Sionna source package is installed without its independent PHY/PyTorch CUDA
-dependency set because this G8 facility calls only `sionna.rt`.
+The runtime installs fixed CPU PyTorch because the G8 adapter reloads the frozen Stage-0 teacher to
+reproduce route assignments. It excludes the unrelated PyTorch CUDA dependency set.
 
 Use `formal_v2/external_adapters/all_map_adapters_v1.json` for C1 and
 `formal_v2/configs/representation_baselines_v1.json` for the representation comparison. Read
 `formal_v2/WAIBU_INTEGRATION.md` for the exact mapping. Code, authenticated paper bytes, smoke
 execution, and an installed simulator still do not constitute C1/G8 evidence.
+The latest file-by-file runtime audit is `artifacts/waibu_integration_audit_2026-08-06.md`.
 
 Use `formal_cli export-sionna-scenes` to generate the hashed PLY/XML/assets manifest for every
 `external_validation` sibling world before running the shipped

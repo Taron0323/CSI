@@ -69,21 +69,32 @@ if [[ "${installed}" != true ]]; then
   echo "Sionna locked dependency sync failed after 3 attempts" >&2
   exit 5
 fi
-# G8 and the large-radio-map project use only sionna.rt. The top-level Sionna
-# source package is installed for authenticated version/provenance metadata, but
-# its independent PHY/PyTorch CUDA stack is deliberately outside this RT runtime.
+# G8 uses sionna.rt and also reloads the frozen Stage-0 teacher to reproduce the
+# route ledger. Install a fixed CPU build of PyTorch without the unused CUDA stack.
+TORCH_CPU_INDEX="${CSI_PAIRS_TORCH_CPU_INDEX:-https://download.pytorch.org/whl/cpu}"
+uv pip install --python "${ENV_DIR}/bin/python" \
+  --index "${TORCH_CPU_INDEX}" \
+  'torch==2.9.1+cpu'
+uv pip install --python "${ENV_DIR}/bin/python" 'h5py==3.15.1'
+# The top-level Sionna source package is installed for authenticated version and
+# provenance metadata. RT/LRM dependencies were installed by the project above.
 uv pip install --python "${ENV_DIR}/bin/python" --no-deps "${SOURCE_DIR}/sionna-main"
+uv pip check --python "${ENV_DIR}/bin/python"
 
 PYTHONPATH="${SOURCE_DIR}/sionna-large-radio-maps-main" \
 SLRM_DATA_DIR="${RUNTIME_ROOT}/data" \
 "${ENV_DIR}/bin/python" - <<'PY'
 import importlib.metadata
+import h5py
 import sionna
 import sionna.rt
 import sionna_lrm
+import torch
 print("sionna", importlib.metadata.version("sionna"))
 print("sionna-rt", importlib.metadata.version("sionna-rt"))
 print("sionna-large-radio-maps", "source@1ba19ae1df1d26302fcfbaab14efc2347313da5d")
+print("torch", torch.__version__)
+print("h5py", h5py.__version__)
 print("drjit-libllvm", __import__("os").environ["DRJIT_LIBLLVM_PATH"])
 PY
 

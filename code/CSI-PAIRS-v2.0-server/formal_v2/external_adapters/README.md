@@ -75,6 +75,8 @@ formal_v2/external_adapters/setup_wigatr.sh
 
 The setup is intentionally separate from the core V2.1 environment. If the pinned dependencies
 cannot be installed, the adapter fails and remains `not_executed`; no substitute model is used.
+The official GATr/xFormers forward requires NVIDIA CUDA. A CPU-only host fails before training with
+an explicit prerequisite error rather than entering an unsupported fallback.
 
 ### Formal execution
 
@@ -96,8 +98,8 @@ six-map interventions.
 
 `setup_sionna.sh` authenticates and extracts both supplied official archives, installs Sionna RT
 1.2.1 (the version frozen by the large-radio-map project), and installs the official tiling/scene/
-radio-map scripts. The top-level Sionna source package is installed without its unrelated
-PHY/PyTorch CUDA dependency set; the G8 facility calls only `sionna.rt`. `sionna_facility.py`
+radio-map scripts. A fixed CPU PyTorch is installed because the G8 adapter reloads the frozen
+Stage-0 teacher to reproduce route assignments; the unrelated CUDA dependency set is excluded. `sionna_facility.py`
 exposes those operations and audits each `rm_*.npz` output.
 
 `sionna_external_validity.py` is an internal G8 engine adapter. It requires every external-validation

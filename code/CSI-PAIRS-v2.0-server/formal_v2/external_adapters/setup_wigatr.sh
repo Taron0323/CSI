@@ -43,4 +43,12 @@ if [[ "${installed}" != true ]]; then
   exit 5
 fi
 
-"${ENV_DIR}/bin/python" -c "import gatr, torch_geometric, wigatr; print('Wi-GATr environment ready')"
+"${ENV_DIR}/bin/python" - <<'PY'
+import gatr
+import torch
+import torch_geometric
+import wigatr
+print("Wi-GATr environment installed")
+print("cuda_available", torch.cuda.is_available())
+print("formal_execution_ready", torch.cuda.is_available())
+PY

@@ -111,8 +111,10 @@ def verify_runtime(runtime: Path) -> dict:
     probe = subprocess.run(
         [
             str(python), "-c",
-            "import importlib.metadata as m; import sionna, sionna.rt, sionna_lrm; "
-            "print(m.version('sionna')); print(m.version('sionna-rt')); print('source@1ba19ae1df1d26302fcfbaab14efc2347313da5d')",
+            "import importlib.metadata as m; import h5py, sionna, sionna.rt, sionna_lrm, torch; "
+            "print(m.version('sionna')); print(m.version('sionna-rt')); "
+            "print('source@1ba19ae1df1d26302fcfbaab14efc2347313da5d'); "
+            "print(torch.__version__); print(h5py.__version__)",
         ],
         check=False,
         capture_output=True,
@@ -122,7 +124,13 @@ def verify_runtime(runtime: Path) -> dict:
     if probe.returncode != 0:
         raise RuntimeError(f"Sionna runtime import failed: {probe.stderr.strip()}")
     versions = probe.stdout.strip().splitlines()
-    if len(versions) != 3 or versions[0] != "2.0.1" or versions[1] != "1.2.1":
+    if (
+        len(versions) != 5
+        or versions[0] != "2.0.1"
+        or versions[1] != "1.2.1"
+        or versions[3] != "2.9.1+cpu"
+        or versions[4] != "3.15.1"
+    ):
         raise RuntimeError("Sionna runtime versions differ from the frozen facility")
     return {
         "schema_version": "csi-pairs-v6-sionna-runtime-v1",
@@ -131,7 +139,13 @@ def verify_runtime(runtime: Path) -> dict:
         "runtime_root": str(runtime),
         "sionna_revision": SIONNA_REVISION,
         "large_radio_maps_revision": LRM_REVISION,
-        "versions": {"sionna": versions[0], "sionna_rt": versions[1], "large_radio_maps": versions[2]},
+        "versions": {
+            "sionna": versions[0],
+            "sionna_rt": versions[1],
+            "large_radio_maps": versions[2],
+            "torch": versions[3],
+            "h5py": versions[4],
+        },
         "archive_sha256": authenticated,
         "license_id": "Apache-2.0",
     }
