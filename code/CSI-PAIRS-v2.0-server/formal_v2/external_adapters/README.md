@@ -12,17 +12,20 @@ and stage manifest hashes all authenticate and at least two distinct map-conditi
 |---|---|---|---|
 | SigMap | V6 style-controlled map+CSI locator | source position | direct map-conditioned estimate |
 | Wi-GATr | official-code adaptation | total received power | inverse coordinate optimization |
-| WiSER | paper-spec controlled implementation | radiomap power + DETR-style CIR taps | frozen forward-model inverse search |
-| RFIR | paper-spec controlled 2.5D RF-BSDF implementation | complex field + received power | frozen inverse-renderer search |
+| WiSER | paper-spec controlled adaptation | multiscale sparse scene/ray-corridor power + learned-query/Hungarian CIR taps | frozen forward-model inverse search |
+| RFIR | RFIR-inspired 2.5D controlled implementation | visibility-aware anisotropic Gaussian RF field + received power | frozen inverse-renderer search |
 
 All four train on `source_encoder_train`, select on `source_method_selection`, and evaluate only
 `source_final_unseen_bank` plus target `query` positions. Every adapter emits a source-only training
 record, selected checkpoint, exact config, result rows, and hashes. Missing environments resolve to
 `not_executed`; they do not abort into a false PASS.
 
-WiSER and RFIR have no source archive in `waibu/`, so the code must never be called an official
-implementation or faithful reproduction. SigMap has no supplied paper file and is deliberately
-weaker-labelled `style-controlled-implementation`.
+WiSER and RFIR have no source archive in `waibu/`. WiSER is a paper-spec controlled adaptation: it
+derives multiscale sparse 3D tokens from CSI-PAIRS occupancy/height/material maps and retains the
+paper's ray-corridor, learned-query set decoder, Hungarian delay/power matching, and staged training.
+It is not an official or faithful reproduction. RFIR lacks the paper's multi-view RGB 3DGS geometry
+stage and therefore remains `style-controlled-implementation` and C1-ineligible. SigMap has no
+supplied paper file and carries the same weaker evidence class.
 
 ## Wi-GATr
 
@@ -93,9 +96,21 @@ six-map interventions.
 
 `setup_sionna.sh` authenticates and extracts both supplied official archives, installs Sionna RT
 1.2.1 (the version frozen by the large-radio-map project), and installs the official tiling/scene/
-radio-map scripts. `sionna_facility.py` exposes those operations and audits each `rm_*.npz` output.
+radio-map scripts. The top-level Sionna source package is installed without its unrelated
+PHY/PyTorch CUDA dependency set; the G8 facility calls only `sionna.rt`. `sionna_facility.py`
+exposes those operations and audits each `rm_*.npz` output.
 
 `sionna_external_validity.py` is an internal G8 engine adapter. It requires every external-validation
 sibling world to have a scene XML, canonical-map hash, asset manifest, per-asset hash, and license.
 It retraces CFRs with `PathSolver` and emits paired active/null effects. A source archive alone cannot
 pass G8; actual scene assets and a formal non-fixture run are mandatory.
+
+The standard outer adapter is `../configs/sionna_external_validity_adapter_v1.json`. It expects the
+scene manifest at `RUN_ROOT/inputs/sionna_scene_manifest.json`; this fixed location keeps the exact
+command hash and scene bundle inside the formal run tree.
+
+`python -m formal_v2.formal_cli export-sionna-scenes` deterministically converts every formal
+`external_validation` sibling world into material-separated PLY meshes and Sionna scene XML, writes
+per-asset license/hash records, and emits the complete scene manifest. The command does not invent
+an asset license: `--license-id` must match `metadata.assets.license_ids`; carrier frequency and
+subcarrier spacing are also mandatory inputs.

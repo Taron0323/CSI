@@ -34,6 +34,23 @@ def patchify_tensor(csi: Tensor, spec: PatchSpec) -> Tensor:
     return patches.permute(0, 2, 3, 1, 4, 5).reshape(csi.shape[0], spec.patch_count, spec.patch_dim)
 
 
+def fixed_2d_sincos_position(spec: PatchSpec, dim: int, device=None) -> Tensor:
+    if dim % 4:
+        raise ValueError("fixed two-dimensional sine-cosine position dimension must be divisible by four")
+    axis_dim = dim // 2
+    frequency = torch.arange(0, axis_dim, 2, dtype=torch.float32, device=device)
+    frequency = torch.pow(10000.0, -frequency / axis_dim)
+
+    def embed(length: int) -> Tensor:
+        position = torch.arange(length, dtype=torch.float32, device=device)[:, None]
+        angle = position * frequency[None]
+        return torch.cat((torch.sin(angle), torch.cos(angle)), dim=1)
+
+    row = embed(spec.patch_rows)[:, None].expand(-1, spec.patch_columns, -1)
+    column = embed(spec.patch_columns)[None].expand(spec.patch_rows, -1, -1)
+    return torch.cat((row, column), dim=-1).reshape(1, spec.patch_count, dim)
+
+
 class ResNetBottleneck(nn.Module):
     expansion = 4
 
@@ -43,10 +60,10 @@ class ResNetBottleneck(nn.Module):
         self.network = nn.Sequential(
             nn.Conv2d(input_channels, channels, 1, bias=False),
             nn.BatchNorm2d(channels),
-            nn.GELU(),
+            nn.ReLU(inplace=True),
             nn.Conv2d(channels, channels, 3, stride=stride, padding=1, bias=False),
             nn.BatchNorm2d(channels),
-            nn.GELU(),
+            nn.ReLU(inplace=True),
             nn.Conv2d(channels, output_channels, 1, bias=False),
             nn.BatchNorm2d(output_channels),
         )
@@ -60,7 +77,7 @@ class ResNetBottleneck(nn.Module):
         )
 
     def forward(self, value: Tensor) -> Tensor:
-        return F.gelu(self.skip(value) + self.network(value))
+        return F.relu(self.skip(value) + self.network(value), inplace=True)
 
 
 class CSIResNetEncoder(nn.Module):
@@ -74,7 +91,7 @@ class CSIResNetEncoder(nn.Module):
         self.stem = nn.Sequential(
             nn.Conv2d(2, width, 7, stride=2, padding=3, bias=False),
             nn.BatchNorm2d(width),
-            nn.GELU(),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2, padding=1),
         )
         blocks = []
@@ -101,8 +118,7 @@ class PatchTransformerEncoder(nn.Module):
         self.spec = spec
         self.dim = int(dim)
         self.patch_embedding = nn.Linear(spec.patch_dim, dim)
-        self.row_position = nn.Parameter(torch.zeros(1, spec.patch_rows, 1, dim))
-        self.column_position = nn.Parameter(torch.zeros(1, 1, spec.patch_columns, dim))
+        self.register_buffer("fixed_position", fixed_2d_sincos_position(spec, dim), persistent=True)
         self.cls = nn.Parameter(torch.zeros(1, 1, dim))
         layer = nn.TransformerEncoderLayer(
             d_model=dim,
@@ -118,7 +134,7 @@ class PatchTransformerEncoder(nn.Module):
         self.output = nn.Identity() if output_dim is None else nn.Linear(dim, output_dim)
 
     def position(self) -> Tensor:
-        return (self.row_position + self.column_position).reshape(1, self.spec.patch_count, self.dim)
+        return self.fixed_position
 
     def tokens(self, csi: Tensor) -> Tensor:
         return self.patch_embedding(patchify_tensor(csi, self.spec)) + self.position()
@@ -126,9 +142,16 @@ class PatchTransformerEncoder(nn.Module):
     def forward(self, csi: Tensor, visible: Tensor | None = None) -> Tensor:
         tokens = self.tokens(csi)
         if visible is not None:
-            if visible.ndim != 1 or visible.shape[0] != self.spec.patch_count:
-                raise ValueError("visible patch selector has the wrong shape")
-            tokens = tokens[:, visible]
+            if visible.ndim == 1:
+                if visible.shape[0] != self.spec.patch_count:
+                    raise ValueError("visible patch selector has the wrong shape")
+                tokens = tokens[:, visible]
+            elif visible.ndim == 2:
+                if visible.shape[0] != tokens.shape[0]:
+                    raise ValueError("per-sample visible patch selector has the wrong batch size")
+                tokens = torch.gather(tokens, 1, visible[..., None].expand(-1, -1, tokens.shape[-1]))
+            else:
+                raise ValueError("visible patch selector has the wrong rank")
         cls = self.cls.expand(tokens.shape[0], -1, -1)
         encoded = self.norm(self.transformer(torch.cat((cls, tokens), dim=1)))
         return self.output(encoded[:, 0])
@@ -137,40 +160,49 @@ class PatchTransformerEncoder(nn.Module):
 class CSIMAE(nn.Module):
     """Paper-spec two-dimensional asymmetric masked autoencoder."""
 
-    def __init__(self, spec: PatchSpec, dim: int, heads: int, encoder_layers: int, decoder_layers: int):
+    def __init__(self, spec: PatchSpec, dim: int, heads: int, encoder_layers: int, decoder_layers: int, decoder_dim: int):
         super().__init__()
         self.spec = spec
         self.encoder = PatchTransformerEncoder(spec, dim, heads, encoder_layers)
+        decoder_heads = min(heads, decoder_dim)
+        while decoder_dim % decoder_heads:
+            decoder_heads -= 1
         decoder_layer = nn.TransformerEncoderLayer(
-            d_model=dim,
-            nhead=heads,
-            dim_feedforward=2 * dim,
+            d_model=decoder_dim,
+            nhead=decoder_heads,
+            dim_feedforward=2 * decoder_dim,
             dropout=0.0,
             activation="gelu",
             norm_first=True,
             batch_first=True,
         )
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, dim))
+        self.encoder_to_decoder = nn.Linear(dim, decoder_dim)
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_dim))
+        self.register_buffer("decoder_position", fixed_2d_sincos_position(spec, decoder_dim), persistent=True)
         self.decoder = nn.TransformerEncoder(decoder_layer, decoder_layers)
-        self.decoder_head = nn.Linear(dim, spec.patch_dim)
+        self.decoder_head = nn.Linear(decoder_dim, spec.patch_dim)
 
-    def _mask(self, device: torch.device, mask_fraction: float) -> Tensor:
+    def _mask(self, batch_size: int, device: torch.device, mask_fraction: float) -> Tensor:
         count = max(1, min(self.spec.patch_count - 1, round(mask_fraction * self.spec.patch_count)))
-        order = torch.randperm(self.spec.patch_count, device=device)
-        mask = torch.zeros(self.spec.patch_count, dtype=torch.bool, device=device)
-        mask[order[:count]] = True
+        order = torch.rand(batch_size, self.spec.patch_count, device=device).argsort(dim=1)
+        mask = torch.zeros(batch_size, self.spec.patch_count, dtype=torch.bool, device=device)
+        mask.scatter_(1, order[:, :count], True)
         return mask
 
     def pretraining_loss(self, batch: BaselineBatch, mask_fraction: float = 0.75) -> Tensor:
         patches = patchify_tensor(batch.csi, self.spec)
-        mask = self._mask(batch.csi.device, mask_fraction)
+        mask = self._mask(batch.csi.shape[0], batch.csi.device, mask_fraction)
         tokens = self.encoder.tokens(batch.csi)
-        visible_tokens = self.encoder.transformer(tokens[:, ~mask])
+        visible_index = (~mask).to(torch.int64).argsort(dim=1, descending=True)[:, : int((~mask).sum(dim=1)[0])]
+        visible = torch.gather(tokens, 1, visible_index[..., None].expand(-1, -1, tokens.shape[-1]))
+        cls = self.encoder.cls.expand(tokens.shape[0], -1, -1)
+        visible_tokens = self.encoder.norm(self.encoder.transformer(torch.cat((cls, visible), dim=1)))[:, 1:]
+        visible_tokens = self.encoder_to_decoder(visible_tokens)
         full = self.mask_token.expand(tokens.shape[0], self.spec.patch_count, -1).clone()
-        full[:, ~mask] = visible_tokens
-        decoded = self.decoder(full + self.encoder.position())
+        full.scatter_(1, visible_index[..., None].expand(-1, -1, full.shape[-1]), visible_tokens)
+        decoded = self.decoder(full + self.decoder_position)
         prediction = self.decoder_head(decoded)
-        return F.mse_loss(prediction[:, mask], patches[:, mask])
+        return F.mse_loss(prediction[mask], patches[mask])
 
     def encode(self, batch: BaselineBatch) -> Tensor:
         return self.encoder(batch.csi)
@@ -244,12 +276,13 @@ class ContraWiMAE(nn.Module):
         heads: int,
         encoder_layers: int,
         decoder_layers: int,
+        decoder_dim: int,
         reconstruction_weight: float,
         minimum_snr_db: float,
         maximum_snr_db: float,
     ):
         super().__init__()
-        self.mae = CSIMAE(spec, dim, heads, encoder_layers, decoder_layers)
+        self.mae = CSIMAE(spec, dim, heads, encoder_layers, decoder_layers, decoder_dim)
         self.projector = nn.Sequential(nn.Linear(dim, dim), nn.GELU(), nn.Linear(dim, dim))
         self.log_temperature = nn.Parameter(torch.tensor(-1.6094379124341003))
         self.reconstruction_weight = float(reconstruction_weight)
@@ -266,10 +299,12 @@ class ContraWiMAE(nn.Module):
 
     def pretraining_loss(self, batch: BaselineBatch, mask_fraction: float = 0.75) -> Tensor:
         reconstruction = self.mae.pretraining_loss(batch, mask_fraction)
-        mask_a = self.mae._mask(batch.csi.device, mask_fraction)
-        mask_b = self.mae._mask(batch.csi.device, mask_fraction)
-        view_a = F.normalize(self.projector(self.mae.encoder(self._noisy_view(batch.csi), ~mask_a)), dim=1)
-        view_b = F.normalize(self.projector(self.mae.encoder(self._noisy_view(batch.csi), ~mask_b)), dim=1)
+        mask_a = self.mae._mask(batch.csi.shape[0], batch.csi.device, mask_fraction)
+        mask_b = self.mae._mask(batch.csi.shape[0], batch.csi.device, mask_fraction)
+        visible_a = (~mask_a).to(torch.int64).argsort(dim=1, descending=True)[:, : int((~mask_a).sum(dim=1)[0])]
+        visible_b = (~mask_b).to(torch.int64).argsort(dim=1, descending=True)[:, : int((~mask_b).sum(dim=1)[0])]
+        view_a = F.normalize(self.projector(self.mae.encoder(self._noisy_view(batch.csi), visible_a)), dim=1)
+        view_b = F.normalize(self.projector(self.mae.encoder(self._noisy_view(batch.csi), visible_b)), dim=1)
         logits = view_a @ view_b.T / self.log_temperature.exp().clamp(1e-3, 1.0)
         labels = torch.arange(logits.shape[0], device=logits.device)
         contrastive = 0.5 * (F.cross_entropy(logits, labels) + F.cross_entropy(logits.T, labels))
@@ -277,6 +312,9 @@ class ContraWiMAE(nn.Module):
 
     def encode(self, batch: BaselineBatch) -> Tensor:
         return self.mae.encode(batch)
+
+    def warm_start_loss(self, batch: BaselineBatch, mask_fraction: float) -> Tensor:
+        return self.mae.pretraining_loss(batch, mask_fraction)
 
 
 class ModalityExpertBlock(nn.Module):
@@ -390,7 +428,7 @@ def build_representation_model(name: str, spec: PatchSpec, map_channels: int, co
     heads = int(config["heads"])
     layers = int(config["encoder_layers"])
     if name == "CSI-MAE":
-        return CSIMAE(spec, dim, heads, layers, int(config["decoder_layers"]))
+        return CSIMAE(spec, dim, heads, layers, int(config["decoder_layers"]), int(config["decoder_dim"]))
     if name == "CSI-CLIP":
         return CSIClip(spec, int(config["resnet_width"]), int(config["resnet_depth"]), dim)
     if name == "CSI-CLIP++":
@@ -402,6 +440,7 @@ def build_representation_model(name: str, spec: PatchSpec, map_channels: int, co
             heads,
             layers,
             int(config["decoder_layers"]),
+            int(config["decoder_dim"]),
             float(config["reconstruction_weight"]),
             float(config["minimum_snr_db"]),
             float(config["maximum_snr_db"]),

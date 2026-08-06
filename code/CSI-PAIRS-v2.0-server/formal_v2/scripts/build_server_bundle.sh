@@ -20,7 +20,16 @@ BUNDLE_ROOT="${STAGING_ROOT}/CSI-PAIRS-v2.1-server"
 trap 'rm -rf "${STAGING_ROOT}"' EXIT
 
 mkdir -p "${BUNDLE_ROOT}/artifacts" "${BUNDLE_ROOT}/output/pdf" "${BUNDLE_ROOT}/paper/official_style"
-cp -R "${PROJECT_ROOT}/formal_v2" "${BUNDLE_ROOT}/"
+(
+  cd "${PROJECT_ROOT}"
+  tar \
+    --exclude='formal_v2/external_adapters/.venv-wigatr' \
+    --exclude='formal_v2/external_adapters/.runtime-sionna' \
+    -cf - formal_v2
+) | (
+  cd "${BUNDLE_ROOT}"
+  tar -xf -
+)
 cp -R "${PROJECT_ROOT}/waibu" "${BUNDLE_ROOT}/"
 cp -R "${PROJECT_ROOT}/paper_v2" "${BUNDLE_ROOT}/"
 cp -R "${PROJECT_ROOT}/paper/official_style/iclr2027" "${BUNDLE_ROOT}/paper/official_style/"
@@ -33,6 +42,8 @@ cp -p "${PROJECT_ROOT}/artifacts/iclr2027_official_policy_recheck_2026-08-05.md"
 cp -p "${PROJECT_ROOT}/output/pdf/CSI-PAIRS-paper-v2.1-draft.pdf" "${BUNDLE_ROOT}/output/pdf/"
 
 find "${BUNDLE_ROOT}" -type d -name __pycache__ -prune -exec rm -rf {} +
+find "${BUNDLE_ROOT}/formal_v2/external_adapters" -maxdepth 1 -type d \
+  \( -name '.venv-wigatr' -o -name '.runtime-sionna' \) -prune -exec rm -rf {} +
 find "${BUNDLE_ROOT}" -type f \( -name '*.pyc' -o -name '.DS_Store' \) -delete
 
 cd "${BUNDLE_ROOT}"

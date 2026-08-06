@@ -32,6 +32,10 @@ REQUIRED_BASELINE_NAMES = {
     "RFIR",
 }
 BASELINE_STATUSES = {"executed", "not_executed", "not_applicable", "oracle_only"}
+C1_ELIGIBLE_IDENTITIES = {
+    "Wi-GATr": "official-code-adaptation",
+    "WiSER": "paper-spec-controlled-implementation",
+}
 
 
 def run_external_baselines(config, dataset, manifest_path, output_root):
@@ -47,6 +51,8 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
     _validate_manifest(manifest)
     output_dir = Path(output_root) / "external_baselines"
     output_dir.mkdir(parents=True, exist_ok=True)
+    adapter_manifest_copy = output_dir / "adapter_manifest.json"
+    write_json(adapter_manifest_copy, manifest)
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
@@ -116,6 +122,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
                     "adapter_id": adapter["adapter_id"],
                     "model_name": adapter["model_name"],
                     "implementation_status": adapter["implementation_status"],
+                    "c1_eligible": adapter["c1_eligible"],
                     "status": "FAIL",
                     "return_code": completed.returncode,
                 }
@@ -139,6 +146,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
                 "adapter_id": adapter["adapter_id"],
                 "model_name": adapter["model_name"],
                 "implementation_status": adapter["implementation_status"],
+                "c1_eligible": adapter["c1_eligible"],
                 "status": "PASS",
                 "return_code": completed.returncode,
             }
@@ -160,7 +168,12 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
     passed_models = {
         row["model_name"] for row in status_rows if row["status"] == "PASS"
     }
-    passed = len(passed_models) >= 2
+    c1_eligible_models = {
+        row["model_name"]
+        for row in status_rows
+        if row["status"] == "PASS" and row["c1_eligible"] is True
+    }
+    passed = len(c1_eligible_models) >= 2
     gate = {
         "schema_version": "csi-pairs-v6-external-baseline-gate-v2",
         "status": "PASS" if passed else "BLOCKED",
@@ -170,6 +183,10 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
         "passing_map_conditioned_models": len(passed_models),
         "unique_passing_model_count": len(passed_models),
         "unique_passing_models": sorted(passed_models),
+        "c1_eligible_model_count": len(c1_eligible_models),
+        "c1_eligible_models": sorted(c1_eligible_models),
+        "adapter_manifest_sha256": sha256_file(adapter_manifest_copy),
+        "adapter_manifest_path": adapter_manifest_copy.name,
     }
     write_json(output_dir / "gate.json", gate)
     write_json(
@@ -192,6 +209,7 @@ def _validate_manifest(manifest):
     if not isinstance(adapters, list) or len(adapters) < 2:
         raise ValueError("at least two external map-conditioned adapters are required")
     seen = set()
+    eligible_models = set()
     for adapter in adapters:
         required = {
             "adapter_id",
@@ -201,6 +219,7 @@ def _validate_manifest(manifest):
             "citation_key",
             "source_revision",
             "map_conditioned",
+            "c1_eligible",
             "command",
         }
         if not isinstance(adapter, dict) or set(adapter) != required:
@@ -212,10 +231,21 @@ def _validate_manifest(manifest):
             raise ValueError("external adapter implementation status is inaccurate or unsupported")
         if adapter["map_conditioned"] is not True:
             raise ValueError("C1 adapters must actually be map-conditioned")
+        if not isinstance(adapter["c1_eligible"], bool):
+            raise ValueError("external adapter c1_eligible must be boolean")
+        if adapter["c1_eligible"] and adapter["implementation_status"] == "style-controlled-implementation":
+            raise ValueError("style-controlled adapters cannot support C1")
+        if adapter["c1_eligible"]:
+            expected_status = C1_ELIGIBLE_IDENTITIES.get(adapter["model_name"])
+            if expected_status != adapter["implementation_status"]:
+                raise ValueError("C1-eligible adapter identity or implementation status is not frozen")
+            eligible_models.add(adapter["model_name"])
         if not isinstance(adapter["command"], list) or not adapter["command"]:
             raise ValueError("external adapter command must be a nonempty argv list")
         if not all(isinstance(adapter[key], str) and adapter[key].strip() for key in ("citation_key", "source_revision", "license_id")):
             raise ValueError("external adapter provenance fields must be nonempty")
+    if eligible_models != set(C1_ELIGIBLE_IDENTITIES):
+        raise ValueError("external manifest must contain both frozen C1-eligible identities")
     registry = manifest["literature_registry"]
     if not isinstance(registry, list) or {row.get("baseline_name") for row in registry} != REQUIRED_BASELINE_NAMES:
         raise ValueError("literature registry must contain every frozen V6 baseline name")

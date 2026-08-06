@@ -29,7 +29,7 @@
     "G8_EXTERNAL_VALIDITY"
   ],
   "claims": [
-    {"claim_id":"C1","status":"BLOCKED","requires":["two external map-conditioned models","active/null six-condition audit"]},
+    {"claim_id":"C1","status":"BLOCKED","requires":["authenticated Wi-GATr official-code and WiSER paper-spec checkpoints","active/null six-condition audit","adapter manifest hash and exact common unit registry"]},
     {"claim_id":"C2","status":"BLOCKED","requires":["held-out-position scene-ID prompt parity","map-swap/ID-swap response agreement"]},
     {"claim_id":"C3","status":"BLOCKED","requires":["unified probes","active quartet marginal audit","null equivalence","unseen bank/city"]},
     {"claim_id":"C4","status":"BLOCKED","requires":["Alignment beats Endpoint","shortcut controls","shuffled-pair gain disappears"]},

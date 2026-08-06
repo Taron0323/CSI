@@ -63,7 +63,7 @@ def run(args) -> dict:
         return verified
     scripts = runtime / "src" / "sionna-large-radio-maps-main" / "scripts"
     python = runtime / "venv" / "bin" / "python"
-    environment = {**os.environ, "SLRM_DATA_DIR": str(runtime / "data")}
+    environment = _runtime_environment(runtime)
     if args.command == "generate-tiling":
         transmitter_target = runtime / "data" / "remote" / "transmitters" / "data.csv"
         transmitter_target.parent.mkdir(parents=True, exist_ok=True)
@@ -117,16 +117,12 @@ def verify_runtime(runtime: Path) -> dict:
         check=False,
         capture_output=True,
         text=True,
-        env={
-            **os.environ,
-            "PYTHONPATH": str(runtime / "src" / "sionna-large-radio-maps-main"),
-            "SLRM_DATA_DIR": str(runtime / "data"),
-        },
+        env=_runtime_environment(runtime),
     )
     if probe.returncode != 0:
         raise RuntimeError(f"Sionna runtime import failed: {probe.stderr.strip()}")
     versions = probe.stdout.strip().splitlines()
-    if len(versions) != 3 or versions[1] != "1.2.1":
+    if len(versions) != 3 or versions[0] != "2.0.1" or versions[1] != "1.2.1":
         raise RuntimeError("Sionna runtime versions differ from the frozen facility")
     return {
         "schema_version": "csi-pairs-v6-sionna-runtime-v1",
@@ -139,6 +135,25 @@ def verify_runtime(runtime: Path) -> dict:
         "archive_sha256": authenticated,
         "license_id": "Apache-2.0",
     }
+
+
+def _runtime_environment(runtime: Path) -> dict[str, str]:
+    environment = {
+        **os.environ,
+        "PYTHONPATH": str(runtime / "src" / "sionna-large-radio-maps-main"),
+        "SLRM_DATA_DIR": str(runtime / "data"),
+    }
+    configured = environment.get("DRJIT_LIBLLVM_PATH")
+    if configured and Path(configured).is_file():
+        return environment
+    candidates = []
+    for root in (Path("/usr/lib"), Path("/usr/local/lib"), Path("/opt")):
+        if root.exists():
+            candidates.extend(root.glob("**/libLLVM-*.so"))
+    if not candidates:
+        raise RuntimeError("Dr.Jit requires libLLVM; set DRJIT_LIBLLVM_PATH")
+    environment["DRJIT_LIBLLVM_PATH"] = str(sorted(candidates)[-1])
+    return environment
 
 
 def audit_radio_maps(root: Path, output: Path, runtime_record: dict) -> dict:

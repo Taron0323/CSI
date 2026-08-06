@@ -9,7 +9,7 @@ from .formal_evidence import (
     evidence_context,
     require_stage_manifested_gate,
 )
-from .formal_io import artifact_manifest, read_strict_json, write_json
+from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_json
 
 
 CLAIM_DEPENDENCIES = {
@@ -137,6 +137,8 @@ def _assess_stage(path, schema, name, config, dataset):
             dataset,
             schema_version=schema,
         )
+        if name == "external_baselines":
+            _validate_external_manifest_binding(path, payload)
         return _semantic_status(name, payload), None
     except Exception as error:
         return "INVALID", f"{type(error).__name__}: {error}"
@@ -166,7 +168,15 @@ def _semantic_status(name, payload):
         if not _require_pass_subgates(payload, "g7_subgates", 5):
             return "FAIL"
     elif name == "external_baselines":
-        if int(payload.get("unique_passing_model_count", 0)) < 2:
+        eligible = payload.get("c1_eligible_models")
+        if (
+            not isinstance(eligible, list)
+            or len(eligible) != len(set(eligible))
+            or int(payload.get("c1_eligible_model_count", 0)) != len(eligible)
+            or set(eligible) != {"Wi-GATr", "WiSER"}
+            or not _lower_sha256(payload.get("adapter_manifest_sha256"))
+            or payload.get("adapter_manifest_path") != "adapter_manifest.json"
+        ):
             return "FAIL"
     elif name in {"shuffled_pair", "retention"}:
         if not payload.get("checkpoint_hashes_verified"):
@@ -187,6 +197,35 @@ def _require_pass_subgates(payload, field, count):
     if any(value != "PASS" for value in values.values()):
         return False
     return True
+
+
+def _lower_sha256(value):
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _validate_external_manifest_binding(gate_path, payload):
+    from .formal_external import _validate_manifest
+
+    manifest_path = gate_path.parent / str(payload.get("adapter_manifest_path", ""))
+    if not manifest_path.is_file():
+        raise RuntimeError("external-baseline gate has no bound adapter manifest")
+    if sha256_file(manifest_path) != payload.get("adapter_manifest_sha256"):
+        raise RuntimeError("external-baseline adapter manifest hash mismatch")
+    stage_manifest_path = gate_path.parent / "manifest.json"
+    stage_manifest = read_strict_json(stage_manifest_path)
+    entries = stage_manifest.get("files") if isinstance(stage_manifest, dict) else None
+    matches = [
+        row
+        for row in entries
+        if isinstance(row, dict) and row.get("path") == manifest_path.name
+    ] if isinstance(entries, list) else []
+    if len(matches) != 1 or matches[0].get("sha256") != payload.get("adapter_manifest_sha256"):
+        raise RuntimeError("external adapter manifest is absent from or mismatched with the stage manifest")
+    _validate_manifest(read_strict_json(manifest_path))
 
 
 def _gate_state(status):

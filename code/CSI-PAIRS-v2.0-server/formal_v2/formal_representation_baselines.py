@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .external_adapters.representation_models import BaselineBatch, WWMJEPA, build_representation_model
+from .external_adapters.representation_models import BaselineBatch, ContraWiMAE, WWMJEPA, build_representation_model
 from .formal_data_verification import require_verified_roles_from_root
 from .formal_evidence import bind_rows, evidence_context
 from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_csv, write_json
@@ -188,6 +188,9 @@ def load_representation_config(path: str | Path) -> dict:
         "heads",
         "encoder_layers",
         "decoder_layers",
+        "decoder_dim",
+        "warm_start_epochs",
+        "preprocessing",
         "resnet_width",
         "resnet_depth",
         "ema",
@@ -204,8 +207,18 @@ def load_representation_config(path: str | Path) -> dict:
         names.append(row["model_name"])
         if row["implementation_status"] not in IMPLEMENTATION_STATUSES:
             raise ValueError("representation implementation status is invalid")
-        for key in ("epochs", "batch_size", "dim", "heads", "encoder_layers", "decoder_layers", "resnet_width", "resnet_depth"):
+        for key in ("epochs", "batch_size", "dim", "heads", "encoder_layers", "decoder_layers", "decoder_dim", "resnet_width", "resnet_depth"):
             _positive_integer(row[key], f"{row['model_name']}.{key}")
+        if not isinstance(row["warm_start_epochs"], int) or isinstance(row["warm_start_epochs"], bool) or row["warm_start_epochs"] < 0:
+            raise ValueError("warm-start epochs must be a nonnegative integer")
+        if row["preprocessing"] not in {"zscore", "minmax-standardize"}:
+            raise ValueError("representation preprocessing is unsupported")
+        if row["model_name"] == "ContraWiMAE" and row["warm_start_epochs"] <= 0 and payload["profile"] == "formal-paper-dose":
+            raise ValueError("formal ContraWiMAE requires reconstruction-only WiMAE warm-start")
+        if row["model_name"] != "ContraWiMAE" and row["warm_start_epochs"] != 0:
+            raise ValueError("only ContraWiMAE may request WiMAE warm-start")
+        if row["decoder_dim"] % 4:
+            raise ValueError("representation decoder dimension must support fixed two-dimensional position encoding")
         for key in ("learning_rate", "ema", "reconstruction_weight"):
             _positive_number(row[key], f"{row['model_name']}.{key}")
         if not isinstance(row["mask_fraction"], (int, float)) or isinstance(row["mask_fraction"], bool):
@@ -220,6 +233,8 @@ def load_representation_config(path: str | Path) -> dict:
             raise ValueError("reconstruction weight must lie strictly between zero and one")
         if row["minimum_snr_db"] >= row["maximum_snr_db"]:
             raise ValueError("ContraWiMAE SNR range is empty")
+    if payload["profile"] == "formal-paper-dose" and set(names) != MODEL_NAMES:
+        raise ValueError("formal representation execution requires all five frozen baselines")
     return payload
 
 
@@ -230,6 +245,9 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
         raise RuntimeError("representation pretraining roles are empty")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
+    warm_start = _warm_start_contra(
+        model, model_name, model_config, dataset, normalizer, train_units, selection_units, device, seed
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(model_config["learning_rate"]),
@@ -244,7 +262,9 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
         if warmup_steps and step < warmup_steps:
             return max((step + 1) / warmup_steps, 1e-6)
         progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
-        return 0.5 * (1.0 + math.cos(math.pi * min(max(progress, 0.0), 1.0)))
+        cosine = 0.5 * (1.0 + math.cos(math.pi * min(max(progress, 0.0), 1.0)))
+        floor = 0.01 if model_name == "ContraWiMAE" else 0.0
+        return floor + (1.0 - floor) * cosine
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, factor)
     rng = np.random.default_rng(int(seed))
@@ -257,7 +277,9 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
         model.train()
         for start in range(0, len(order), batch_size):
             chosen = [train_units[int(index)] for index in order[start : start + batch_size]]
-            batch = _make_batch(dataset, chosen, normalizer, device)
+            batch = _make_batch(
+                dataset, chosen, normalizer, device, preprocessing=model_config["preprocessing"]
+            )
             loss = model.pretraining_loss(batch, float(model_config["mask_fraction"]))
             if not torch.isfinite(loss):
                 raise RuntimeError(f"{model_name} produced nonfinite pretraining loss")
@@ -293,6 +315,7 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
             "target_roles_read": [],
             "selected_epoch": best_epoch,
             "selection_loss": best_loss,
+            "warm_start": warm_start,
             "normalizer": {key: value.tolist() for key, value in normalizer.items()},
             "model_config": model_config,
             "state_dict": best_state,
@@ -310,6 +333,7 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
         "last_training_loss": training_loss,
         "selected_epoch": best_epoch,
         "selection_loss": best_loss,
+        "warm_start": warm_start,
         "train_role": "source_encoder_train",
         "selection_role": "source_method_selection",
         "probe_roles_read": [],
@@ -317,11 +341,110 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
     }
 
 
+def _warm_start_contra(
+    model,
+    model_name,
+    model_config,
+    dataset,
+    normalizer,
+    train_units,
+    selection_units,
+    device,
+    seed,
+):
+    epochs = int(model_config["warm_start_epochs"])
+    if model_name != "ContraWiMAE":
+        return {
+            "required": False,
+            "completed": True,
+            "epochs": 0,
+            "selected_epoch": 0,
+            "selection_loss": None,
+        }
+    if not isinstance(model, ContraWiMAE) or epochs <= 0:
+        raise RuntimeError("ContraWiMAE requires a reconstruction-only WiMAE warm-start")
+    batch_size = int(model_config["batch_size"])
+    steps_per_epoch = max(1, math.ceil(len(train_units) / batch_size))
+    total_steps = epochs * steps_per_epoch
+    warmup_steps = min(int(model_config["warmup_epochs"]) * steps_per_epoch, total_steps)
+    optimizer = torch.optim.AdamW(
+        model.mae.parameters(),
+        lr=float(model_config["learning_rate"]),
+        weight_decay=float(model_config["weight_decay"]),
+    )
+
+    def factor(step):
+        if warmup_steps and step < warmup_steps:
+            return max((step + 1) / warmup_steps, 1e-6)
+        progress = (step - warmup_steps) / max(total_steps - warmup_steps, 1)
+        return max(0.01, 0.5 * (1.0 + math.cos(math.pi * min(max(progress, 0.0), 1.0))))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, factor)
+    rng = np.random.default_rng(int(seed) ^ 0x57494D41)
+    best_state = None
+    best_loss = float("inf")
+    best_epoch = 0
+    for epoch in range(1, epochs + 1):
+        order = rng.permutation(len(train_units))
+        model.train()
+        for start in range(0, len(order), batch_size):
+            chosen = [train_units[int(index)] for index in order[start : start + batch_size]]
+            batch = _make_batch(
+                dataset,
+                chosen,
+                normalizer,
+                device,
+                preprocessing=model_config["preprocessing"],
+            )
+            loss = model.warm_start_loss(batch, float(model_config["mask_fraction"]))
+            if not torch.isfinite(loss):
+                raise RuntimeError("WiMAE warm-start produced nonfinite reconstruction loss")
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.mae.parameters(), 1.0, error_if_nonfinite=True)
+            optimizer.step()
+            scheduler.step()
+        model.eval()
+        values = []
+        with torch.no_grad():
+            for start in range(0, len(selection_units), batch_size):
+                batch = _make_batch(
+                    dataset,
+                    selection_units[start : start + batch_size],
+                    normalizer,
+                    device,
+                    preprocessing=model_config["preprocessing"],
+                )
+                values.append(float(model.warm_start_loss(batch, float(model_config["mask_fraction"]))))
+        selection_loss = float(np.mean(values))
+        if selection_loss < best_loss:
+            best_loss = selection_loss
+            best_epoch = epoch
+            best_state = {key: value.detach().cpu().clone() for key, value in model.mae.state_dict().items()}
+    if best_state is None:
+        raise RuntimeError("WiMAE warm-start produced no source-selected checkpoint")
+    model.mae.load_state_dict(best_state)
+    model.to(device)
+    return {
+        "required": True,
+        "completed": True,
+        "epochs": epochs,
+        "selected_epoch": best_epoch,
+        "selection_loss": best_loss,
+        "train_role": "source_encoder_train",
+        "selection_role": "source_method_selection",
+        "target_roles_read": [],
+    }
+
+
 def _evaluate_localization(model, model_name, model_config, adapter, formal_config, dataset, normalizer, support_draws, *, seed):
     source_units = _natural_position_units(dataset, "source_probe_train", query_only=False)
     source_selection_units = _natural_position_units(dataset, "source_probe_selection", query_only=False)
-    source_rep, source_position, _ = _represent(model, dataset, source_units, normalizer)
-    selection_rep, selection_position, _ = _represent(model, dataset, source_selection_units, normalizer)
+    preprocessing = model_config["preprocessing"]
+    source_rep, source_position, _ = _represent(model, dataset, source_units, normalizer, preprocessing=preprocessing)
+    selection_rep, selection_position, _ = _represent(
+        model, dataset, source_selection_units, normalizer, preprocessing=preprocessing
+    )
     head_config = {
         "model": {"hidden_dim": int(adapter["probe"]["hidden_dim"]) * 2},
         "localization": {
@@ -363,7 +486,9 @@ def _evaluate_localization(model, model_name, model_config, adapter, formal_conf
                         raise RuntimeError(f"target city {city} lacks {budget} unique support positions")
                     continue
                 if budget:
-                    support_rep, support_position, _ = _represent(model, dataset, selected, normalizer)
+                    support_rep, support_position, _ = _represent(
+                        model, dataset, selected, normalizer, preprocessing=preprocessing
+                    )
                     head = adapt_position_head(source_head, support_rep, support_position, head_config)
                 else:
                     head = source_head
@@ -415,7 +540,9 @@ def _evaluate_localization(model, model_name, model_config, adapter, formal_conf
 def _append_evaluation(model, head, model_name, model_config, dataset, normalizer, units, *, budget, draw, rows):
     if not units:
         return
-    representations, positions, selected_units = _represent(model, dataset, units, normalizer)
+    representations, positions, selected_units = _represent(
+        model, dataset, units, normalizer, preprocessing=model_config["preprocessing"]
+    )
     means, variances, uncertainty = predict_position_distribution(head, representations)
     for index, (scene, world, position) in enumerate(selected_units):
         rows.append(
@@ -441,14 +568,14 @@ def _append_evaluation(model, head, model_name, model_config, dataset, normalize
         )
 
 
-def _represent(model, dataset, units, normalizer, batch_size=256):
+def _represent(model, dataset, units, normalizer, batch_size=256, *, preprocessing="zscore"):
     device = next(model.parameters()).device
     model.eval()
     values = []
     with torch.no_grad():
         for start in range(0, len(units), batch_size):
             batch_units = units[start : start + batch_size]
-            batch = _make_batch(dataset, batch_units, normalizer, device)
+            batch = _make_batch(dataset, batch_units, normalizer, device, preprocessing=preprocessing)
             values.append(model.encode(batch).detach().cpu().numpy())
     representations = np.concatenate(values, axis=0)
     positions = np.asarray([dataset.positions[scene, position] for scene, _, position in units], dtype=np.float32)
@@ -461,7 +588,13 @@ def _mean_pretraining_loss(model, dataset, units, normalizer, device, model_conf
     batch_size = int(model_config["batch_size"])
     with torch.no_grad():
         for start in range(0, len(units), batch_size):
-            batch = _make_batch(dataset, units[start : start + batch_size], normalizer, device)
+            batch = _make_batch(
+                dataset,
+                units[start : start + batch_size],
+                normalizer,
+                device,
+                preprocessing=model_config["preprocessing"],
+            )
             loss = model.pretraining_loss(batch, float(model_config["mask_fraction"]))
             values.append(float(loss.detach().cpu()))
     return float(np.mean(values))
@@ -473,9 +606,17 @@ def _fit_normalizer(dataset, scenes):
     positions = dataset.positions[np.asarray(scenes, dtype=np.int64)]
     radio = dataset.radio_config[np.asarray(scenes, dtype=np.int64)]
     bs_pose = dataset.bs_pose[np.asarray(scenes, dtype=np.int64)]
+    csi_min = np.min(csi, axis=(0, 1, 2))
+    csi_max = np.max(csi, axis=(0, 1, 2))
+    csi_range = np.maximum(csi_max - csi_min, 1e-6)
+    csi_scaled = (csi - csi_min) / csi_range
     return {
         "csi_mean": np.mean(csi, axis=(0, 1, 2)),
         "csi_std": np.maximum(np.std(csi, axis=(0, 1, 2)), 1e-6),
+        "csi_min": csi_min,
+        "csi_range": csi_range,
+        "csi_scaled_mean": np.mean(csi_scaled, axis=(0, 1, 2)),
+        "csi_scaled_std": np.maximum(np.std(csi_scaled, axis=(0, 1, 2)), 1e-6),
         "map_mean": np.mean(maps, axis=(0, 1, 3, 4)),
         "map_std": np.maximum(np.std(maps, axis=(0, 1, 3, 4)), 1e-6),
         "position_mean": np.mean(positions, axis=(0, 1)),
@@ -487,13 +628,19 @@ def _fit_normalizer(dataset, scenes):
     }
 
 
-def _make_batch(dataset, units, normalizer, device):
+def _make_batch(dataset, units, normalizer, device, *, preprocessing="zscore"):
     csi = np.asarray([dataset.csi_clean[scene, world, position] for scene, world, position in units])
     maps = np.asarray([dataset.maps[scene, world] for scene, world, _ in units])
     radio = np.asarray([dataset.radio_config[scene] for scene, _, _ in units])
     bs_pose = np.asarray([dataset.bs_pose[scene] for scene, _, _ in units])
     positions = np.asarray([dataset.positions[scene, position] for scene, _, position in units])
-    csi = (csi - normalizer["csi_mean"]) / normalizer["csi_std"]
+    if preprocessing == "zscore":
+        csi = (csi - normalizer["csi_mean"]) / normalizer["csi_std"]
+    elif preprocessing == "minmax-standardize":
+        csi = (csi - normalizer["csi_min"]) / normalizer["csi_range"]
+        csi = (csi - normalizer["csi_scaled_mean"]) / normalizer["csi_scaled_std"]
+    else:
+        raise ValueError("representation preprocessing is unsupported")
     maps = (maps - normalizer["map_mean"][None, :, None, None]) / normalizer["map_std"][None, :, None, None]
     radio = (radio - normalizer["radio_mean"]) / normalizer["radio_std"]
     bs_pose = (bs_pose - normalizer["bs_mean"]) / normalizer["bs_std"]

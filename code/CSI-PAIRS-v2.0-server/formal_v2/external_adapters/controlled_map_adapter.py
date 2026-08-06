@@ -149,7 +149,7 @@ def load_controlled_map_config(path: str | Path) -> dict:
     identities = {
         "sigmap": ("SigMap", "sigmap-controlled-csi-pairs-v1", "style-controlled-implementation"),
         "wiser": ("WiSER", "wiser-controlled-csi-pairs-v1", "paper-spec-controlled-implementation"),
-        "rfir": ("RFIR", "rfir-controlled-csi-pairs-v1", "paper-spec-controlled-implementation"),
+        "rfir": ("RFIR", "rfir-controlled-csi-pairs-v1", "style-controlled-implementation"),
     }
     if (payload["model_name"], payload["adapter_id"], payload["implementation_status"]) != identities[payload["method"]]:
         raise ValueError("controlled map adapter identity is not frozen")
@@ -253,10 +253,13 @@ def _train(model, config, dataset, normalizer, output, model_metadata):
     best_selection = float("inf")
     best_step = 0
     last_loss = float("nan")
+    schedule_counts = {"radiomap": 0, "cir": 0, "joint": 0}
     for step in range(1, int(training["steps"]) + 1):
         chosen = rng.choice(len(train_units), size=int(training["batch_size"]), replace=len(train_units) < int(training["batch_size"]))
         batch = _batch(dataset, [train_units[int(index)] for index in chosen], normalizer, device, config["method"])
-        loss = _loss(model, config["method"], batch)
+        task = _training_task(config["method"], step, int(training["steps"]), int(training["selection_every_steps"]))
+        schedule_counts[task] += 1
+        loss = _loss(model, config["method"], batch, task=task)
         if not torch.isfinite(loss):
             raise RuntimeError("controlled map model produced nonfinite loss")
         optimizer.zero_grad(set_to_none=True)
@@ -310,6 +313,7 @@ def _train(model, config, dataset, normalizer, output, model_metadata):
         "train_role": "source_encoder_train",
         "selection_role": "source_method_selection",
         "target_roles_read": [],
+        "task_schedule": schedule_counts,
     }
     return checkpoint, record
 
@@ -462,9 +466,25 @@ def _batch(dataset, units, normalizer, device, method):
     }
 
 
-def _loss(model, method, batch):
+def _training_task(method, step, total_steps, phase_steps):
+    if method != "wiser":
+        return "joint"
+    warmup = max(1, total_steps // 10)
+    if step <= warmup:
+        return "radiomap"
+    if step <= 2 * warmup:
+        return "cir"
+    return "radiomap" if ((step - 2 * warmup - 1) // max(phase_steps, 1)) % 2 == 0 else "cir"
+
+
+def _loss(model, method, batch, *, task="joint"):
     if method == "sigmap":
         return model.training_loss(batch["csi"], batch["maps"], batch["context"], batch["receiver"])
+    if method == "wiser":
+        return model.training_loss(
+            batch["csi"], batch["maps"], batch["tx"], batch["context"], batch["receiver"],
+            batch["origin"], batch["resolution"], task=task,
+        )
     return model.training_loss(
         batch["csi"], batch["maps"], batch["tx"], batch["context"], batch["receiver"], batch["origin"], batch["resolution"]
     )

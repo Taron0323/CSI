@@ -23,6 +23,15 @@ def build_parser() -> argparse.ArgumentParser:
     resources.add_argument("--registry", required=True)
     resources.add_argument("--waibu-root", required=True)
     resources.add_argument("--output", required=True)
+    sionna_export = subparsers.add_parser("export-sionna-scenes")
+    sionna_export.add_argument("--dataset", required=True)
+    sionna_export.add_argument("--output", required=True)
+    sionna_export.add_argument("--license-id", required=True)
+    sionna_export.add_argument("--carrier-frequency-hz", type=float, required=True)
+    sionna_export.add_argument("--subcarrier-spacing-hz", type=float, required=True)
+    sionna_export.add_argument("--receiver-z-m", type=float, default=1.5)
+    sionna_export.add_argument("--max-depth", type=int, default=5)
+    sionna_export.add_argument("--refraction", action="store_true")
 
     for command in (
         "inspect-data",
@@ -115,6 +124,21 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_waibu_resources(args.registry, args.waibu_root, args.output)
             print(json.dumps({"status": result["status"], "output": str(Path(args.output).resolve())}, sort_keys=True))
             return 0
+        if args.command == "export-sionna-scenes":
+            from .sionna_scene_export import export_sionna_scenes
+
+            manifest = export_sionna_scenes(
+                args.dataset,
+                args.output,
+                license_id=args.license_id,
+                carrier_frequency_hz=args.carrier_frequency_hz,
+                subcarrier_spacing_hz=args.subcarrier_spacing_hz,
+                receiver_z_m=args.receiver_z_m,
+                max_depth=args.max_depth,
+                refraction=bool(args.refraction),
+            )
+            print(json.dumps({"status": "PASS", "manifest": str(manifest)}, sort_keys=True))
+            return 0
         config = load_formal_config(args.config)
         dataset_path = Path(args.dataset).resolve() if args.dataset else resolve_dataset_path(config)
         dataset = FormalDataset.load(
@@ -131,7 +155,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         output = Path(args.output)
         if args.command == "all" and output.exists():
-            raise FileExistsError(f"refusing to reuse V2 full-run output directory: {output}")
+            entries = list(output.iterdir()) if output.is_dir() else []
+            if (
+                len(entries) != 1
+                or entries[0].name != "inputs"
+                or not entries[0].is_dir()
+                or entries[0].is_symlink()
+            ):
+                raise FileExistsError(
+                    f"refusing to reuse V2 full-run output directory except for a single pre-staged inputs directory: {output}"
+                )
         output.mkdir(parents=True, exist_ok=True)
         if args.command == "inspect-data":
             target = output / "data_contract.json"

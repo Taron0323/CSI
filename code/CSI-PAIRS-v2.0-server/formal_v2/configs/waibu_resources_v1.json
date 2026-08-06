@@ -58,8 +58,8 @@
       "title": "Radio-Frequency Inverse Rendering for Wireless Environment Modeling",
       "kind": "paper",
       "integration_role": "RFIR controlled forward-model specification",
-      "implementation_status": "paper-spec-controlled-implementation",
-      "allowed_name": "RFIR paper-spec controlled implementation"
+      "implementation_status": "style-controlled-implementation",
+      "allowed_name": "RFIR-inspired controlled implementation"
     },
     {
       "file": "2606.04770v1.pdf",

@@ -2,7 +2,7 @@
 
 > 兼容性说明：文件名保留 `v2.0` 是为了不破坏冻结审计路径；本文、运行时 schema 和打包根均为 V2.1。
 
-> 日期：2026-08-05（Asia/Shanghai）  
+> 日期：2026-08-06（Asia/Shanghai）
 > 版本性质：正式实验执行版，不是新增科学结果  
 > 当前状态：`CODE_IMPLEMENTED_NOT_EXPERIMENTALLY_VERIFIED`  
 > 当前科学结论：继续继承 V1.1/V1.26 的 `POST_AUDIT_NO_GO` 与 `scientific_use=FORBIDDEN`，直到非 fixture 数据逐门通过  
@@ -34,7 +34,8 @@ V2.1 的 dry run 只能证明软件执行。fixture 在元数据、gate 和报�
 | patch F/P 与严格四臂 | `formal_v2/formal_model.py`、`formal_v2/formal_factorial.py` | 代码已实现；未运行 |
 | 两城市定位与统计 | `formal_v2/formal_factorial.py`、`formal_v2/formal_statistics.py` | 代码已实现；city-level k 和 V6 多层估计量 |
 | CGS/Response/q_comp/p_fail/path | `formal_v2/formal_evaluation.py`、`formal_v2/formal_risk.py`、`formal_v2/formal_path.py` | 代码已实现；未运行 |
-| 资源、scene-ID、外部模型控制 | `formal_v2/formal_controls.py`、`formal_v2/formal_scene_id.py`、`formal_v2/formal_external.py` | runner 已实现；Wi-GATr 官方代码适配已实现但未跑正式训练，第二个外部模型仍缺失 |
+| 资源、scene-ID、外部模型控制 | `formal_v2/formal_controls.py`、`formal_v2/formal_scene_id.py`、`formal_v2/formal_external.py` | runner 已实现；Wi-GATr 官方适配与 WiSER paper-spec controlled adapter 是两项 C1 合格身份，但均未跑正式训练 |
+| 外部论文与 Sionna 设施 | `formal_v2/WAIBU_INTEGRATION.md`、`formal_v2/sionna_scene_export.py`、`formal_v2/sionna_facility.py` | 10 项资源哈希登记、表征/地图基线、formal world 到 PLY/XML 的 exporter 和 G8 adapter 已实现；无正式结果 |
 | 命令入口 | `formal_v2/formal_cli.py` | 完成；上游失败会阻断四臂 |
 | V2 自包含工具 | `formal_v2/formal_io.py`、`formal_v2/formal_baselines.py` | 完成；不再导入冻结 V1 `experiments` 代码 |
 | 依赖与脚本 | `formal_v2/requirements-lock.txt`、`formal_v2/scripts/setup_formal_v2.sh`、`formal_v2/scripts/run_formal_v2.sh` | 完成 |

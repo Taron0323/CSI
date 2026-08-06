@@ -11,7 +11,12 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from formal_v2.formal_claims import CLAIM_DEPENDENCIES, assemble_claim_evidence
+from formal_v2.formal_claims import (
+    CLAIM_DEPENDENCIES,
+    _semantic_status,
+    _validate_external_manifest_binding,
+    assemble_claim_evidence,
+)
 from formal_v2.formal_cli import build_parser
 from formal_v2.formal_controls import CONTROL_IDS, _validate_manifest as validate_control_manifest
 from formal_v2.formal_config import load_formal_config, validate_formal_config
@@ -44,13 +49,15 @@ from formal_v2.external_adapters.controlled_map_adapter import (
     _build_model as build_controlled_model,
     _fit_data_normalizer,
     _loss as controlled_loss,
+    _training_task,
     load_controlled_map_config,
 )
-from formal_v2.external_adapters.representation_models import build_representation_model
+from formal_v2.external_adapters.representation_models import CSIMAE, build_representation_model
 from formal_v2.external_adapters.wigatr_adapter import (
     _verify_vendor_tree,
     inverse_localize_power,
 )
+from formal_v2.external_adapters.sionna_external_validity import load_scene_manifest
 from formal_v2.external_adapters.wigatr_protocol import (
     SIX_CONDITIONS,
     build_six_condition_units,
@@ -82,6 +89,7 @@ from formal_v2.formal_protocol import (
 from formal_v2.formal_representation_baselines import (
     _fit_normalizer as fit_representation_normalizer,
     _make_batch as make_representation_batch,
+    _warm_start_contra,
     load_representation_config,
 )
 from formal_v2.formal_resources import validate_resource_registry
@@ -95,6 +103,7 @@ from formal_v2.formal_risk import (
 )
 from formal_v2.formal_routing import route_code
 from formal_v2.formal_scene_id import _validate_manifest as validate_scene_id_manifest
+from formal_v2.sionna_scene_export import export_sionna_scenes
 from formal_v2.formal_statistics import (
     exact_factorial_utilities,
     hierarchical_factorial_interval,
@@ -1112,6 +1121,70 @@ class WaibuIntegrationTests(unittest.TestCase):
         loss.backward()
         self.assertTrue(torch.isfinite(loss))
         self.assertEqual(model.encode(batch).shape, (2, config["dim"]))
+        self.assertIsInstance(model, CSIMAE)
+        self.assertNotIn("fixed_position", dict(model.encoder.named_parameters()))
+        self.assertEqual(model.decoder_head.in_features, config["decoder_dim"])
+        torch.manual_seed(17)
+        masks = model._mask(16, torch.device("cpu"), config["mask_fraction"])
+        self.assertEqual(masks.shape, (16, spec.patch_count))
+        self.assertTrue(torch.all(masks.sum(dim=1) == round(config["mask_fraction"] * spec.patch_count)))
+        self.assertGreater(torch.unique(masks, dim=0).shape[0], 1)
+
+    def test_formal_contrawimae_requires_wimae_warm_start(self):
+        config = parse_strict_json(
+            (ROOT / "formal_v2/configs/representation_baselines_v1.json").read_text()
+        )
+        contra = next(row for row in config["models"] if row["model_name"] == "ContraWiMAE")
+        self.assertEqual(contra["warm_start_epochs"], 3000)
+        contra["warm_start_epochs"] = 0
+        temporary = Path(self.temporary.name) / "bad-representation.json"
+        write_json(temporary, config)
+        with self.assertRaisesRegex(ValueError, "warm-start"):
+            load_representation_config(temporary)
+
+    def test_contrawimae_executes_source_only_wimae_warm_start(self):
+        config = load_representation_config(
+            ROOT / "formal_v2/configs/representation_baselines_v1.json"
+        )
+        row = dict(next(value for value in config["models"] if value["model_name"] == "ContraWiMAE"))
+        row.update(
+            dim=8,
+            heads=2,
+            encoder_layers=1,
+            decoder_layers=1,
+            decoder_dim=8,
+            batch_size=2,
+            warmup_epochs=0,
+            warm_start_epochs=1,
+        )
+        spec = PatchSpec.from_metadata(self.dataset.metadata)
+        model = build_representation_model(
+            "ContraWiMAE",
+            spec,
+            self.dataset.maps.shape[2],
+            self.dataset.radio_config.shape[1] + self.dataset.bs_pose.shape[1] + 2,
+            row,
+        )
+        normalizer = fit_representation_normalizer(
+            self.dataset, self.dataset.indices_for_role("source_encoder_train")
+        )
+        train_scene = int(self.dataset.indices_for_role("source_encoder_train")[0])
+        selection_scene = int(self.dataset.indices_for_role("source_method_selection")[0])
+        record = _warm_start_contra(
+            model,
+            "ContraWiMAE",
+            row,
+            self.dataset,
+            normalizer,
+            [(train_scene, 0, 0), (train_scene, 1, 1)],
+            [(selection_scene, 0, 0), (selection_scene, 1, 1)],
+            torch.device("cpu"),
+            113,
+        )
+        self.assertTrue(record["required"])
+        self.assertTrue(record["completed"])
+        self.assertEqual(record["selected_epoch"], 1)
+        self.assertEqual(record["target_roles_read"], [])
 
     def test_all_controlled_map_models_have_real_gradients(self):
         scene = int(self.dataset.indices_for_role("source_encoder_train")[0])
@@ -1136,6 +1209,16 @@ class WaibuIntegrationTests(unittest.TestCase):
                 }
             )
             model, _ = build_controlled_model(config, self.dataset)
+            if config["method"] == "wiser":
+                self.assertIsInstance(model.cir.decoder, torch.nn.TransformerDecoder)
+            if config["method"] == "rfir":
+                self.assertTrue(hasattr(model, "material_opacity"))
+                start = torch.zeros(2, 3)
+                end = torch.ones(2, 1, 3)
+                origin = torch.zeros(2, 2)
+                clear = model._segment_visibility(torch.zeros(2, 1, 4, 4), start, end, origin, 0.25)
+                blocked = model._segment_visibility(torch.ones(2, 1, 4, 4), start, end, origin, 0.25)
+                self.assertTrue(torch.all(clear > blocked))
             batch = controlled_batch(
                 self.dataset,
                 [(scene, 0, 0), (scene, 1, 1)],
@@ -1161,6 +1244,9 @@ class WaibuIntegrationTests(unittest.TestCase):
                 first_tensor = first[1] if isinstance(first, tuple) else first
                 second_tensor = second[1] if isinstance(second, tuple) else second
                 self.assertFalse(torch.equal(first_tensor, second_tensor), config["method"])
+        self.assertEqual(_training_task("wiser", 1, 100, 5), "radiomap")
+        self.assertEqual(_training_task("wiser", 11, 100, 5), "cir")
+        self.assertIn(_training_task("wiser", 25, 100, 5), {"radiomap", "cir"})
 
     def test_complete_map_manifest_has_four_distinct_c1_models(self):
         manifest = parse_strict_json(
@@ -1171,12 +1257,109 @@ class WaibuIntegrationTests(unittest.TestCase):
             {row["model_name"] for row in manifest["adapters"]},
             {"SigMap", "Wi-GATr", "WiSER", "RFIR"},
         )
+        eligible = [row for row in manifest["adapters"] if row["c1_eligible"]]
+        self.assertEqual([row["model_name"] for row in eligible], ["Wi-GATr", "WiSER"])
+        changed = json.loads(json.dumps(manifest))
+        changed["adapters"][0]["c1_eligible"] = True
+        with self.assertRaisesRegex(ValueError, "style-controlled"):
+            validate_external_manifest(changed)
+
+    def test_c1_claim_requires_two_explicitly_eligible_external_models(self):
+        base = {
+            "status": "PASS",
+            "passed": True,
+            "unique_passing_model_count": 4,
+            "c1_eligible_model_count": 1,
+            "c1_eligible_models": ["Wi-GATr"],
+            "adapter_manifest_sha256": "a" * 64,
+            "adapter_manifest_path": "adapter_manifest.json",
+        }
+        self.assertEqual(_semantic_status("external_baselines", base), "FAIL")
+        base["c1_eligible_model_count"] = 2
+        base["c1_eligible_models"] = ["Wi-GATr", "WiSER"]
+        self.assertEqual(_semantic_status("external_baselines", base), "PASS")
+
+    def test_c1_claim_reauthenticates_the_adapter_manifest_copy(self):
+        stage = Path(self.temporary.name) / "external_baselines"
+        stage.mkdir()
+        manifest = parse_strict_json(
+            (ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json").read_text()
+        )
+        manifest_path = stage / "adapter_manifest.json"
+        write_json(manifest_path, manifest)
+        payload = {
+            "adapter_manifest_path": manifest_path.name,
+            "adapter_manifest_sha256": sha256_file(manifest_path),
+        }
+        write_json(
+            stage / "manifest.json",
+            {
+                "schema_version": "csi-pairs-formal-stage-manifest-v2.1-v6",
+                "files": [{"path": manifest_path.name, "sha256": sha256_file(manifest_path)}],
+            },
+        )
+        _validate_external_manifest_binding(stage / "gate.json", payload)
+        manifest["adapters"][0]["c1_eligible"] = True
+        write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(RuntimeError, "hash mismatch"):
+            _validate_external_manifest_binding(stage / "gate.json", payload)
+
+    def test_shipped_sionna_manifest_is_a_valid_g8_adapter(self):
+        manifest = parse_strict_json(
+            (ROOT / "formal_v2/configs/sionna_external_validity_adapter_v1.json").read_text()
+        )
+        validate_external_validity_manifest(manifest)
+        self.assertIn("formal_v2.external_adapters.sionna_external_validity", manifest["command"])
+
+    def test_sionna_scene_export_covers_and_authenticates_external_worlds(self):
+        arrays = _archive_arrays(self.path)
+        scene_count = self.dataset.scene_count
+        for name, value in tuple(arrays.items()):
+            if value.ndim and value.shape[0] == scene_count:
+                arrays[name] = np.concatenate((value, value[-1:]), axis=0)
+        arrays["scene_roles"] = arrays["scene_roles"].astype("<U32")
+        arrays["scene_roles"][-1] = "external_validation"
+        arrays["position_roles"] = arrays["position_roles"].astype("<U32")
+        arrays["position_roles"][-1] = "standard"
+        arrays["scene_ids"] = arrays["scene_ids"].astype("<U32")
+        arrays["scene_ids"][-1] = "external-scene"
+        arrays["bank_ids"] = arrays["bank_ids"].astype("<U32")
+        arrays["bank_ids"][-1] = "external-bank"
+        arrays["base_map_cluster_ids"] = arrays["base_map_cluster_ids"].astype("<U32")
+        arrays["base_map_cluster_ids"][-1] = "external-cluster"
+        arrays["city_ids"] = arrays["city_ids"].astype("<U32")
+        arrays["city_ids"][-1] = "external-city"
+        metadata = json.loads(str(arrays["metadata_json"].item()))
+        metadata["external_reference"]["available"] = True
+        metadata["external_reference"]["kind"] = "independent_rt_engine"
+        metadata["external_reference"]["dataset_id"] = "fixture-external-copy"
+        metadata["external_reference"]["pairing_rule"] = "same synthetic sibling worlds"
+        arrays["metadata_json"] = np.asarray(json.dumps(metadata, sort_keys=True, separators=(",", ":")))
+        dataset_path = Path(self.temporary.name) / "external-fixture.npz"
+        np.savez(dataset_path, **arrays)
+        dataset = FormalDataset.load(dataset_path)
+        output = Path(self.temporary.name) / "sionna-scenes"
+        manifest_path = export_sionna_scenes(
+            dataset_path,
+            output,
+            license_id="GENERATED-FIXTURE-NO-EXTERNAL-ASSET",
+            carrier_frequency_hz=3.5e9,
+            subcarrier_spacing_hz=30e3,
+            receiver_z_m=1.5,
+            max_depth=3,
+            refraction=False,
+        )
+        manifest = load_scene_manifest(manifest_path, dataset)
+        expected = len(dataset.indices_for_role("external_validation")) * dataset.world_count
+        self.assertEqual(len(manifest["worlds"]), expected)
+        self.assertTrue(all(Path(row["scene_xml"]).is_file() for row in manifest["worlds"]))
 
     def test_cli_exposes_resource_and_representation_stages(self):
         parser = build_parser()
         help_text = parser.format_help()
         self.assertIn("verify-waibu-resources", help_text)
         self.assertIn("run-representation-baselines", help_text)
+        self.assertIn("export-sionna-scenes", help_text)
 
 
 def _archive_arrays(path: Path) -> dict[str, np.ndarray]:
