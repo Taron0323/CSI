@@ -5,6 +5,9 @@ from dataclasses import dataclass
 import numpy as np
 
 
+FROZEN_RANDOM_MASK_FRACTION = 0.75
+
+
 @dataclass(frozen=True)
 class PatchSpec:
     antennas: int
@@ -126,7 +129,7 @@ def frozen_mask_query_bank(spec: PatchSpec, seed: int) -> tuple[MaskQuery, ...]:
     rng = np.random.default_rng(int(seed))
     output: list[MaskQuery] = []
     for query in range(spec.patch_count):
-        random_count = max(1, int(round(0.75 * spec.patch_count)))
+        random_count = max(1, int(round(FROZEN_RANDOM_MASK_FRACTION * spec.patch_count)))
         candidates = np.asarray([index for index in range(spec.patch_count) if index != query])
         selected = rng.choice(candidates, size=max(0, random_count - 1), replace=False)
         random_mask = np.zeros(spec.patch_count, dtype=np.bool_)
@@ -135,31 +138,31 @@ def frozen_mask_query_bank(spec: PatchSpec, seed: int) -> tuple[MaskQuery, ...]:
         output.append(MaskQuery("random_75", random_mask, query))
 
         patch_row, patch_column = divmod(query, spec.patch_columns)
+        selected_rows = _centered_axis_block(spec.patch_rows, patch_row, 0.5)
         antenna_mask = np.zeros(spec.patch_count, dtype=np.bool_)
         for patch in range(spec.patch_count):
             row, _ = divmod(patch, spec.patch_columns)
-            if row == patch_row:
+            if row in selected_rows:
                 antenna_mask[patch] = True
-        antenna_mask[query] = True
-        if np.mean(antenna_mask) < 0.5:
-            fill = [index for index in range(spec.patch_count) if not antenna_mask[index]]
-            antenna_mask[fill[: int(np.ceil(0.5 * spec.patch_count - np.sum(antenna_mask)))]] = True
         output.append(MaskQuery("antenna_block_50", antenna_mask, query))
 
+        selected_columns = _centered_axis_block(spec.patch_columns, patch_column, 0.5)
         subcarrier_mask = np.zeros(spec.patch_count, dtype=np.bool_)
         for patch in range(spec.patch_count):
             _, column = divmod(patch, spec.patch_columns)
-            if column == patch_column:
+            if column in selected_columns:
                 subcarrier_mask[patch] = True
-        subcarrier_mask[query] = True
-        if np.mean(subcarrier_mask) < 0.5:
-            fill = [index for index in range(spec.patch_count) if not subcarrier_mask[index]]
-            subcarrier_mask[fill[: int(np.ceil(0.5 * spec.patch_count - np.sum(subcarrier_mask)))]] = True
         output.append(MaskQuery("subcarrier_block_50", subcarrier_mask, query))
     for entry in output:
         if not bool(entry.mask[entry.query]):
             raise AssertionError("every query must be masked")
     return tuple(output)
+
+
+def _centered_axis_block(size: int, query_index: int, fraction: float) -> frozenset[int]:
+    count = max(1, min(int(size), int(round(float(fraction) * int(size)))))
+    start = min(max(int(query_index) - count // 2, 0), int(size) - count)
+    return frozenset(range(start, start + count))
 
 
 def apply_patch_mask(patches: np.ndarray, masks: np.ndarray) -> np.ndarray:

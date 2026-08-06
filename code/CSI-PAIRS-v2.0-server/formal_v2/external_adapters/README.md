@@ -2,7 +2,8 @@
 
 These adapters implement the frozen V6 Section 1.1 six-condition audit. An adapter is
 scientific evidence only after its source, command, checkpoint, result file, dataset, config,
-and stage manifest hashes all authenticate and at least two distinct map-conditioned models pass.
+and stage manifest hashes all authenticate. C1 additionally needs two eligible models whose
+outer-recomputed map/action inputs and cluster-level active/null decisions pass.
 
 ## Frozen adapter set
 
@@ -12,7 +13,7 @@ and stage manifest hashes all authenticate and at least two distinct map-conditi
 |---|---|---|---|
 | SigMap | V6 style-controlled map+CSI locator | source position | direct map-conditioned estimate |
 | Wi-GATr | official-code adaptation | total received power | inverse coordinate optimization |
-| WiSER | paper-spec controlled adaptation | multiscale sparse scene/ray-corridor power + learned-query/Hungarian CIR taps | frozen forward-model inverse search |
+| WiSER | style-controlled implementation | local 2D map/CSI surrogate objectives | frozen surrogate inverse search |
 | RFIR | RFIR-inspired 2.5D controlled implementation | visibility-aware anisotropic Gaussian RF field + received power | frozen inverse-renderer search |
 
 All four train on `source_encoder_train`, select on `source_method_selection`, and evaluate only
@@ -20,12 +21,12 @@ All four train on `source_encoder_train`, select on `source_method_selection`, a
 record, selected checkpoint, exact config, result rows, and hashes. Missing environments resolve to
 `not_executed`; they do not abort into a false PASS.
 
-WiSER and RFIR have no source archive in `waibu/`. WiSER is a paper-spec controlled adaptation: it
-derives multiscale sparse 3D tokens from CSI-PAIRS occupancy/height/material maps and retains the
-paper's ray-corridor, learned-query set decoder, Hungarian delay/power matching, and staged training.
-It is not an official or faithful reproduction. RFIR lacks the paper's multi-view RGB 3DGS geometry
-stage and therefore remains `style-controlled-implementation` and C1-ineligible. SigMap has no
-supplied paper file and carries the same weaker evidence class.
+WiSER and RFIR have no source archive in `waibu/`. The local WiSER code uses a dense 2D pooled
+Transformer, scalar power prediction, IFFT-derived pseudo taps, and random initialization. Those
+choices do not reproduce the paper's sparse 3D TRELLIS scene representation, dense receiver-plane
+radiomap loss, physical unordered path targets, or pretrained checkpoint schedule. WiSER therefore
+remains `style-controlled-implementation` and C1-ineligible, as do RFIR and SigMap. The shipped set
+has only one C1-eligible model (Wi-GATr), so the C1 gate is intentionally blocked.
 
 ## Wi-GATr
 

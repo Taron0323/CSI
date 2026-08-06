@@ -14,7 +14,7 @@ Implemented code surfaces:
 - strict four arms with common batch plans, measured resource fields, and fail-closed seven-part G4;
 - city-level k, heteroscedastic localization, exact V6 J_a, multilevel and bank-only bootstrap, leave-one sensitivity;
 - active CGS plus gray/null distributions, unified response probes, q_comp/p_fail calibration, path matching/equivalence, external/scene-ID/resource/claim controls, independent RT calibration and external-validity adapters, literature/resource G0, and C1-C13/G0-G8 assembly;
-- authenticated `waibu/` resource inventory, five source-only representation baselines, four map-conditioned six-condition adapters (two C1-eligible), and Sionna RT/large-radio-map facilities.
+- authenticated `waibu/` resource inventory, five source-only representation baselines, four map-conditioned six-condition adapters (currently one C1-eligible), and Sionna RT/large-radio-map facilities.
 
 Unavailable data, external models, independent RT calibration, or unrun controls produce `NOT_ASSESSED/BLOCKED`. Code presence is not scientific evidence.
 
@@ -32,9 +32,10 @@ authenticated Sionna scenes and other immutable run inputs; any existing result/
 same internally generated six-condition unit registry. `configs/representation_baselines_v1.json`
 registers CSI-MAE, CSI-CLIP, CSI-CLIP++, ContraWiMAE, and WWM-inspired same-world prediction for
 the unified localization comparison. Signal-only representation rows can never count toward C1.
-WiSER is a paper-spec controlled adaptation over sparse tokens derived from the formal 2.5D map;
+WiSER is a style-controlled 2D map/CSI diagnostic and not a faithful implementation of the paper;
 RFIR remains style-controlled because the data contract lacks its multi-view RGB 3DGS geometry stage.
-Only Wi-GATr and WiSER are C1-eligible. The shipped
+Only Wi-GATr is currently C1-eligible, so C1 remains `BLOCKED` until a second authenticated,
+faithful official-code or paper-spec adapter is supplied. The shipped
 `configs/sionna_external_validity_adapter_v2.json` is the standard G8 adapter manifest.
 See `WAIBU_INTEGRATION.md` and `external_adapters/README.md` for provenance and execution limits.
 
@@ -46,3 +47,10 @@ artifact. G8 direction agreement and null equivalence are both cluster-macro con
 decisions. G0 literature records must bind locally readable content and explicitly reconcile the
 direct-overlap decision with the recorded search. Each validated input manifest is copied into its
 stage output and reauthenticated during claim assembly.
+
+C1 rows bind the exact supplied map and directed action by SHA-256; the outer runner recomputes both
+from the frozen unit registry and makes cluster-macro active-effect/null-equivalence decisions.
+Shuffled-pair and retention controls use complete per-pair rows bound to the evaluation registry,
+adapter source, and exact formal checkpoints; aggregate self-reported effects are rejected. Resource
+controls additionally require a frozen architecture/state-key spec, per-step loss trace, operator-level
+profiler events, and a source-bound replay. `generous_2x_concat` is report-only, not G4 subgate 7.

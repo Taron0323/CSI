@@ -101,6 +101,8 @@
     "minimum_concat_superiority": 0.001,
     "null_score_equivalence_margin": 0.05,
     "null_overclassification_rate_max": 0.05,
+    "c1_active_error_minimum_m": 0.05,
+    "c1_null_error_equivalence_margin_m": 0.05,
     "resource_match_relative_tolerance": 0.05,
     "scene_id_error_noninferiority_m": 0.25,
     "scene_id_swap_correlation_min": 0.8,

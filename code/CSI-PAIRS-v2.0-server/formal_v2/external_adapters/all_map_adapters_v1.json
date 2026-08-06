@@ -8,6 +8,8 @@
       "license_id": "NO_EXTERNAL_SOURCE-BESPOKE_CONTROL",
       "citation_key": "sigmap-controlled",
       "source_revision": "frozen-v6-sigmap-spec-2026-08-06",
+      "adapter_source_path": "formal_v2/external_adapters/controlled_map_adapter.py",
+      "adapter_source_sha256": "deda1ada07e6b7bae836c8eb0efae0302f0487ec617041b0b3bd1a03693ef144",
       "map_conditioned": true,
       "c1_eligible": false,
       "command": [
@@ -25,6 +27,8 @@
       "license_id": "BSD-3-Clause-Clear",
       "citation_key": "hehn2024wigatr",
       "source_revision": "6daa5bd49d9499817d903ab335830221d01e9daa",
+      "adapter_source_path": "formal_v2/external_adapters/wigatr_adapter.py",
+      "adapter_source_sha256": "ff14100ad805cafe7b048a91e1670078a8c66cbf317ffb66bff348e9ef7cb3e4",
       "map_conditioned": true,
       "c1_eligible": true,
       "command": [
@@ -38,12 +42,14 @@
     {
       "adapter_id": "wiser-controlled-csi-pairs-v1",
       "model_name": "WiSER",
-      "implementation_status": "paper-spec-controlled-implementation",
+      "implementation_status": "style-controlled-implementation",
       "license_id": "NO_SOURCE_RELEASE-PAPER_SPEC",
       "citation_key": "qiao2026wiser",
       "source_revision": "arxiv:2606.04770v1:97e368043d0c111987d26993ec88c295c5bb997126e21711223ca5448d1645ec",
+      "adapter_source_path": "formal_v2/external_adapters/controlled_map_adapter.py",
+      "adapter_source_sha256": "deda1ada07e6b7bae836c8eb0efae0302f0487ec617041b0b3bd1a03693ef144",
       "map_conditioned": true,
-      "c1_eligible": true,
+      "c1_eligible": false,
       "command": [
         "/usr/bin/env", "python3", "-m", "formal_v2.external_adapters.controlled_map_adapter",
         "--config", "{project_root}/formal_v2/configs/wiser_controlled_v1.json",
@@ -59,6 +65,8 @@
       "license_id": "NO_SOURCE_RELEASE-PAPER_SPEC",
       "citation_key": "wang2026rfir",
       "source_revision": "arxiv:2604.07086v1:24838f6a01eab58bf31d7fe54167dc13a245d3e6a6986da4e3023cafe2e0ff83",
+      "adapter_source_path": "formal_v2/external_adapters/controlled_map_adapter.py",
+      "adapter_source_sha256": "deda1ada07e6b7bae836c8eb0efae0302f0487ec617041b0b3bd1a03693ef144",
       "map_conditioned": true,
       "c1_eligible": false,
       "command": [
@@ -78,7 +86,7 @@
     {"baseline_name": "WWM", "status": "not_applicable", "adapter_id": "", "reason": "Executed as WWM-inspired same-world matched prediction, not as a faithful six-condition WWM reproduction."},
     {"baseline_name": "SigMap", "status": "executed", "adapter_id": "sigmap-controlled-csi-pairs-v1", "reason": "Bespoke V6 style-controlled map-conditioned localization control."},
     {"baseline_name": "Wi-GATr", "status": "executed", "adapter_id": "wigatr-official-csi-pairs-v1", "reason": "Official source adaptation with CSI-PAIRS inverse localization."},
-    {"baseline_name": "WiSER", "status": "executed", "adapter_id": "wiser-controlled-csi-pairs-v1", "reason": "Paper-spec controlled adaptation with multiscale sparse scene tokens, ray-corridor decoding, learned CIR queries, Hungarian matching, and staged alternating training."},
+    {"baseline_name": "WiSER", "status": "executed", "adapter_id": "wiser-controlled-csi-pairs-v1", "reason": "Style-controlled 2D map/CSI diagnostic. It does not reproduce the paper's sparse 3D TRELLIS scene model, dense receiver-plane radiomap objective, unordered physical path targets, or checkpoint warm-start schedule, so it is C1-ineligible."},
     {"baseline_name": "CSI-only", "status": "not_applicable", "adapter_id": "", "reason": "Map-free negative control belongs to the internal unified-probe evaluation."},
     {"baseline_name": "oracle-x", "status": "oracle_only", "adapter_id": "", "reason": "Privileged true-position information upper bound; never counted as a strict no-x baseline."},
     {"baseline_name": "RFIR", "status": "executed", "adapter_id": "rfir-controlled-csi-pairs-v1", "reason": "RFIR-inspired 2.5D visibility-aware RF-BSDF diagnostic; style-controlled and C1-ineligible."}

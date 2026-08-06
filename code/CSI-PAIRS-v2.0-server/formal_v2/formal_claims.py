@@ -15,10 +15,10 @@ from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_j
 CLAIM_DEPENDENCIES = {
     "C1": ("external_baselines",),
     "C2": ("scene_id_mechanism",),
-    "C3": ("G1_G2", "G3"),
-    "C4": ("G1_G2", "G3", "shuffled_pair"),
-    "C5": ("G1_G2", "G3"),
-    "C6": ("G1_G2", "G3", "retention"),
+    "C3": ("G1_G2", "G3_C3"),
+    "C4": ("G1_G2", "G3_C3", "shuffled_pair"),
+    "C5": ("G1_G2", "G3_C5"),
+    "C6": ("G1_G2", "G3_C5", "retention"),
     "C7": ("G1_G2", "G3", "G4", "G5"),
     "C8": ("G1_G2", "G5"),
     "C9": ("G1_G2", "G3", "G6"),
@@ -33,6 +33,8 @@ STAGE_SPECS = {
     "G0": ("literature_resources/gate.json", "csi-pairs-v6-literature-resource-gate-v2"),
     "G1_G2": ("qualification/gate.json", "csi-pairs-formal-qualification-gate-v2.1-v6"),
     "G3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
+    "G3_C3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
+    "G3_C5": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
     "G4": ("controls/gate.json", "csi-pairs-v6-resource-control-gate-v2"),
     "G5": ("factorial/gate.json", "csi-pairs-formal-factorial-gate-v2.1-v6"),
     "G6": ("risk/gate.json", "csi-pairs-v6-risk-gate-v2"),
@@ -139,8 +141,13 @@ def _assess_stage(path, schema, name, config, dataset):
         )
         if name == "external_baselines":
             _validate_external_manifest_binding(path, payload)
-        if name in {"G0", "G8", "scene_id_mechanism", "rt_calibration"}:
+        if name in {
+            "G0", "G4", "G8", "scene_id_mechanism", "rt_calibration",
+            "shuffled_pair", "retention",
+        }:
             _validate_stage_bound_input(path, payload, config, name)
+        if name == "shuffled_pair":
+            _validate_shuffled_evaluation_binding(path, payload, config, dataset)
         return _semantic_status(name, payload), None
     except Exception as error:
         return "INVALID", f"{type(error).__name__}: {error}"
@@ -172,6 +179,10 @@ def _semantic_status(name, payload):
         if not isinstance(vector, dict):
             raise RuntimeError("qualification gate lacks upstream_gates")
         return "PASS" if vector.get("G1") == vector.get("G2") == "PASS" and payload.get("passed") is True else "FAIL"
+    if name == "G3_C3":
+        return "PASS" if payload.get("c3_evidence_complete") is True else "FAIL"
+    if name == "G3_C5":
+        return "PASS" if payload.get("c5_evidence_complete") is True else "FAIL"
     if name == "G3":
         if not _require_pass_subgates(payload, "g3_subgates", 8):
             return "FAIL"
@@ -180,14 +191,39 @@ def _semantic_status(name, payload):
     elif name == "G4":
         if not _require_pass_subgates(payload, "g4_subgates", 7):
             return "FAIL"
+        generous = payload.get("generous_2x_report_only")
+        if (
+            payload.get("resource_integrity_verified") is not True
+            or not _lower_sha256(payload.get("input_manifest_sha256"))
+            or not isinstance(generous, dict)
+            or generous.get("included_in_g4_subgate_7") is not False
+        ):
+            return "FAIL"
     elif name == "G5":
         if not _require_pass_subgates(payload, "g5_subgates", 4):
             return "FAIL"
     elif name == "G6":
-        if not _require_pass_subgates(payload, "c9_subgates", 4):
+        if (
+            not _require_pass_subgates(payload, "c9_subgates", 4)
+            or payload.get("feature_generation")
+            != "first-party checkpoint/data/proposal replay"
+            or not isinstance(payload.get("common_support_interval"), dict)
+            or not isinstance(payload.get("outside_support_noninferiority"), dict)
+        ):
             return "FAIL"
     elif name == "G7":
-        if not _require_pass_subgates(payload, "g7_subgates", 5):
+        provenance = payload.get("path_provenance")
+        localization = payload.get("localization_full_advantage_trend_slopes")
+        if (
+            not _require_pass_subgates(payload, "g7_subgates", 5)
+            or not isinstance(provenance, dict)
+            or provenance.get("passed") is not True
+            or not _lower_sha256(provenance.get("registry_sha256"))
+            or not isinstance(provenance.get("power_coverage_convergence"), dict)
+            or provenance["power_coverage_convergence"].get("passed") is not True
+            or not isinstance(localization, dict)
+            or set(localization) != {"endpoint", "alignment", "response"}
+        ):
             return "FAIL"
     elif name == "G8":
         null = payload.get("null_equivalence")
@@ -203,17 +239,78 @@ def _semantic_status(name, payload):
             return "FAIL"
     elif name == "external_baselines":
         eligible = payload.get("c1_eligible_models")
+        assessments = payload.get("model_assessments")
         if (
             not isinstance(eligible, list)
             or len(eligible) != len(set(eligible))
             or int(payload.get("c1_eligible_model_count", 0)) != len(eligible)
-            or set(eligible) != {"Wi-GATr", "WiSER"}
+            or int(payload.get("c1_required_eligible_model_count", 0)) != 2
+            or not isinstance(assessments, list)
+            or payload.get("condition_input_contract")
+            != "outer-recomputed-map-and-action-sha256-v1"
+            or payload.get("condition_registry_path") != "external_condition_registry.csv"
+            or not _lower_sha256(payload.get("condition_registry_sha256"))
             or not _lower_sha256(payload.get("adapter_manifest_sha256"))
             or payload.get("adapter_manifest_path") != "adapter_manifest.json"
         ):
             return "FAIL"
+        by_model = {
+            row.get("model_name"): row
+            for row in assessments
+            if isinstance(row, dict) and isinstance(row.get("model_name"), str)
+        }
+        if set(eligible).difference(by_model):
+            return "FAIL"
+        for model in eligible:
+            row = by_model[model]
+            if (
+                row.get("c1_eligible") is not True
+                or row.get("passed") is not True
+                or row.get("active_effect_passed") is not True
+                or row.get("null_safety_passed") is not True
+                or int(row.get("base_map_cluster_count", 0)) < 2
+            ):
+                return "FAIL"
+        if len(eligible) < 2:
+            return (
+                "BLOCKED"
+                if payload.get("status") == "BLOCKED" and payload.get("passed") is False
+                else "FAIL"
+            )
+        return (
+            "PASS"
+            if payload.get("status") == "PASS" and payload.get("passed") is True
+            else "FAIL"
+        )
     elif name in {"shuffled_pair", "retention"}:
-        if not payload.get("checkpoint_hashes_verified"):
+        if (
+            payload.get("checkpoint_hashes_verified") is not True
+            or payload.get("per_unit_rows_verified") is not True
+            or not _lower_sha256(payload.get("adapter_source_sha256"))
+            or not _lower_sha256(payload.get("input_manifest_sha256"))
+        ):
+            return "FAIL"
+        if name == "shuffled_pair" and (
+            payload.get("shortcut_baselines_passed") is not True
+            or payload.get("evaluation_alignment_shortcut_audit_verified") is not True
+            or not _lower_sha256(payload.get("evaluation_gate_sha256"))
+            or not _lower_sha256(payload.get("alignment_shortcut_rows_sha256"))
+            or int(payload.get("base_map_cluster_count", 0)) < 2
+            or not isinstance(payload.get("alignment_gain_interval"), dict)
+            or not isinstance(payload.get("shuffled_alignment_gain_interval"), dict)
+            or not isinstance(payload.get("shuffled_suppression_interval"), dict)
+            or payload.get("shortcut_familywise_method") != "Holm"
+        ):
+            return "FAIL"
+        if name == "retention" and (
+            payload.get("downstream_f_only_verified") is not True
+            or payload.get("disposable_heads_absent_verified") is not True
+            or int(payload.get("base_map_cluster_count", 0)) < 2
+            or not isinstance(payload.get("effect_intervals"), dict)
+            or set(payload["effect_intervals"]) != {
+                "cgs_map_swap_effect", "cgs_map_removal_effect", "response_map_swap_effect"
+            }
+        ):
             return "FAIL"
     elif name == "scene_id_mechanism":
         assessments = payload.get("model_assessments")
@@ -299,6 +396,40 @@ def _validate_external_manifest_binding(gate_path, payload):
     if len(matches) != 1 or matches[0].get("sha256") != payload.get("adapter_manifest_sha256"):
         raise RuntimeError("external adapter manifest is absent from or mismatched with the stage manifest")
     _validate_manifest(read_strict_json(manifest_path))
+    condition_path = gate_path.parent / str(payload.get("condition_registry_path", ""))
+    condition_digest = payload.get("condition_registry_sha256")
+    if not condition_path.is_file() or sha256_file(condition_path) != condition_digest:
+        raise RuntimeError("external condition registry is missing or hash-mismatched")
+    condition_matches = [
+        row for row in entries
+        if isinstance(row, dict) and row.get("path") == condition_path.name
+    ] if isinstance(entries, list) else []
+    if len(condition_matches) != 1 or condition_matches[0].get("sha256") != condition_digest:
+        raise RuntimeError("external condition registry is absent from or mismatched with the stage manifest")
+
+
+def _validate_shuffled_evaluation_binding(gate_path, payload, config, dataset):
+    root = gate_path.parent.parent.parent
+    evaluation_gate_path = root / "evaluation" / "gate.json"
+    shortcut_rows_path = root / "evaluation" / "alignment_shortcut_baselines.csv"
+    if (
+        not evaluation_gate_path.is_file()
+        or sha256_file(evaluation_gate_path) != payload.get("evaluation_gate_sha256")
+        or not shortcut_rows_path.is_file()
+        or sha256_file(shortcut_rows_path) != payload.get("alignment_shortcut_rows_sha256")
+    ):
+        raise RuntimeError("shuffled-pair gate does not bind the executed evaluation shortcut audit")
+    evaluation_gate = read_strict_json(evaluation_gate_path)
+    require_stage_manifested_gate(
+        evaluation_gate_path,
+        evaluation_gate,
+        config,
+        dataset,
+        schema_version="csi-pairs-v6-evaluation-gate-v2",
+    )
+    audit = evaluation_gate.get("alignment_shortcut_audit")
+    if not isinstance(audit, dict) or audit.get("passed") is not True:
+        raise RuntimeError("bound evaluation shortcut audit did not pass")
 
 
 def _validate_stage_bound_input(gate_path, payload, config=None, stage_name=None):
@@ -324,6 +455,10 @@ def _validate_stage_bound_input(gate_path, payload, config=None, stage_name=None
         from .formal_literature import _validate_manifest
 
         _validate_manifest(config, manifest, path.parent)
+    elif stage_name == "G4":
+        from .formal_controls import _validate_manifest
+
+        _validate_manifest(manifest, path.parent)
     elif stage_name == "G8":
         from .formal_external_validity import _validate_manifest, _verify_adapter_source
 
@@ -360,6 +495,26 @@ def _validate_stage_bound_input(gate_path, payload, config=None, stage_name=None
         if fit == validation:
             raise RuntimeError("RT calibration fit and validation paths are not independent")
         _validate_protocol(read_strict_json(protocol))
+    elif stage_name in {"shuffled_pair", "retention"}:
+        expected_schema = {
+            "shuffled_pair": "csi-pairs-v6-shuffled-pair-adapter-v2",
+            "retention": "csi-pairs-v6-retention-adapter-v2",
+        }[stage_name]
+        required = {
+            "schema_version", "command", "implementation_revision", "control_seed",
+            "adapter_source_path", "adapter_source_sha256",
+        }
+        if not isinstance(manifest, dict) or set(manifest) != required:
+            raise RuntimeError("claim-control bound manifest fields are not exact")
+        if manifest["schema_version"] != expected_schema:
+            raise RuntimeError("claim-control bound manifest schema mismatch")
+        source = path.parent / manifest["adapter_source_path"]
+        if (
+            Path(manifest["adapter_source_path"]).name != manifest["adapter_source_path"]
+            or not source.is_file()
+            or sha256_file(source) != manifest["adapter_source_sha256"]
+        ):
+            raise RuntimeError("claim-control bound adapter source is missing or hash-mismatched")
 
 
 def _gate_state(status):

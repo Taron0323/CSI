@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import zipfile
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Iterator
 
@@ -206,6 +207,56 @@ class FormalDataset:
             self.independent_unit_id(int(scene))
             for scene in self.indices_for_role(role)
         }
+
+    @cached_property
+    def canonical_base_map_digests(self) -> np.ndarray:
+        """Content identities for the unedited (all-zero bit state) foundations."""
+        zero_worlds = np.flatnonzero(np.all(self.world_bits == 0, axis=1))
+        if zero_worlds.size != 1:
+            raise FormalDatasetError("world_bits must contain exactly one all-zero foundation world")
+        world = int(zero_worlds[0])
+        representation = self.metadata["representation"]
+        return np.asarray(
+            [
+                _canonical_foundation_sha256(
+                    self.maps[scene, world],
+                    self.map_channel_names,
+                    float(representation["map_resolution_m"]),
+                    representation["map_origin_xy_m"],
+                )
+                for scene in range(self.scene_count)
+            ],
+            dtype="U64",
+        )
+
+    def canonical_base_map_digest(self, scene: int) -> str:
+        return str(self.canonical_base_map_digests[int(scene)])
+
+    def observation_noise_binding_digest(
+        self,
+        scene: int,
+        csi_repeat: np.ndarray | None = None,
+    ) -> str:
+        """Bind every regenerated residual to its declared observation seed and index."""
+        scene_index = int(scene)
+        repeated = self.csi_repeat[scene_index] if csi_repeat is None else np.asarray(csi_repeat)
+        if repeated.shape != self.csi_repeat[scene_index].shape:
+            raise FormalDatasetError("regenerated csi_repeat scene has the wrong shape")
+        residual = repeated - self.csi_clean[scene_index, :, :, None, :]
+        digest = hashlib.sha256()
+        for world in range(self.world_count):
+            for position in range(self.position_count):
+                for repeat in range(self.repeat_count):
+                    digest.update(
+                        np.asarray(
+                            [world, position, repeat, self.repeat_seeds[scene_index, world, position, repeat]],
+                            dtype="<i8",
+                        ).tobytes()
+                    )
+                    digest.update(
+                        np.ascontiguousarray(residual[world, position, repeat], dtype="<f8").tobytes()
+                    )
+        return digest.hexdigest()
 
     def directed_edges(self, scene: int) -> Iterator[FormalEdge]:
         lookup = {tuple(int(value) for value in row): index for index, row in enumerate(self.world_bits)}
@@ -433,6 +484,7 @@ class FormalDataset:
         ).hexdigest()
         if engine_config_digest != self.metadata["engine"]["config_sha256"]:
             raise FormalDatasetError("engine_config_json does not match metadata.engine.config_sha256")
+        self._validate_foundation_identity()
         self._validate_repeat_independence()
         self._validate_randomization()
         has_external_scenes = bool(np.any(self.scene_roles == "external_validation"))
@@ -473,6 +525,12 @@ class FormalDataset:
             "external_reference": self.metadata["external_reference"],
             "randomization_digest": self.randomization_digest(),
             "base_map_clusters": len(set(self.base_map_cluster_ids.tolist())),
+            "canonical_base_map_digest_count": len(set(self.canonical_base_map_digests.tolist())),
+            "foundation_identity_enforced": not self.is_fixture,
+            "canonical_base_map_digests_by_bank": {
+                str(self.bank_ids[scene]): self.canonical_base_map_digest(scene)
+                for scene in range(self.scene_count)
+            },
         }
 
     def randomization_digest(self) -> str:
@@ -494,20 +552,59 @@ class FormalDataset:
     def _validate_repeat_independence(self) -> None:
         residual = self.csi_repeat - self.csi_clean[:, :, :, None, :]
         for scene in range(self.scene_count):
-            for left in range(self.world_count):
-                for right in range(left + 1, self.world_count):
-                    scale = max(
-                        float(np.max(np.abs(residual[scene, left]))),
-                        float(np.max(np.abs(residual[scene, right]))),
-                        np.finfo(np.float64).eps,
-                    )
-                    if np.allclose(
-                        residual[scene, left],
-                        residual[scene, right],
+            scale = max(float(np.max(np.abs(residual[scene]))), np.finfo(np.float64).eps)
+            for position in range(self.position_count):
+                observations = residual[scene, :, position].reshape(
+                    self.world_count * self.repeat_count, self.channel_count
+                )
+                if self.channel_count >= 8:
+                    norms = np.linalg.norm(observations, axis=1)
+                    valid = norms > scale * 1e-12
+                    normalized_directions = observations[valid] / norms[valid, None]
+                    if normalized_directions.shape[0] > 1:
+                        cosine = np.abs(normalized_directions @ normalized_directions.T)
+                        cosine[np.diag_indices_from(cosine)] = 0.0
+                        if bool(np.any(cosine >= 1.0 - 1e-10)):
+                            raise FormalDatasetError(
+                                "sibling observations reuse or near-perfectly correlate noise realizations"
+                            )
+                # Rounded normalized bytes make an exact copied residual detectable even
+                # after adding it to, and subtracting it from, a different clean target.
+                normalized = np.round(observations / scale, decimals=10)
+                seen: dict[bytes, int] = {}
+                for index, value in enumerate(normalized):
+                    key = np.ascontiguousarray(value, dtype="<f8").tobytes()
+                    if key in seen and np.allclose(
+                        observations[index],
+                        observations[seen[key]],
                         rtol=1e-10,
                         atol=scale * 1e-12,
                     ):
-                        raise FormalDatasetError("sibling worlds copy the same observation-noise realization")
+                        raise FormalDatasetError(
+                            "sibling observations copy the same observation-noise realization"
+                        )
+                    seen[key] = index
+
+    def _validate_foundation_identity(self) -> None:
+        # The deterministic fixture deliberately reuses its toy boundary map. It is
+        # permanently forbidden evidence; formal datasets must enforce content identity.
+        if self.is_fixture:
+            return
+        digests = self.canonical_base_map_digests
+        for digest in set(digests.tolist()):
+            mask = digests == digest
+            clusters = set(self.base_map_cluster_ids[mask].tolist())
+            roles = set(self.scene_roles[mask].tolist())
+            cities = set(self.city_ids[mask].tolist())
+            if len(clusters) != 1 or len(roles) != 1 or len(cities) != 1:
+                raise FormalDatasetError(
+                    "identical canonical foundation content may not cross base-map clusters, roles, or cities"
+                )
+        for cluster in set(self.base_map_cluster_ids.tolist()):
+            if len(set(digests[self.base_map_cluster_ids == cluster].tolist())) != 1:
+                raise FormalDatasetError(
+                    "one base-map cluster id may not alias different canonical foundation content"
+                )
 
     def _validate_metadata(self) -> None:
         metadata = self.metadata
@@ -590,11 +687,11 @@ class FormalDataset:
             raise FormalDatasetError("V2 requires csi_layout=real_then_imag")
         if self.channel_count % 2:
             raise FormalDatasetError("real_then_imag CSI requires an even channel count")
-        if representation["phase_gauge_rule"] not in {
-            "shared_complex_reference",
-            "phase_invariant_delay_angle_power",
-        }:
-            raise FormalDatasetError("phase_gauge_rule must be a supported pair-consistent rule")
+        if representation["phase_gauge_rule"] != "shared_complex_reference":
+            raise FormalDatasetError(
+                "formal V6 raw-complex routing and response targets require "
+                "phase_gauge_rule=shared_complex_reference; phase-invariant targets are not implemented"
+            )
         if representation["alignment_physical_representation"] != "complex_csi_plus_delay_angle_power":
             raise FormalDatasetError(
                 "V6 P0 requires alignment_physical_representation=complex_csi_plus_delay_angle_power"
@@ -696,6 +793,32 @@ def _sha256(value: object) -> bool:
 def _array_sha256(array: np.ndarray) -> str:
     canonical = np.ascontiguousarray(np.asarray(array, dtype="<f8"))
     return hashlib.sha256(canonical.tobytes()).hexdigest()
+
+
+def _canonical_foundation_sha256(
+    foundation_map: np.ndarray,
+    channel_names: np.ndarray,
+    map_resolution_m: float,
+    map_origin_xy_m: object,
+) -> str:
+    canonical_map = np.array(foundation_map, dtype="<f8", order="C", copy=True)
+    canonical_map = np.round(canonical_map, decimals=9)
+    canonical_map[canonical_map == 0.0] = 0.0
+    canonical_origin = [round(float(value), 9) for value in map_origin_xy_m]
+    digest = hashlib.sha256()
+    digest.update(
+        _canonical_json_bytes(
+            {
+                "channel_names": [str(value) for value in np.asarray(channel_names).tolist()],
+                "map_resolution_m": round(float(map_resolution_m), 9),
+                "map_origin_xy_m": canonical_origin,
+                "shape": list(canonical_map.shape),
+                "metric_quantization_decimals": 9,
+            }
+        )
+    )
+    digest.update(canonical_map.tobytes())
+    return digest.hexdigest()
 
 
 def _canonical_json_bytes(value: object) -> bytes:

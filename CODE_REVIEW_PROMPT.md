@@ -1,7 +1,8 @@
 # CSI-PAIRS V6 论文-框架-项目-代码一一对应审查提示词
 
 下面代码块可直接交给具备整个工作区读取权限的代码审查模型。它针对当前
-`formal_v2` V2.1 实现编写，不沿用旧版 V1.26 或早期 V2.0 的缺口假设。
+`main@874e82c` 的 `formal_v2` V2.1 实现编写，不沿用旧版 V1.26、早期 V2.0，
+也不沿用 V2.1 首次发布后已经修复的缺口假设。
 
 ```text
 你是一名严格的机器学习系统、实验方法学、统计学和科研软件审稿人。请对
@@ -27,8 +28,8 @@ CSI-PAIRS 做一次“冻结论文规范 -> 项目框架 -> 可达代码 -> 测�
 /root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/artifacts/v2_0_claim_evidence_contract.json
 /root/autodl-tmp/CSI/code/CSI-PAIRS-v2.0-server/SHA256SUMS
 
-【历史代码，只用于追溯，禁止替当前实现补缺】
-/root/autodl-tmp/CSI/archive/CSI-PAIRS-anonymous-supplement-v1.26/experiments
+【历史传输包，只用于追溯，禁止替当前实现补缺】
+/root/autodl-tmp/CSI/CSI-PAIRS-anonymous-supplement-v1.26.zip
 
 权威顺序固定为：冻结 V6 方案 > 当前可达代码的实际行为 > 配置与测试 > README、
 启动包、paper_v2 和 claim contract 的自述。V1 中存在但 V2.1 未调用的功能仍判当前实现
@@ -64,6 +65,15 @@ CSI-PAIRS 做一次“冻结论文规范 -> 项目框架 -> 可达代码 -> 测�
    - scientific evidence（是否已有非 fixture、独立数据支持 claim）。
 7. 不允许用“fail-closed”掩盖实现缺失。fail-closed 是正确的安全属性，但 schema/adapter
    存在不等于 P0 实验已经实现；同样，不得把缺数据误报成算法 bug。
+8. “代码彻底完成”的判定必须同时满足：算法真实存在、标准 CLI 可达、输入权限正确、正式剂量
+   配置存在、产物绑定 checkpoint/config/data、统计量与 V6 同义、gate 真实消费该结果、至少有
+   语义/变异/集成测试。缺任一项均不得写 feature complete。
+9. 审查当前工作树，不以本提示词中的初读假设代替证据。先记录 HEAD、dirty state、Python/
+   PyTorch/CUDA/外部环境；若 HEAD 已变化，重新从调用链生成疑点，不机械复述本提示词。
+10. 不得抽样阅读 first-party 实现：逐个覆盖 formal_v2 下的 Python、正式 config、shell runner、
+    DATA_CONTRACT/README、paper_v2 和 artifacts 合同。vendor 代码只需审查被 adapter 实际调用的
+    边界；基线 fidelity 必须直接对照 waibu 中的论文/PDF、官方 snapshot 和适配代码，不能只引用
+    WAIBU_INTEGRATION.md 的自述。不得找到若干 P0 后提前停止，所有矩阵必须填完。
 
 二、必须逐项核对的论文-代码表面
 
@@ -153,48 +163,84 @@ F. 风险、路径、外部对照和 claim gate
 - `all` 实际执行哪些阶段，跳过哪些独立 adapter/gate；“模块可单独运行”和“完整工作流已执行”
   必须分开。缺失/NOT_ASSESSED 不能晋级，但 fail-closed 也不能被写成 feature complete。
 
+G. 方法对比、消融与负对照的代码完整性
+- 建立“实验名 -> V6 优先级(P0/P1) -> 训练实现 -> 正式配置/剂量 -> checkpoint -> 评测 -> 统计 ->
+  gate/表格 -> 测试”的完整矩阵。禁止把一个能 forward/backward 的小模型当成完整比较实验。
+- P0 内部比较必须包括 Endpoint/Alignment-only/Response-only/Full 严格四臂，以及 copy、
+  no-action、geometry-matched action-swap、without-source-map、edit/map-only、CSI-only、oracle-x、
+  shuffled-pair、retention/F-only 审计。
+- Alignment/CGS 捷径对照必须逐项核对 constant、CSI-only、map-only、scene-ID-only、edit-status
+  XOR、variant-ID matcher；不能拿 Response 的 without-map/edit-only probe 代替 Alignment 捷径审计。
+- 计算与机械拼接对照必须包括 equal-FLOP Alignment、equal-FLOP Response、parameter-matched
+  concat、FLOP-matched concat 和 2x generous concat。2x generous 是报告上界，核对 V6 是否要求
+  Full 必须胜它才能过 C7，不能擅自收紧或放松 gate。
+- 外部六条件至少两个真正 map-conditioned 模型；逐个核实 correct/paired-active/paired-null/
+  wrong-city/geometry-destroyed/empty 实际收到不同且正确的地图张量，而不是只验证六个 condition
+  字符串。核实 Wi-GATr、WiSER、SigMap、RFIR 的实现标签、原论文信息预算、训练目标与适配差异。
+- 表征/定位比较逐个核实 CSI-MAE、CSI-CLIP、CSI-CLIP++、ContraWiMAE、WWM-inspired：不是只看
+  类名和配置，要核对原论文关键结构、预处理、loss、优化剂量、seed、选模、统一位置头、k-shot
+  draws、目标 query 隔离、资源量与统计不确定性；无法忠实实现时必须降级命名。
+- 逐项盘点 V6 明确列出的 P1/附录实验：旧版 per-position world-bank 泄漏对照、all-non-diagonal
+  ranking、单独训练的 full-H no-x、不同 tokenizer、convex-mixture/梯度匹配、两项 stop-gradient、
+  I(x)、LoS/NLoS、自然图域偏移、第二引擎/真实干预。P1 缺失应准确标为计划项，不得伪装成 P0
+  bug；但 README/paper 若声称“完整实现”覆盖它们，则报告文档冲突。
+- 检查消融是否改变了不该改变的数据、模型容量、源标签、目标信息、训练步数或选模次数；每个
+  对照必须共享可配对的独立 unit/cell，输出可直接进入预注册 estimand，而不是不可比的总体均值。
+
 三、基于当前代码初读得到的定向验证假设
 
 以下只是待证伪假设，不是预设结论。逐项用调用链、行号、最小复现或反证回答：
 
-1. formal_teacher.py 是单层 Transformer + 线性 decoder 和一维 learned position，patchify 只是
-   展平后连续切块，可能不等价于 V6 的二维 CSI-MAE patch 与不对称 MAE。
-2. initialize_csi_from_teacher 似乎只复制 patch embedding/position，没有复制 teacher encoder；
-   “四臂共享 CSI encoder 初始化”可能只有部分成立。
-3. bs_pose 在 dataset 中被验证，但 _identity_batch/_natural_representations 似乎只把 radio_config
-   送入 F，需确认完整 c 是否实际进入模型。
-4. _make_plan 分别抽 endpoint、alignment active/null、response all/active/null，未见显式 branch
-   bundle 或同源多动作覆盖；需检查是否改变 V6 联合采样语义。
-5. L_A 似乎只有固定 active_margin，未见 effect-aware phi 或独立 B_audit_hold；L_R 似乎把 latent
-   与 physical delta/null 固定等权，缺少论文中的 lambda_Delta_y/lambda_0y。
-6. 四臂均无条件执行 alignment/response 前向后再把 factor 乘 0，且 forward_calls_per_step=12
-   是常量；需核实真实调用数、FLOPs 和 equal-FLOP 叙事。
-7. _compatibility_dataset 使用全 false mask 和 retained_representation，并对 full-visible CSI 计算
-   native energy，可能与训练时 masked B_align score 冲突，也可能让 query 答案直接可见。
-8. target evaluation_scenes 中的 compatibility/response 循环遍历全部 position，可能把
-   support_pool 位置放入 CGS/response，违反 support sibling 从所有最终指标删除的规则。
-9. response probe 似乎基于 full-H retained representation，而非相同 masked source state；需要
-   检查其信息预算和论文 5.2 的定义。
-10. G3 只比较 alignment CGS 与 response native NMSE 的均值，未明显检查 response 胜 copy、
-    action-swap、方向/幅度、latent/readout 和统计非劣；C3/C5 又只依赖 G3，可能过早晋级。
-11. G4 的原生非劣与 G5 似乎使用点估计；holm_adjust 已定义但未见 gate 调用。需核对论文要求
-    的配对 CI、最小实际效应与多重比较控制。
-12. 统计函数主要以 bank_id 聚合，而 dataset 允许同一 base_map_cluster 下有多个 bank；这可能
-    把重复基础地图当独立证据，并让 minimum bank count 高估独立样本数。
-13. risk support threshold 似乎从 calibration-fit 距离分位数得到，而论文要求在
-    source-calibration-selection 冻结；risk feature archive 也需验证是否绑定具体 checkpoint、
-    probe、proposal 和真实 dataset unit，而不只是 dataset/config hash。
-14. G6 当前 PASS 条件看起来只检查 common-support coverage 与 beta 符号，未执行 C9 的完整
-    校准/AURC/coverage 闭环；risk_metrics 也未见 d-only、u-only、random-rejection 比较和 CI。
-15. G7 的 `_exact_path_match` 似乎按排序后截取每档相同数量，balance 只检查 city/bit 类别，
-    可能不等价于论文要求的距离、编辑幅度、LoS 等匹配。
-16. claim dependency 表可能让 C3/C5/C8/C9 由过弱的单一 G gate 自动 SUPPORTED；必须逐条把
-    第 14 节“至少需要哪些证据”与实际依赖图对照。
-17. `all` 只运行 verify/qualify/wrong-map/factorial/evaluation/path/claims，似乎不运行 risk、
-    resource controls、external baselines、scene-ID、RT calibration、G0/G8、shuffled/retention；
-    检查 README 的“完整链”措辞与实际 orchestration 是否一致。
-18. 目录和 CLI 仍混用 V2.0/V2.1 命名。检查 README、schema、paper_v2、bundle 文件名与当前
-    行为是否存在版本漂移或会导致运行错包。
+1. `frozen_mask_query_bank` 把 75%/50% 写死，而 config validator 对 teacher mask 只限制范围，
+   `model.mask_fraction` 也可能没有控制实际 mask。检查修改配置后运行语义是否静默不变，以及
+   正式冻结值是否有精确校验。
+2. `_make_plan` 已构造多动作 response bundle，但同一 bundle 中各 target 的 mask index 被分别
+   随机抽取；同一 unit 在 target/all、active-delta、null 项中也可能再次抽不同 mask。验证这是否
+   违反 V6 要求的同一 H/map/c/m/q/增强，仅改变 action 与 target。
+3. 四臂当前似乎都计算完整 Endpoint+Alignment+Response 分支，再用 0 factor 关闭梯度。这会令
+   raw forward/FLOPs 人为相等，与 V6“分支带来原始计算差异，再做 equal-FLOP 控制”的 estimand
+   可能冲突；同时核实复用第一臂 FLOP 数是否仍算各臂实测。
+4. `formal_external.py` 的 C1 gate 看起来只要求 Wi-GATr 与 WiSER 成功输出六条件，并未检验两者
+   是否真的呈现 C1 所需的 active 不敏感/null 安全现象、paired cluster CI 或 practical effect。
+   构造六条件数值完全相同的合法结果，测试 C1 是否仍会错误 SUPPORTED。
+5. 外部六条件 row 绑定 unit/context，但未明显绑定每个 condition 实际使用的 map/action digest。
+   检查 adapter 把同一张 map 用六次是否仍可通过 outer gate。
+6. Compatibility 主路径构造了对称四元组，但未见 constant/CSI-only/map-only/scene-ID-only/
+   edit-status-XOR/variant-ID matcher 的完整结果进入 G3/C3/C4；`shortcut_baselines_passed` 可能只由
+   shuffled-pair 外部 adapter 自报一个布尔值。
+7. C3 与 C5 都由同一个 G3 总布尔量晋级。验证某一 claim 的专属证据缺失、但另一分支很强时，
+   是否可能一起晋级；再逐项核对 C4/C6/C8-C10 的 dependency 是否覆盖 V6 第 14 节全部证据。
+8. `predict_components()['u_only']` 似乎复用 joint calibrator 的 intercept/beta_u，而非独立拟合、
+   独立选择 L2 的 u-only 风险基线；`d_only` 同理。检查 G6 的 joint-vs-u-only AURC 是否公平。
+9. G6 的 AURC 优越判断和 90/75/50 单调性主要是点估计；核对“所有预登记点胜 random/u-only”
+   是否需要 base-map-cluster 配对区间/多重控制，以及当前 reliability CI 是否真覆盖每个要求。
+10. risk-feature adapter 能提交数值和 proposal-contract JSON，但 outer code 未明显重放 proposal、
+    复算 d_used/u_g/failure，也未绑定 adapter source/manifest hash。检查伪造但 schema 合法的 archive
+    是否可以过 G6。
+11. resource-control adapter 虽绑定 checkpoint/log/profiler，但 outer code 未明显验证 checkpoint
+    架构真是两独立 encoder、训练 loss 真是指定单分支/concat，也可能接受自报 FLOPs。做语义
+    substitution test，而不只做缺字段测试。
+12. G4 子门 7 当前似乎把 `generous_2x_concat` 也纳入“Full 必须显著胜过”的 all()；V6 C7 只明确
+    要求胜 parameter-matched 与 FLOP-matched，而 2x 是宽松上界报告。核对这是错误收紧还是有依据。
+13. G4 的两项 Full-vs-single 非劣和两项 Full-vs-single J 优越区间未明显做 Holm 或同步 bootstrap；
+    核对 V6 第 12.4 节同层多重比较要求。
+14. `formal_evaluation.py` 已有 full-channel NMSE、latent、direction cosine、magnitude 与多种负对照，
+    但未见 SGCS、TransitionSkill、path-loss/delay-spread/angular-spread 变化误差与方向正确率。区分
+    P0 必需、次要必报和 P1，不能用近似指标顶替同名指标。
+15. G7 的 path provenance 子门似乎无条件 PASS；未见 Q% path truncation convergence 的可执行
+    资格检查。`A_path,loc` 被写出但似乎没有进入机制统计/gate，需和 V6 第 9、14、15 节逐条对照。
+16. representation-baseline stage 每个方法似乎只训练一个 seed，PASS 只表示五个模型执行完成，
+    且该 stage 不在 claim assembly 依赖图中。检查它能否支撑论文方法比较表、方差/CI和“完整链”。
+17. WiSER/SigMap/RFIR 是不同强度的 controlled implementation。逐项对照本地论文资源验证关键
+    架构与训练语义，尤其不能因有真实梯度和大剂量 config 就自动视为论文级基线。
+18. `paper_v2/main.tex` 的正文公式主要只写 physical Endpoint/Response，弱化或省略冻结 V6 的
+    latent+physical 双目标；实验问题只列四项，RQ5 风险链和若干 C/G gate 也可能不完整。做全文
+    双向公式/术语/claim 对照，而非只检查摘要。
+19. `all` 现已调用风险、表征基线、外部基线、资源控制、scene-ID、G8、G0、RT calibration、
+    shuffled/retention 和 claims；但仓库没有正式 dataset/外部输入，dry-run 脚本只走 verify+qualify，
+    当前 85 个测试也没有执行完整 `all`。检查“complete evidence chain/READY_FOR_DATA”措辞边界。
+20. `CODEBASE_MAP.md` 仍可能写 61 个测试并引用不存在的解压 archive，目录/zip/README 又混用
+    V2.0/V2.1/V2.2 schema 名。检查所有启动命令、文件计数、版本标签与当前行为的漂移。
 
 不要默认以上假设成立；被代码或实验推翻时明确写“已推翻”并给证据。
 
@@ -208,6 +254,12 @@ python3 -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py
 python3 -m unittest discover -s formal_v2/tests -v
 python3 -m formal_v2.formal_cli --help
 
+再在临时目录运行 `formal_v2/scripts/run_formal_v2_dry_run.sh`，明确它实际只覆盖到哪一阶段；
+在临时副本编译 `paper_v2/main.tex` 并报告引用、公式、占位符和构建问题。不要污染当前工作树。
+
+当前 `main@874e82c` 的已知基线是 SHA 登记文件全通过、py_compile 通过、85 tests 通过；审查者
+必须自己重跑。若结果不同，记录当前 HEAD/环境和差异，不得沿用 85 这个数字。
+
 随后在临时目录做最小定向测试，至少覆盖：
 - 替换 target/support/external 数据是否影响 teacher、route normalization、资格门或 checkpoint；
 - bs_pose 改变时 F 输出是否改变，M/x/action 改变时 teacher target 是否严格不变；
@@ -215,8 +267,13 @@ python3 -m formal_v2.formal_cli --help
 - target support_pool 是否进入 CGS/response/risk/path 分母；
 - 同一 base_map_cluster 拆成多个 bank 是否改变 J、CI 和独立 bank 计数；
 - 关闭 A/R 时真实 forward、FLOPs、梯度和参数更新；四臂 batch/mask/query 是否逐项一致；
+- 同一个 response branch bundle 的所有 target、target/delta/null 子项是否逐字节复用 mask/query；
 - G3/G4/G6/G7 和 claim assembly 的 adversarial artifact：只满足弱条件时能否错误 PASS；
-- risk fit/selection role、common support、u-only/random baseline、coverage monotonicity；
+- C1 六条件结果全相等、六次复用同一地图时是否会错误 PASS；
+- risk fit/selection role、proposal 重放、独立 d-only/u-only、common support、random baseline、
+  coverage monotonicity与 cluster-level inference；
+- resource-control 用错误架构 checkpoint/伪造 profiler，representation baseline 只跑单 seed时，
+  gate 和 claim 是否仍会把“执行完成”写成“比较充分”；
 - fixture/NOT_ASSESSED/哈希不匹配是否在所有下游层永久 fail-closed。
 
 现有测试通过只说明被覆盖的软件属性。请列出没有端到端测试的关键公式和 gate，不得按测试名
@@ -239,14 +296,16 @@ python3 -m formal_v2.formal_cli --help
 2. Code-to-Paper Reverse Matrix：所有没有论文依据、改变信息预算或更改统计量的代码行为。
 3. Reachability & Orchestration Matrix：每个 CLI stage、输入、输出、上游 gate、是否被 all 调用、
    internal/adapter/schema-only 状态。
-4. Claim Safety Table：C1-C13 的完整依赖、当前 supported/software-only/blocked/invalid 状态，
+4. Comparison & Ablation Completeness Matrix：所有 P0/P1 方法、基线、负对照和消融的训练代码、
+   正式剂量、seed、checkpoint、统一评测、统计、gate、可达性和准确命名；明确缺哪些代码。
+5. Claim Safety Table：C1-C13 的完整依赖、当前 supported/software-only/blocked/invalid 状态，
    以及当前允许使用的最强论文措辞。
-5. Gate Audit：G0-G8 及 C7 七子门、C9 四子门逐项说明真实 PASS 条件是否充分。
-6. Test Coverage Gaps：现有测试实际覆盖与未覆盖内容，区分 schema、unit semantic、integration、
+6. Gate Audit：G0-G8 及 C7 七子门、C9 四子门逐项说明真实 PASS 条件是否充分。
+7. Test Coverage Gaps：现有测试实际覆盖与未覆盖内容，区分 schema、unit semantic、integration、
    statistical mutation 和 end-to-end evidence test。
-7. Prioritized Remediation Plan：按依赖顺序先修改变实验定义/泄漏/统计推断的问题，再补评测、
+8. Prioritized Remediation Plan：按依赖顺序先修改变实验定义/泄漏/统计推断的问题，再补评测、
    adapter 与工程质量；不要直接修改代码。
-8. Final Verdict：分别给 Package integrity、Software execution、V6 protocol fidelity、
+9. Final Verdict：分别给 Package integrity、Software execution、V6 protocol fidelity、
    Scientific claim readiness；禁止用一个总 PASS/FAIL 混写。
 
 即使某类没有发现问题，也写“未发现”并说明剩余测试风险。所有结论必须能由文件、行号、

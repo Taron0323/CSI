@@ -7,6 +7,7 @@ from typing import Iterable
 
 import numpy as np
 
+from .formal_dataset import _canonical_foundation_sha256
 from .formal_evidence import bind_rows, evidence_context
 from .formal_io import (
     artifact_manifest,
@@ -102,9 +103,11 @@ def run_data_verification(config, dataset, manifest_path, output_root):
         "role_status": role_status,
         "verified_properties": [
             "canonical_rendering",
+            "canonical_foundation_content_identity",
             "complete_cross_generation",
             "common_free_positions",
             "independent_repeat_noise_regeneration",
+            "observation_seed_to_residual_binding",
             "pair_consistent_phase_reference",
             "path_and_noop_retrace",
             "engine_config_and_license_binding",
@@ -204,10 +207,26 @@ def _validate_manifest(manifest, dataset):
 
 
 def _scene_comparison(dataset, archive, scene, rtol, atol):
+    zero_world = int(np.flatnonzero(np.all(dataset.world_bits == 0, axis=1))[0])
+    representation = dataset.metadata["representation"]
+    regenerated_foundation_digest = _canonical_foundation_sha256(
+        archive["maps"][scene, zero_world],
+        dataset.map_channel_names,
+        float(representation["map_resolution_m"]),
+        representation["map_origin_xy_m"],
+    )
+    expected_foundation_digest = dataset.canonical_base_map_digest(scene)
+    regenerated_noise_digest = dataset.observation_noise_binding_digest(
+        scene, archive["csi_repeat"][scene]
+    )
+    expected_noise_digest = dataset.observation_noise_binding_digest(scene)
     checks = {
         "maps": _equal(dataset.maps[scene], archive["maps"][scene], rtol, atol),
+        "canonical_foundation_identity": regenerated_foundation_digest
+        == expected_foundation_digest,
         "csi_clean": _equal(dataset.csi_clean[scene], archive["csi_clean"][scene], rtol, atol),
         "csi_repeat": _equal(dataset.csi_repeat[scene], archive["csi_repeat"][scene], rtol, atol),
+        "observation_noise_seed_binding": regenerated_noise_digest == expected_noise_digest,
         "free_space": np.array_equal(dataset.free_space[scene], archive["free_space"][scene]),
         "phase_reference_ids": np.array_equal(dataset.phase_reference_ids[scene], archive["phase_reference_ids"][scene]),
         "noop_maps": _equal(dataset.noop_maps[scene], archive["noop_maps"][scene], rtol, atol),
@@ -222,6 +241,10 @@ def _scene_comparison(dataset, archive, scene, rtol, atol):
         "scene_id": str(dataset.scene_ids[scene]),
         "bank_id": str(dataset.bank_ids[scene]),
         "base_map_cluster_id": str(dataset.base_map_cluster_ids[scene]),
+        "canonical_base_map_digest": expected_foundation_digest,
+        "regenerated_canonical_base_map_digest": regenerated_foundation_digest,
+        "observation_noise_binding_sha256": expected_noise_digest,
+        "regenerated_observation_noise_binding_sha256": regenerated_noise_digest,
         "role": str(dataset.scene_roles[scene]),
         **{f"{name}_match": bool(value) for name, value in checks.items()},
         "passed": bool(all(checks.values())),

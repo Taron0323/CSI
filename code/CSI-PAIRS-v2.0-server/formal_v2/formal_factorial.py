@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import time
 from dataclasses import dataclass
@@ -54,6 +55,10 @@ ARM_FACTORS = {
     "full": (1.0, 1.0),
 }
 
+# V6 lambda_sy is the physical term in the alignment compatibility score.  It
+# is deliberately frozen separately from lambda_By (the endpoint loss weight).
+ALIGNMENT_SCORE_PHYSICAL_WEIGHT = 1.0
+
 
 @dataclass(frozen=True)
 class TrainingNormalization:
@@ -89,6 +94,7 @@ class TrainingCorpus:
     response_bundles: dict[int, list[tuple[int, tuple[int, ...], int, int]]]
     response_active_bundles: dict[int, list[tuple[int, tuple[int, ...], int, int]]]
     response_null_bundles: dict[int, list[tuple[int, tuple[int, ...], int, int]]]
+    response_targets_by_source_query: dict[tuple[int, int, int, int], tuple[int, ...]]
 
 
 @dataclass(frozen=True)
@@ -105,6 +111,9 @@ class StepPlan:
     response_all_masks: tuple[int, ...]
     response_active_masks: tuple[int, ...]
     response_null_masks: tuple[int, ...]
+    response_all_weights: tuple[float, ...]
+    response_active_weights: tuple[float, ...]
+    response_null_weights: tuple[float, ...]
     response_bundle_count: int
 
 
@@ -167,7 +176,6 @@ def run_formal_factorial(
     checkpoint_rows = []
     provisional_use = "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     evidence = evidence_context(config, dataset, provisional_use)
-    reference_flops = None
     for seed in config["seeds"]:
         for arm in ARMS:
             model, row = _train_arm(
@@ -176,10 +184,7 @@ def run_formal_factorial(
                 int(seed),
                 arm,
                 pilot,
-                reference_flops=reference_flops,
             )
-            if reference_flops is None:
-                reference_flops = row["measured_flops_per_step"]
             checkpoint = output_dir / "checkpoints" / f"seed_{seed}" / f"{arm}.pt"
             checkpoint.parent.mkdir(parents=True, exist_ok=True)
             torch.save(
@@ -421,6 +426,13 @@ def _build_corpus(dataset, scenes, teacher, config, route_normalization, normali
         response_bundles=response_bundles,
         response_active_bundles=response_active_bundles,
         response_null_bundles=response_null_bundles,
+        response_targets_by_source_query={
+            (int(scene), int(source), int(position), int(query)): tuple(
+                int(target) for target in targets
+            )
+            for scene, bundles in response_bundles.items()
+            for source, targets, position, query in bundles
+        },
     )
 
 
@@ -430,31 +442,36 @@ def _make_plan(corpus: TrainingCorpus, batch_size: int, seed: int, step: int) ->
     natural = _macro_sample(corpus.natural_endpoint, rng, batch_size, corpus.dataset)
     alignment_active = _macro_sample(corpus.alignment_active, rng, batch_size, corpus.dataset)
     alignment_null = _macro_sample(corpus.alignment_null, rng, batch_size, corpus.dataset)
-    active_bundle_count = max(1, int(batch_size) // 2)
-    null_bundle_count = max(1, int(batch_size) - active_bundle_count)
-    bundles = _macro_sample(
-        corpus.response_active_bundles, rng, active_bundle_count, corpus.dataset
+    # These are three different macro estimands.  In particular, the all-edge
+    # target term must not inherit the former 50:50 active/null conditioning.
+    response_all, response_all_weights = _macro_bundle_sample(
+        corpus, corpus.response_all, rng, batch_size, route=None
     )
-    bundles += _macro_sample(
-        corpus.response_null_bundles, rng, null_bundle_count, corpus.dataset
+    response_active, response_active_weights = _macro_bundle_sample(
+        corpus, corpus.response_active, rng, batch_size, route=2
     )
-    response_all = []
-    for scene, source, targets, position, query in bundles:
-        response_all.extend(
-            (scene, source, target, position, query) for target in targets
+    response_null, response_null_weights = _macro_bundle_sample(
+        corpus, corpus.response_null, rng, batch_size, route=0
+    )
+
+    # Every occurrence of the same source CSI/query uses byte-identical input
+    # masking, including sibling actions and occurrences shared by target and
+    # conditional estimators.  There is currently no stochastic augmentation
+    # outside the frozen mask bank.
+    response_mask_by_source_query = {}
+    for unit in (*response_all, *response_active, *response_null):
+        key = _response_source_query_key(unit)
+        if key not in response_mask_by_source_query:
+            response_mask_by_source_query[key] = _mask_index_for_query(
+                corpus, unit[-1], rng
+            )
+
+    def response_masks(units):
+        return tuple(
+            response_mask_by_source_query[_response_source_query_key(unit)]
+            for unit in units
         )
-    response_active = [
-        unit
-        for unit in response_all
-        if corpus.routed.response_route[tuple(unit)] == 2
-    ]
-    response_null = [
-        unit
-        for unit in response_all
-        if corpus.routed.response_route[tuple(unit)] == 0
-    ]
-    if not response_active or not response_null:
-        raise RuntimeError("branch-bundle batch lacks an active or null conditional unit")
+
     return StepPlan(
         endpoint=tuple(endpoint),
         natural_endpoint=tuple(natural),
@@ -465,11 +482,43 @@ def _make_plan(corpus: TrainingCorpus, batch_size: int, seed: int, step: int) ->
         response_null=tuple(response_null),
         endpoint_masks=tuple(int(rng.integers(0, len(corpus.teacher.mask_bank))) for _ in endpoint),
         natural_masks=tuple(int(rng.integers(0, len(corpus.teacher.mask_bank))) for _ in natural),
-        response_all_masks=tuple(_mask_index_for_query(corpus, unit[-1], rng) for unit in response_all),
-        response_active_masks=tuple(_mask_index_for_query(corpus, unit[-1], rng) for unit in response_active),
-        response_null_masks=tuple(_mask_index_for_query(corpus, unit[-1], rng) for unit in response_null),
-        response_bundle_count=len(bundles),
+        response_all_masks=response_masks(response_all),
+        response_active_masks=response_masks(response_active),
+        response_null_masks=response_masks(response_null),
+        response_all_weights=response_all_weights,
+        response_active_weights=response_active_weights,
+        response_null_weights=response_null_weights,
+        response_bundle_count=3 * int(batch_size),
     )
+
+
+def _response_source_query_key(unit):
+    scene, source, _target, position, query = unit
+    return int(scene), int(source), int(position), int(query)
+
+
+def _macro_bundle_sample(corpus, anchor_table, rng, count, *, route):
+    """Unbiased edge estimator that keeps every sampled source branch bundle."""
+    anchors = _macro_sample(anchor_table, rng, count, corpus.dataset)
+    units = []
+    weights = []
+    for scene, source, _anchor_target, position, query in anchors:
+        key = int(scene), int(source), int(position), int(query)
+        targets = corpus.response_targets_by_source_query.get(key)
+        if targets is None:
+            raise RuntimeError("response anchor has no registered sibling bundle")
+        selected = [
+            target
+            for target in targets
+            if route is None
+            or corpus.routed.response_route[(scene, source, target, position, query)] == route
+        ]
+        if not selected:
+            raise RuntimeError("response route anchor produced an empty conditional bundle")
+        unit_weight = 1.0 / len(selected)
+        units.extend((scene, source, target, position, query) for target in selected)
+        weights.extend(unit_weight for _ in selected)
+    return tuple(units), tuple(weights)
 
 
 def _macro_sample(table, rng, count, dataset):
@@ -615,7 +664,7 @@ def _noop_score_gaps(model, corpus, units):
                         prediction_y,
                         batch["target_z"],
                         batch["target_y"],
-                        1.0,
+                        ALIGNMENT_SCORE_PHYSICAL_WEIGHT,
                     )[0]
                 )
             scores.append(-torch.mean(torch.stack(errors)))
@@ -623,7 +672,7 @@ def _noop_score_gaps(model, corpus, units):
     return gaps
 
 
-def _train_arm(config, corpus, seed, arm, pilot, *, reference_flops=None):
+def _train_arm(config, corpus, seed, arm, pilot):
     model = _new_model(config, corpus, seed)
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -654,7 +703,6 @@ def _train_arm(config, corpus, seed, arm, pilot, *, reference_flops=None):
                 corpus,
                 plan,
                 weights,
-                reference_flops=reference_flops,
             )
         components = _loss_components(model, corpus, plan, weights)
         if step in {0, int(config["factorial"]["steps"]) - 1}:
@@ -701,13 +749,19 @@ def _train_arm(config, corpus, seed, arm, pilot, *, reference_flops=None):
         * int(config["factorial"]["steps"]),
         "measured_flops_per_step": execution["flops"],
         "flop_measurement_status": execution["flop_measurement_status"],
-        "compute_contract": "all arms execute the identical branch bundle; disabled losses have zero weighted gradient but retain raw compute",
+        "compute_contract": "all arms reuse the identical deterministic batch plan; disabled alignment/response supervision skips its forward graph and has zero raw and weighted gradient",
+        "alignment_score_physical_weight": ALIGNMENT_SCORE_PHYSICAL_WEIGHT,
         "alignment_gradient_norm_mean": float(np.mean(alignment_gradient_norms)),
         "response_gradient_norm_mean": float(np.mean(response_gradient_norms)),
         "raw_alignment_gradient_norm_mean": float(np.mean(raw_alignment_gradient_norms)),
         "raw_response_gradient_norm_mean": float(np.mean(raw_response_gradient_norms)),
         "checkpoint_rule": "fixed_final_step_no_target_selection",
         "batch_plan_contract": "identical bank/edge/direction/mask/query sequence for all arms at a seed",
+        "response_macro_contract": "independent cluster-bank anchor-edge macro samples for all-directed-edge target, active conditional, and null conditional terms; complete sibling bundles use inverse bundle-size weights",
+        "response_all_anchor_bundles_per_step": int(config["factorial"]["batch_size"]),
+        "response_active_anchor_bundles_per_step": int(config["factorial"]["batch_size"]),
+        "response_null_anchor_bundles_per_step": int(config["factorial"]["batch_size"]),
+        "response_mask_reuse_key": "scene/source/position/query across target and conditional estimators",
     }
     for name, value in last.items():
         row[f"final_{name}_loss"] = float(value.detach())
@@ -753,66 +807,95 @@ def _loss_components(model, corpus, plan, weights):
     natural = _endpoint_loss(model, natural_batch, weights.endpoint_physical)
     endpoint_total = endpoint + float(weights.natural_endpoint) * natural
 
-    active_scores = _alignment_scores(model, corpus, plan.alignment_active, weights.endpoint_physical)
-    null_scores = _alignment_scores(model, corpus, plan.alignment_null, weights.endpoint_physical)
-    active_effect = torch.as_tensor(
-        [
-            corpus.routed.alignment_distances[(scene, source, target, position)][0]
-            for scene, source, target, position in plan.alignment_active
-        ],
-        dtype=torch.float32,
-    )
-    phi = torch.clamp(
-        active_effect / max(float(weights.effect_margin_scale), 1e-12),
-        min=0.0,
-        max=float(weights.effect_margin_cap),
-    )
-    alignment_active_effect_aware = torch.mean(
-        alignment_active_quartet_loss(
-            *active_scores, margin=float(weights.active_margin) * phi
+    zero = endpoint_total.new_zeros(())
+    alignment = zero
+    alignment_active = zero
+    alignment_active_fixed = zero
+    alignment_active_effect_aware = zero
+    alignment_null = zero
+    if float(weights.alignment) != 0.0:
+        active_scores = _alignment_scores(
+            model,
+            corpus,
+            plan.alignment_active,
+            ALIGNMENT_SCORE_PHYSICAL_WEIGHT,
         )
-    )
-    alignment_active_fixed = torch.mean(
-        alignment_active_quartet_loss(
-            *active_scores, margin=float(weights.active_margin)
+        null_scores = _alignment_scores(
+            model,
+            corpus,
+            plan.alignment_null,
+            ALIGNMENT_SCORE_PHYSICAL_WEIGHT,
         )
-    )
-    alignment_active = (
-        alignment_active_fixed
-        if weights.alignment_primary_margin == "fixed"
-        else alignment_active_effect_aware
-    )
-    alignment_null = torch.mean(
-        alignment_null_quartet_loss(
-            *null_scores, tolerance=float(weights.alignment_null_tolerance)
+        active_effect = torch.as_tensor(
+            [
+                corpus.routed.alignment_distances[(scene, source, target, position)][0]
+                for scene, source, target, position in plan.alignment_active
+            ],
+            dtype=torch.float32,
         )
-    )
-    alignment = alignment_active + float(weights.alignment_null) * alignment_null
+        phi = torch.clamp(
+            active_effect / max(float(weights.effect_margin_scale), 1e-12),
+            min=0.0,
+            max=float(weights.effect_margin_cap),
+        )
+        alignment_active_effect_aware = torch.mean(
+            alignment_active_quartet_loss(
+                *active_scores, margin=float(weights.active_margin) * phi
+            )
+        )
+        alignment_active_fixed = torch.mean(
+            alignment_active_quartet_loss(
+                *active_scores, margin=float(weights.active_margin)
+            )
+        )
+        alignment_active = (
+            alignment_active_fixed
+            if weights.alignment_primary_margin == "fixed"
+            else alignment_active_effect_aware
+        )
+        alignment_null = torch.mean(
+            alignment_null_quartet_loss(
+                *null_scores, tolerance=float(weights.alignment_null_tolerance)
+            )
+        )
+        alignment = alignment_active + float(weights.alignment_null) * alignment_null
 
-    target_batch = _response_batch(
-        corpus,
-        plan.response_all,
-        [corpus.teacher.mask_bank[index] for index in plan.response_all_masks],
-    )
-    active_batch = _response_batch(
-        corpus,
-        plan.response_active,
-        [corpus.teacher.mask_bank[index] for index in plan.response_active_masks],
-    )
-    null_batch = _response_batch(
-        corpus,
-        plan.response_null,
-        [corpus.teacher.mask_bank[index] for index in plan.response_null_masks],
-    )
-    response_target, response_physical = _response_target_loss(model, target_batch)
-    response_active = _response_active_loss(model, active_batch, weights)
-    response_null = _response_null_loss(model, null_batch, weights)
-    response = (
-        response_target
-        + float(weights.response_physical) * response_physical
-        + float(weights.response_delta) * response_active
-        + float(weights.response_null) * response_null
-    )
+    response = zero
+    response_target = zero
+    response_physical = zero
+    response_active = zero
+    response_null = zero
+    if float(weights.response) != 0.0:
+        target_batch = _response_batch(
+            corpus,
+            plan.response_all,
+            [corpus.teacher.mask_bank[index] for index in plan.response_all_masks],
+        )
+        active_batch = _response_batch(
+            corpus,
+            plan.response_active,
+            [corpus.teacher.mask_bank[index] for index in plan.response_active_masks],
+        )
+        null_batch = _response_batch(
+            corpus,
+            plan.response_null,
+            [corpus.teacher.mask_bank[index] for index in plan.response_null_masks],
+        )
+        response_target, response_physical = _response_target_loss(
+            model, target_batch, plan.response_all_weights
+        )
+        response_active = _response_active_loss(
+            model, active_batch, weights, plan.response_active_weights
+        )
+        response_null = _response_null_loss(
+            model, null_batch, weights, plan.response_null_weights
+        )
+        response = (
+            response_target
+            + float(weights.response_physical) * response_physical
+            + float(weights.response_delta) * response_active
+            + float(weights.response_null) * response_null
+        )
     total = (
         endpoint_total
         + float(weights.alignment) * alignment / max(float(weights.alignment_scale), 1e-12)
@@ -882,37 +965,51 @@ def _alignment_scores(model, corpus, units, physical_weight):
     return tuple(scores)
 
 
-def _response_target_loss(model, batch):
+def _response_target_loss(model, batch, sample_weights):
     state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
     prediction_z, prediction_y = model.predict(state, batch["action"], batch["query"])
     return (
-        torch.mean(squared_rms_error(prediction_z, batch["target_z"])),
-        torch.mean(squared_rms_error(prediction_y, batch["target_y"])),
+        _weighted_mean(squared_rms_error(prediction_z, batch["target_z"]), sample_weights),
+        _weighted_mean(squared_rms_error(prediction_y, batch["target_y"]), sample_weights),
     )
 
 
-def _response_active_loss(model, batch, weights):
+def _response_active_loss(model, batch, weights, sample_weights):
     state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
     identity_z, identity_y = model.predict(state, batch["zero_action"], batch["query"])
     prediction_z, prediction_y = model.predict(state, batch["action"], batch["query"])
-    return torch.mean(
+    return _weighted_mean(
         squared_rms_error(prediction_z - identity_z, batch["target_z"] - batch["source_z"])
         + float(weights.response_delta_physical)
-        * squared_rms_error(prediction_y - identity_y, batch["target_y"] - batch["source_y"])
+        * squared_rms_error(prediction_y - identity_y, batch["target_y"] - batch["source_y"]),
+        sample_weights,
     )
 
 
-def _response_null_loss(model, batch, weights):
+def _response_null_loss(model, batch, weights, sample_weights):
     state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
     identity_z, identity_y = model.predict(state, batch["zero_action"], batch["query"])
     prediction_z, prediction_y = model.predict(state, batch["action"], batch["query"])
     latent_norm = torch.sqrt(torch.mean((prediction_z - identity_z) ** 2, dim=1) + 1e-12)
     physical_norm = torch.sqrt(torch.mean((prediction_y - identity_y) ** 2, dim=1) + 1e-12)
-    return torch.mean(
+    return _weighted_mean(
         torch.relu(latent_norm - float(weights.response_latent_null_tolerance)) ** 2
         + float(weights.response_null_physical)
-        * torch.relu(physical_norm - float(weights.response_physical_null_tolerance)) ** 2
+        * torch.relu(physical_norm - float(weights.response_physical_null_tolerance)) ** 2,
+        sample_weights,
     )
+
+
+def _weighted_mean(values, sample_weights):
+    raw_weights = np.asarray(sample_weights, dtype=np.float64)
+    if raw_weights.ndim != 1 or raw_weights.shape[0] != values.shape[0]:
+        raise ValueError("response sample weights must match the batch")
+    if not np.all(np.isfinite(raw_weights)) or not np.all(raw_weights > 0):
+        raise ValueError("response sample weights must be finite and positive")
+    weights = torch.as_tensor(
+        raw_weights, dtype=values.dtype, device=values.device
+    )
+    return torch.sum(values * weights) / torch.sum(weights)
 
 
 def _identity_batch(corpus, units, entries, supplied_maps=None):
@@ -1021,12 +1118,14 @@ def _retained_parameters(model):
 
 
 def _gradient_norm(loss, parameters):
+    if not loss.requires_grad:
+        return 0.0
     gradients = torch.autograd.grad(loss, parameters, retain_graph=True, allow_unused=True)
     squared = [torch.sum(gradient.detach() ** 2) for gradient in gradients if gradient is not None]
     return float(torch.sqrt(torch.sum(torch.stack(squared))).item()) if squared else 0.0
 
 
-def _measure_execution(model, corpus, plan, weights, *, reference_flops=None):
+def _measure_execution(model, corpus, plan, weights):
     counts = {"state_calls": 0, "predict_calls": 0}
     state_hook = model.fusion.register_forward_hook(
         lambda _module, _inputs, _output: counts.__setitem__(
@@ -1039,22 +1138,16 @@ def _measure_execution(model, corpus, plan, weights, *, reference_flops=None):
         )
     )
     try:
-        if reference_flops is None:
-            from torch.utils.flop_counter import FlopCounterMode
+        from torch.utils.flop_counter import FlopCounterMode
 
-            with FlopCounterMode(display=False) as counter:
-                with torch.no_grad():
-                    _loss_components(model, corpus, plan, weights)
-            value = int(counter.get_total_flops())
-            counts["flops"] = value if value > 0 else None
-            counts["flop_measurement_status"] = (
-                "TORCH_DISPATCH_COUNTER" if value > 0 else "NOT_ASSESSED"
-            )
-        else:
+        with FlopCounterMode(display=False) as counter:
             with torch.no_grad():
                 _loss_components(model, corpus, plan, weights)
-            counts["flops"] = int(reference_flops)
-            counts["flop_measurement_status"] = "REUSED_IDENTICAL_BRANCH_PLAN_MEASUREMENT"
+        value = int(counter.get_total_flops())
+        counts["flops"] = value if value > 0 else None
+        counts["flop_measurement_status"] = (
+            "TORCH_DISPATCH_COUNTER_PER_ARM" if value > 0 else "NOT_ASSESSED"
+        )
     except Exception:
         counts["state_calls"] = 0
         counts["predict_calls"] = 0
@@ -1074,6 +1167,15 @@ def _run_localization(config, dataset, models, normalization, patch_spec):
     source_scenes = [int(value) for value in dataset.indices_for_role("source_encoder_train")]
     target_scenes = [int(value) for value in dataset.indices_for_role("target")]
     target_cities = sorted(set(dataset.city_ids[target_scenes].tolist()))
+    dataset_base_digests = getattr(dataset, "canonical_base_map_digests", None)
+    canonical_base_digests = (
+        {scene: str(dataset_base_digests[scene]) for scene in target_scenes}
+        if dataset_base_digests is not None
+        else {scene: _canonical_base_map_digest(dataset, scene) for scene in target_scenes}
+    )
+    canonical_bank_digests = {
+        scene: _canonical_bank_digest(dataset, scene) for scene in target_scenes
+    }
     for seed in config["seeds"]:
         city_orders = {}
         for city in target_cities:
@@ -1135,6 +1237,8 @@ def _run_localization(config, dataset, models, normalization, patch_spec):
                                         "city_id": city,
                                         "bank_id": str(dataset.bank_ids[scene]),
                                         "base_map_cluster_id": str(dataset.base_map_cluster_ids[scene]),
+                                        "canonical_base_map_digest": canonical_base_digests[scene],
+                                        "canonical_bank_digest": canonical_bank_digests[scene],
                                         "budget": int(budget),
                                         "draw": 0 if int(budget) == 0 else draw,
                                         "position_id": str(dataset.position_ids[scene, position]),
@@ -1160,6 +1264,8 @@ def _run_localization(config, dataset, models, normalization, patch_spec):
                                     "city_id": city,
                                     "bank_id": str(dataset.bank_ids[scene]),
                                     "base_map_cluster_id": str(dataset.base_map_cluster_ids[scene]),
+                                    "canonical_base_map_digest": canonical_base_digests[scene],
+                                    "canonical_bank_digest": canonical_bank_digests[scene],
                                     "budget": int(budget),
                                     "draw": 0 if int(budget) == 0 else draw,
                                     "city_support_unique_positions": len(selected),
@@ -1171,6 +1277,40 @@ def _run_localization(config, dataset, models, normalization, patch_spec):
                                 }
                             )
     return bank_rows, sample_rows
+
+
+def _canonical_base_map_digest(dataset, scene):
+    digests = getattr(dataset, "canonical_base_map_digests", None)
+    if digests is not None:
+        return str(digests[int(scene)])
+    method = getattr(dataset, "canonical_base_map_digest", None)
+    if callable(method):
+        return str(method(int(scene)))
+    # Backward compatibility for pre-digest fixture objects.  Formal datasets
+    # expose the canonical digest; this fallback must not be used as provenance.
+    world = int(dataset.natural_world_index[int(scene)])
+    payload = np.ascontiguousarray(dataset.maps[int(scene), world]).tobytes()
+    return "fallback-natural-map:" + hashlib.sha256(payload).hexdigest()
+
+
+def _canonical_bank_digest(dataset, scene):
+    """Content identity for de-duplicating copied evaluation banks."""
+    scene = int(scene)
+    digest = hashlib.sha256()
+    digest.update(b"csi-pairs-v6-canonical-bank-v1\0")
+    for value in (
+        dataset.maps[scene],
+        dataset.csi[scene],
+        dataset.positions[scene],
+        dataset.radio_config[scene],
+        dataset.bs_pose[scene],
+    ):
+        array = np.ascontiguousarray(value)
+        digest.update(str(array.dtype).encode("ascii"))
+        digest.update(np.asarray(array.shape, dtype=np.int64).tobytes())
+        digest.update(array.tobytes())
+    digest.update("\0".join(str(value) for value in dataset.map_channel_names).encode("utf-8"))
+    return digest.hexdigest()
 
 
 def _natural_representations(model, dataset, scenes, normalization, patch_spec):
@@ -1253,6 +1393,9 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
     primary = set(int(value) for value in config["localization"]["primary_budgets"])
     city_checks = []
     maximum_regression = 0.0
+    target_cities_for_g4 = sorted({row["city_id"] for row in rows})
+    city_family_size = max(1, len(target_cities_for_g4) * len(primary) * 2)
+    familywise_alpha = float(config["evaluation"]["familywise_alpha"])
     for city in sorted({row["city_id"] for row in rows}):
         for budget in sorted(primary):
             for baseline in ("alignment", "response"):
@@ -1263,6 +1406,8 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
                     baseline,
                     int(config["evaluation"]["bootstrap_resamples"]),
                     730000 + len(city_checks),
+                    familywise_alpha=familywise_alpha,
+                    family_size=city_family_size,
                 )
                 difference = float(interval["paired_mean_difference"])
                 maximum_regression = max(maximum_regression, max(0.0, -difference))
@@ -1277,17 +1422,17 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
                 )
     subgates = {
         "1_full_beats_both_single_branches": "PASS"
-        if hierarchical["full_vs_alignment"]["ci95_low"] > 0
-        and hierarchical["full_vs_response"]["ci95_low"] > 0
+        if hierarchical["full_vs_alignment"]["familywise_ci95_low"] > 0
+        and hierarchical["full_vs_response"]["familywise_ci95_low"] > 0
         else "FAIL",
         "2_cgs_noninferior_to_alignment": "NOT_ASSESSED",
         "3_native_response_noninferior_to_response": "NOT_ASSESSED",
         "4_hierarchical_interaction_ci_exceeds_minimum": "PASS"
-        if hierarchical["interaction"]["ci95_low"] > minimum_interaction
+        if hierarchical["interaction"]["familywise_ci95_low"] > minimum_interaction
         else "FAIL",
         "5_no_city_k_reverse_regression": "PASS"
         if all(
-            row["ci95_low"]
+            row["familywise_ci_low"]
             >= -float(config["localization"]["maximum_city_regression"])
             for row in city_checks
         )
@@ -1373,13 +1518,29 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
         "g4_subgates": subgates,
         "g5_subgates": g5_subgates,
         "city_budget_checks": city_checks,
+        "g4_familywise_control": {
+            "primary_hypotheses": hierarchical["familywise_method"],
+            "city_budget_hypotheses": "bonferroni_bootstrap_intervals",
+            "city_budget_family_size": city_family_size,
+            "familywise_alpha": familywise_alpha,
+        },
         "localization_city_budget_checks": localization_checks,
         "claim_boundary": "G4 cannot PASS until all seven subgates are PASS; NOT_ASSESSED is never PASS.",
         "config": public_formal_config(config),
     }
 
 
-def _city_budget_arm_interval(rows, city, budget, baseline, resamples, seed):
+def _city_budget_arm_interval(
+    rows,
+    city,
+    budget,
+    baseline,
+    resamples,
+    seed,
+    *,
+    familywise_alpha=None,
+    family_size=1,
+):
     grouped = {}
     for row in rows:
         if str(row["city_id"]) != str(city) or int(row["budget"]) != int(budget):
@@ -1387,22 +1548,48 @@ def _city_budget_arm_interval(rows, city, budget, baseline, resamples, seed):
         if row["arm"] not in {"full", baseline}:
             continue
         key = (
-            str(row["base_map_cluster_id"]),
+            str(row.get("canonical_base_map_digest") or row["base_map_cluster_id"]),
             int(row["seed"]),
             int(row["draw"]),
         )
-        grouped.setdefault((key, str(row["arm"])), []).append(
-            float(row["utility_neg_log_median"])
-        )
+        grouped.setdefault((key, str(row["arm"])), {}).setdefault(
+            str(row.get("canonical_bank_digest") or row["bank_id"]), []
+        ).append(float(row["utility_neg_log_median"]))
     cells = sorted(
         key
         for key in {item[0] for item in grouped}
         if (key, "full") in grouped and (key, baseline) in grouped
     )
     clusters = np.asarray([key[0] for key in cells])
-    full = np.asarray([np.mean(grouped[(key, "full")]) for key in cells])
-    other = np.asarray([np.mean(grouped[(key, baseline)]) for key in cells])
+    full = np.asarray(
+        [
+            np.mean([np.mean(values) for values in grouped[(key, "full")].values()])
+            for key in cells
+        ]
+    )
+    other = np.asarray(
+        [
+            np.mean([np.mean(values) for values in grouped[(key, baseline)].values()])
+            for key in cells
+        ]
+    )
     interval = paired_cluster_interval(clusters, full, other, resamples, seed)
+    if familywise_alpha is not None:
+        adjusted_interval = paired_cluster_interval(
+            clusters,
+            full,
+            other,
+            resamples,
+            seed,
+            alpha=float(familywise_alpha) / max(1, int(family_size)),
+        )
+        interval.update(
+            {
+                "familywise_ci_low": adjusted_interval["ci95_low"],
+                "familywise_ci_high": adjusted_interval["ci95_high"],
+                "familywise_confidence_level": adjusted_interval["confidence_level"],
+            }
+        )
     test = paired_sign_flip_test(clusters, full, other, seed + 1)
     return {**interval, "p_value_two_sided": test["p_value_two_sided"]}
 

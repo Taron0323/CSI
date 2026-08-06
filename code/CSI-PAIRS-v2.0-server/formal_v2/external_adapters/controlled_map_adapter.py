@@ -17,8 +17,10 @@ from formal_v2.external_adapters.controlled_map_models import (
 from formal_v2.external_adapters.wigatr_protocol import (
     SIX_CONDITIONS,
     build_six_condition_units,
+    condition_action_sha256,
     condition_map,
     map_bounds,
+    supplied_map_sha256,
 )
 from formal_v2.formal_data_verification import require_verified_roles_from_root
 from formal_v2.formal_dataset import FormalDataset
@@ -325,8 +327,10 @@ def _evaluate(model, config, dataset, routed, normalizer):
     for unit in units:
         observed = dataset.csi_clean[unit.scene, unit.source_world, unit.position]
         predictions = {}
+        input_digests = {}
         for condition in SIX_CONDITIONS:
             supplied_map = condition_map(dataset, unit, condition)
+            input_digests[condition] = supplied_map_sha256(supplied_map)
             if config["method"] == "sigmap":
                 predictions[condition] = _sigmap_predict(
                     model, dataset, unit.scene, observed, supplied_map, normalizer
@@ -347,6 +351,9 @@ def _evaluate(model, config, dataset, routed, normalizer):
                     "position_id": str(dataset.position_ids[unit.scene, unit.position]),
                     "localization_error_m": float(np.linalg.norm(predictions[condition] - truth)),
                     "csi_context_sha256": unit.csi_context_sha256,
+                    "base_map_cluster_id": str(dataset.base_map_cluster_ids[unit.scene]),
+                    "map_sha256": input_digests[condition],
+                    "action_sha256": condition_action_sha256(dataset, unit, condition),
                     "query_count": 1,
                 }
             )

@@ -9,9 +9,11 @@ from pathlib import Path
 import numpy as np
 
 from .formal_evidence import bind_rows, evidence_context
+from .formal_dataset import _array_sha256
 from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_csv, write_json
-from .formal_wrong_map import CONDITIONS
+from .formal_statistics import interval_decision, paired_cluster_interval
 from .formal_resources import validate_resource_registry
+from .external_adapters.wigatr_protocol import SIX_CONDITIONS as CONDITIONS
 
 
 ALLOWED_IMPLEMENTATION_STATUS = {
@@ -33,10 +35,18 @@ REQUIRED_BASELINE_NAMES = {
     "RFIR",
 }
 BASELINE_STATUSES = {"executed", "not_executed", "not_applicable", "oracle_only"}
-C1_ELIGIBLE_IDENTITIES = {
-    "Wi-GATr": "official-code-adaptation",
-    "WiSER": "paper-spec-controlled-implementation",
+C1_ELIGIBLE_STATUSES = {
+    "official-code-adaptation",
+    "paper-spec-controlled-implementation",
 }
+
+
+def _lower_sha256(value):
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def run_external_baselines(config, dataset, manifest_path, output_root):
@@ -66,6 +76,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
         config, dataset, output_root
     )
     expected_unit_ids = {unit.unit_id for unit in expected_units}
+    expected_condition_contract = _expected_condition_contract(dataset, expected_units)
     unit_rows = []
     for unit in expected_units:
         unit_rows.append(
@@ -79,6 +90,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
                 "null_world": unit.null_world,
                 "wrong_city_bank_id": str(dataset.bank_ids[unit.wrong_city_scene]),
                 "csi_context_sha256": unit.csi_context_sha256,
+                "base_map_cluster_id": str(dataset.base_map_cluster_ids[unit.scene]),
                 "query_count": 1,
             }
         )
@@ -86,8 +98,26 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
         output_dir / "external_unit_registry.csv",
         bind_rows(unit_rows, evidence),
     )
+    condition_registry_path = output_dir / "external_condition_registry.csv"
+    write_csv(
+        condition_registry_path,
+        bind_rows(
+            [
+                {
+                    "unit_id": unit_id,
+                    "condition": condition,
+                    **contract,
+                }
+                for (unit_id, condition), contract in sorted(
+                    expected_condition_contract.items()
+                )
+            ],
+            evidence,
+        ),
+    )
     status_rows = []
     all_rows = []
+    model_assessments = []
     for adapter in manifest["adapters"]:
         adapter_output = output_dir / "adapters" / adapter["adapter_id"]
         adapter_output.mkdir(parents=True, exist_ok=True)
@@ -136,17 +166,38 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
             continue
         with result_path.open(newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
-        _validate_six_condition_rows(
-            adapter,
-            rows,
-            dataset,
-            expected_unit_ids=expected_unit_ids,
-            expected_unit_contract={unit.unit_id: unit for unit in expected_units},
-        )
-        _validate_execution_manifest(
-            adapter, adapter_output, result_path, dataset
-        )
+        try:
+            _validate_six_condition_rows(
+                adapter,
+                rows,
+                dataset,
+                expected_unit_ids=expected_unit_ids,
+                expected_unit_contract={unit.unit_id: unit for unit in expected_units},
+                expected_condition_contract=expected_condition_contract,
+            )
+            _validate_execution_manifest(
+                adapter, adapter_output, result_path, dataset
+            )
+            assessment = _c1_model_assessment(
+                config, adapter, rows, dataset, expected_unit_contract={
+                    unit.unit_id: unit for unit in expected_units
+                }
+            )
+        except (ValueError, RuntimeError) as error:
+            status_rows.append(
+                {
+                    "adapter_id": adapter["adapter_id"],
+                    "model_name": adapter["model_name"],
+                    "implementation_status": adapter["implementation_status"],
+                    "c1_eligible": adapter["c1_eligible"],
+                    "status": "FAIL",
+                    "return_code": completed.returncode,
+                    "reason": f"evidence contract failed: {type(error).__name__}: {error}",
+                }
+            )
+            continue
         all_rows.extend(rows)
+        model_assessments.append(assessment)
         status_rows.append(
             {
                 "adapter_id": adapter["adapter_id"],
@@ -155,6 +206,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
                 "c1_eligible": adapter["c1_eligible"],
                 "status": "PASS",
                 "return_code": completed.returncode,
+                "reason": "authenticated execution and six-condition input contract",
             }
         )
     write_csv(output_dir / "adapter_status.csv", bind_rows(status_rows, evidence))
@@ -174,10 +226,12 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
     passed_models = {
         row["model_name"] for row in status_rows if row["status"] == "PASS"
     }
+    assessment_by_model = {row["model_name"]: row for row in model_assessments}
     c1_eligible_models = {
-        row["model_name"]
-        for row in status_rows
-        if row["status"] == "PASS" and row["c1_eligible"] is True
+        row["model_name"] for row in status_rows
+        if row["status"] == "PASS"
+        and row["c1_eligible"] is True
+        and assessment_by_model[row["model_name"]]["passed"] is True
     }
     passed = len(c1_eligible_models) >= 2
     gate = {
@@ -191,6 +245,11 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
         "unique_passing_models": sorted(passed_models),
         "c1_eligible_model_count": len(c1_eligible_models),
         "c1_eligible_models": sorted(c1_eligible_models),
+        "c1_required_eligible_model_count": 2,
+        "model_assessments": model_assessments,
+        "condition_input_contract": "outer-recomputed-map-and-action-sha256-v1",
+        "condition_registry_path": condition_registry_path.name,
+        "condition_registry_sha256": sha256_file(condition_registry_path),
         "adapter_manifest_sha256": sha256_file(adapter_manifest_copy),
         "adapter_manifest_path": adapter_manifest_copy.name,
         "resource_registry_sha256": sha256_file(resource_registry_path),
@@ -225,6 +284,8 @@ def _validate_manifest(manifest):
             "license_id",
             "citation_key",
             "source_revision",
+            "adapter_source_path",
+            "adapter_source_sha256",
             "map_conditioned",
             "c1_eligible",
             "command",
@@ -243,16 +304,24 @@ def _validate_manifest(manifest):
         if adapter["c1_eligible"] and adapter["implementation_status"] == "style-controlled-implementation":
             raise ValueError("style-controlled adapters cannot support C1")
         if adapter["c1_eligible"]:
-            expected_status = C1_ELIGIBLE_IDENTITIES.get(adapter["model_name"])
-            if expected_status != adapter["implementation_status"]:
-                raise ValueError("C1-eligible adapter identity or implementation status is not frozen")
+            if adapter["implementation_status"] not in C1_ELIGIBLE_STATUSES:
+                raise ValueError("C1-eligible adapter must be official-code or paper-spec controlled")
+            if adapter["model_name"] in eligible_models:
+                raise ValueError("C1-eligible model identities must be unique")
             eligible_models.add(adapter["model_name"])
         if not isinstance(adapter["command"], list) or not adapter["command"]:
             raise ValueError("external adapter command must be a nonempty argv list")
         if not all(isinstance(adapter[key], str) and adapter[key].strip() for key in ("citation_key", "source_revision", "license_id")):
             raise ValueError("external adapter provenance fields must be nonempty")
-    if eligible_models != set(C1_ELIGIBLE_IDENTITIES):
-        raise ValueError("external manifest must contain both frozen C1-eligible identities")
+        source = (Path(__file__).resolve().parents[1] / adapter["adapter_source_path"]).resolve()
+        project_root = Path(__file__).resolve().parents[1]
+        if (
+            project_root not in source.parents
+            or not source.is_file()
+            or not _lower_sha256(adapter["adapter_source_sha256"])
+            or sha256_file(source) != adapter["adapter_source_sha256"]
+        ):
+            raise ValueError("external adapter source path/hash is missing or mismatched")
     registry = manifest["literature_registry"]
     if not isinstance(registry, list) or {row.get("baseline_name") for row in registry} != REQUIRED_BASELINE_NAMES:
         raise ValueError("literature registry must contain every frozen V6 baseline name")
@@ -274,6 +343,7 @@ def _validate_six_condition_rows(
     *,
     expected_unit_ids=None,
     expected_unit_contract=None,
+    expected_condition_contract=None,
 ):
     if not rows:
         raise ValueError("external adapter emitted no result rows")
@@ -287,8 +357,12 @@ def _validate_six_condition_rows(
         "position_id",
         "localization_error_m",
         "csi_context_sha256",
+        "base_map_cluster_id",
+        "map_sha256",
+        "action_sha256",
         "query_count",
     }
+    seen_rows = set()
     for row in rows:
         if set(row) != required_columns:
             raise ValueError("external result columns must be exact")
@@ -313,9 +387,13 @@ def _validate_six_condition_rows(
             value = float(row["localization_error_m"])
         except ValueError as error:
             raise ValueError("external localization error must be numeric") from error
-        if value < 0:
+        if not np.isfinite(value) or value < 0:
             raise ValueError("external localization error must be nonnegative")
+        key = (row.get("unit_id"), row.get("condition"))
         by_unit.setdefault(row.get("unit_id"), set()).add(row.get("condition"))
+        if key in seen_rows:
+            raise ValueError("external result duplicates a unit-condition row")
+        seen_rows.add(key)
     required = set(CONDITIONS)
     if any(conditions != required for conditions in by_unit.values()):
         raise ValueError("every external unit must contain exactly the six frozen conditions")
@@ -334,12 +412,24 @@ def _validate_six_condition_rows(
                 "bank_id": str(dataset.bank_ids[unit.scene]),
                 "position_id": str(dataset.position_ids[unit.scene, unit.position]),
                 "csi_context_sha256": unit.csi_context_sha256,
+                "base_map_cluster_id": str(dataset.base_map_cluster_ids[unit.scene]),
                 "query_count": "1",
             }
             for key, value in expected.items():
                 if any(str(row[key]) != value for row in selected):
                     raise ValueError(
                         f"external unit {unit_id!r} changes frozen {key}"
+                    )
+    if expected_condition_contract is not None:
+        for row in rows:
+            key = (row["unit_id"], row["condition"])
+            expected = expected_condition_contract.get(key)
+            if expected is None:
+                raise ValueError("external result has no outer-generated condition contract")
+            for field in ("map_sha256", "action_sha256", "base_map_cluster_id"):
+                if str(row[field]) != str(expected[field]):
+                    raise ValueError(
+                        f"external {key!r} {field} differs from outer recomputation"
                     )
     for unit_id in by_unit:
         selected = [row for row in rows if row["unit_id"] == unit_id]
@@ -348,10 +438,133 @@ def _validate_six_condition_rows(
         if len({row["query_count"] for row in selected}) != 1:
             raise ValueError("six-condition unit changes the evaluation denominator")
         digest = selected[0]["csi_context_sha256"]
-        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        if not _lower_sha256(digest):
             raise ValueError("external CSI context digest must be lowercase SHA-256")
-        if int(selected[0]["query_count"]) <= 0:
+        if any(not _lower_sha256(row[field]) for row in selected for field in ("map_sha256", "action_sha256")):
+            raise ValueError("external map/action digests must be lowercase SHA-256")
+        try:
+            query_count = int(selected[0]["query_count"])
+        except ValueError as error:
+            raise ValueError("external query_count must be an integer") from error
+        if query_count <= 0:
             raise ValueError("external query_count must be positive")
+
+
+def _expected_condition_contract(dataset, units):
+    from .external_adapters.wigatr_protocol import condition_map
+
+    result = {}
+    for unit in units:
+        cluster = str(dataset.base_map_cluster_ids[unit.scene])
+        for condition in CONDITIONS:
+            result[(unit.unit_id, condition)] = {
+                "base_map_cluster_id": cluster,
+                "map_sha256": _array_sha256(condition_map(dataset, unit, condition)),
+                "action_sha256": _condition_action_sha256(dataset, unit, condition),
+            }
+    return result
+
+
+def _condition_action_sha256(dataset, unit, condition):
+    target_world = None
+    if condition == "paired_active_alternative":
+        target_world = int(unit.active_world)
+    elif condition == "paired_null_alternative":
+        target_world = int(unit.null_world)
+    payload = {"condition": condition, "action": None}
+    if target_world is not None:
+        matches = [
+            edge for edge in dataset.directed_edges(int(unit.scene))
+            if int(edge.source_world) == int(unit.source_world)
+            and int(edge.target_world) == target_world
+        ]
+        if len(matches) != 1:
+            raise RuntimeError("six-condition action is not a unique directed edit")
+        edge = matches[0]
+        payload["action"] = {
+            "source_world": int(edge.source_world),
+            "target_world": int(edge.target_world),
+            "bit_index": int(edge.bit_index),
+            "primitive_id": int(edge.primitive_id),
+            "direction": int(edge.direction),
+        }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _c1_model_assessment(config, adapter, rows, dataset, *, expected_unit_contract):
+    lookup = {(row["unit_id"], row["condition"]): row for row in rows}
+    units = sorted(expected_unit_contract)
+    clusters = np.asarray(
+        [str(dataset.base_map_cluster_ids[expected_unit_contract[unit].scene]) for unit in units]
+    )
+    correct = np.asarray(
+        [float(lookup[(unit, "correct")]["localization_error_m"]) for unit in units]
+    )
+    active = np.asarray(
+        [float(lookup[(unit, "paired_active_alternative")]["localization_error_m"]) for unit in units]
+    )
+    null = np.asarray(
+        [float(lookup[(unit, "paired_null_alternative")]["localization_error_m"]) for unit in units]
+    )
+    cluster_count = int(np.unique(clusters).size)
+    if cluster_count < 2:
+        return {
+            "adapter_id": adapter["adapter_id"],
+            "model_name": adapter["model_name"],
+            "c1_eligible": adapter["c1_eligible"],
+            "base_map_cluster_count": cluster_count,
+            "passed": False,
+            "reason": "fewer than two independent base-map clusters",
+        }
+    resamples = int(config["evaluation"]["bootstrap_resamples"])
+    active_interval = paired_cluster_interval(clusters, active, correct, resamples, 86101)
+    null_interval = paired_cluster_interval(clusters, null, correct, resamples, 86102)
+    stress_intervals = {
+        condition: paired_cluster_interval(
+            clusters,
+            np.asarray([
+                float(lookup[(unit, condition)]["localization_error_m"])
+                for unit in units
+            ]),
+            correct,
+            resamples,
+            86110 + index,
+        )
+        for index, condition in enumerate(("wrong_city", "geometry_destroyed", "empty"))
+    }
+    active_minimum = float(config["evaluation"]["c1_active_error_minimum_m"])
+    margin = float(config["evaluation"]["c1_null_error_equivalence_margin_m"])
+    maximum_rate = float(config["evaluation"]["null_overclassification_rate_max"])
+    cluster_rates = []
+    for cluster in sorted(set(clusters.tolist())):
+        selected = clusters == cluster
+        cluster_rates.append(float(np.mean((null[selected] - correct[selected]) > margin)))
+    overclassification_rate = float(np.mean(cluster_rates))
+    active_passed = interval_decision(
+        active_interval, threshold=active_minimum, relation="superiority"
+    )
+    null_passed = bool(
+        interval_decision(null_interval, threshold=margin, relation="equivalence")
+        and overclassification_rate <= maximum_rate
+    )
+    return {
+        "adapter_id": adapter["adapter_id"],
+        "model_name": adapter["model_name"],
+        "c1_eligible": adapter["c1_eligible"],
+        "base_map_cluster_count": cluster_count,
+        "active_error_minus_correct": active_interval,
+        "active_error_minimum_m": active_minimum,
+        "active_effect_passed": active_passed,
+        "null_error_minus_correct": null_interval,
+        "null_equivalence_margin_m": margin,
+        "null_overclassification_rate": overclassification_rate,
+        "null_overclassification_rate_max": maximum_rate,
+        "null_safety_passed": null_passed,
+        "stress_condition_error_minus_correct": stress_intervals,
+        "passed": bool(active_passed and null_passed),
+    }
 
 
 def _validate_execution_manifest(adapter, output_dir, result_path, dataset):

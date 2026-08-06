@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .formal_io import read_strict_json
+from .formal_protocol import FROZEN_RANDOM_MASK_FRACTION
 
 
 SCHEMA_VERSION = "csi-pairs-formal-config-v2.1-v6"
@@ -124,6 +125,8 @@ EVALUATION_KEYS = {
     "minimum_concat_superiority",
     "null_score_equivalence_margin",
     "null_overclassification_rate_max",
+    "c1_active_error_minimum_m",
+    "c1_null_error_equivalence_margin_m",
     "resource_match_relative_tolerance",
     "scene_id_error_noninferiority_m",
     "scene_id_swap_correlation_min",
@@ -286,12 +289,21 @@ def validate_formal_config(config: object) -> None:
     for key in ("steps", "batch_size", "latent_dim", "encoder_layers", "decoder_layers"):
         _positive_int(teacher[key], f"teacher.{key}")
     _finite_number(teacher["learning_rate"], "teacher.learning_rate", minimum=1e-12)
-    _finite_number(teacher["mask_fraction"], "teacher.mask_fraction", minimum=0.5, maximum=0.95)
+    _finite_number(teacher["mask_fraction"], "teacher.mask_fraction", minimum=0.0, maximum=0.95)
+    if float(teacher["mask_fraction"]) != FROZEN_RANDOM_MASK_FRACTION:
+        raise ValueError(
+            f"teacher.mask_fraction must equal the frozen V6 value {FROZEN_RANDOM_MASK_FRACTION}"
+        )
 
     model = config["model"]
     for key in ("state_dim", "map_dim", "hidden_dim"):
         _positive_int(model[key], f"model.{key}", minimum=4)
     _finite_number(model["mask_fraction"], "model.mask_fraction", minimum=0.0, maximum=0.95)
+    if float(model["mask_fraction"]) != FROZEN_RANDOM_MASK_FRACTION:
+        raise ValueError(
+            "model.mask_fraction is the frozen mask-bank contract and must equal "
+            f"{FROZEN_RANDOM_MASK_FRACTION}"
+        )
     _finite_number(model["learning_rate"], "model.learning_rate", minimum=1e-12)
     _finite_number(model["weight_decay"], "model.weight_decay", minimum=0.0)
     _positive_int(model["attention_heads"], "model.attention_heads")
@@ -377,6 +389,16 @@ def validate_formal_config(config: object) -> None:
         "evaluation.null_overclassification_rate_max",
         minimum=0.0,
         maximum=1.0,
+    )
+    _finite_number(
+        evaluation["c1_active_error_minimum_m"],
+        "evaluation.c1_active_error_minimum_m",
+        minimum=0.0,
+    )
+    _finite_number(
+        evaluation["c1_null_error_equivalence_margin_m"],
+        "evaluation.c1_null_error_equivalence_margin_m",
+        minimum=0.0,
     )
     _finite_number(
         evaluation["resource_match_relative_tolerance"],

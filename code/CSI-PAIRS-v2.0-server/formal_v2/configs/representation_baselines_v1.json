@@ -1,7 +1,7 @@
 {
-  "schema_version": "csi-pairs-v6-representation-baselines-v1",
+  "schema_version": "csi-pairs-v6-representation-baselines-v2",
   "profile": "formal-paper-dose",
-  "seed": 20260901,
+  "seeds": [20260901, 20260917, 20260937],
   "source_roles": {
     "pretrain": "source_encoder_train",
     "selection": "source_method_selection",

@@ -72,7 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("--verifier-manifest", required=True)
         if command == "all":
             child.add_argument("--verifier-manifest", required=True)
-            child.add_argument("--risk-feature-manifest", required=True)
+            child.add_argument(
+                "--risk-feature-manifest",
+                help="deprecated; all replays risk features in first-party code",
+            )
             child.add_argument("--adapter-manifest", required=True)
             child.add_argument("--control-manifest", required=True)
             child.add_argument("--scene-id-manifest", required=True)
@@ -91,7 +94,10 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("--qualification-gate", help="defaults to OUTPUT/qualification/gate.json")
             child.add_argument("--factorial-gate", help="defaults to OUTPUT/factorial/gate.json")
         if command == "run-risk":
-            child.add_argument("--risk-features", required=True)
+            child.add_argument(
+                "--risk-features",
+                help="deprecated; risk features are replayed first-party from OUTPUT artifacts",
+            )
         if command == "run-external-baselines":
             child.add_argument("--adapter-manifest", required=True)
         if command == "run-representation-baselines":
@@ -217,13 +223,13 @@ def main(argv: list[str] | None = None) -> int:
                 read_strict_json(factorial_path),
             )
         elif args.command == "run-risk":
-            from .formal_risk import load_risk_feature_archive, run_risk_contract
+            from .formal_risk import build_first_party_risk_features, run_risk_contract
 
             result = run_risk_contract(
                 config,
                 dataset,
                 output,
-                load_risk_feature_archive(args.risk_features, config, dataset, output),
+                build_first_party_risk_features(config, dataset, output),
             )
         elif args.command == "run-path":
             from .formal_path import run_path_audit
@@ -310,15 +316,13 @@ def main(argv: list[str] | None = None) -> int:
             from .formal_evaluation import run_formal_evaluation
 
             run_formal_evaluation(config, dataset, output, qualification, result)
-            from .formal_risk import run_risk_contract, run_risk_feature_adapter
+            from .formal_risk import build_first_party_risk_features, run_risk_contract
 
             run_risk_contract(
                 config,
                 dataset,
                 output,
-                run_risk_feature_adapter(
-                    args.risk_feature_manifest, config, dataset, output
-                ),
+                build_first_party_risk_features(config, dataset, output),
             )
             from .formal_path import run_path_audit
 

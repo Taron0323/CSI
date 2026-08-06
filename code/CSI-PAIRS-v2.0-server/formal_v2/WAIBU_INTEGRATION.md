@@ -12,7 +12,7 @@ or scientific support.
 | `2601.03789v1.pdf` | masked CSI baseline and Stage-0 neighbor | 75% per-sample random 2D patches, fixed 2D sine-cosine position, asymmetric ViT encoder/narrow decoder | CSI-MAE paper-spec controlled implementation |
 | `2603.25216v1.pdf` | multimodal same-world baseline | CSI/map/context modality experts, online/EMA target JEPA, latent L1 | WWM-inspired same-world matched prediction |
 | `2604.07086v1.pdf` | editable RF forward baseline | 2.5D anisotropic Gaussian primitives, occupancy visibility, alpha transmittance, learned RF material response | RFIR-inspired controlled implementation |
-| `2606.04770v1.pdf` | geometry-grounded multi-view baseline | 2.5D-derived multiscale sparse scene tokens, ray-corridor radiomap head, learned-query CIR decoder and Hungarian delay/power matching | WiSER paper-spec controlled implementation |
+| `2606.04770v1.pdf` | geometry-grounded multi-view reference | local 2D map/CSI Transformer diagnostic; it omits the paper's sparse 3D TRELLIS model, dense receiver-plane radiomap objective, physical unordered path targets, and checkpoint warm starts | WiSER style-controlled implementation; C1-ineligible |
 | `sionna-main.zip` | RT provenance package | authenticated local Sionna 2.0.1 source metadata plus official `sionna-rt` dependency; unrelated PHY/PyTorch CUDA stack is outside G8 | Sionna official-source RT facility |
 | `sionna-large-radio-maps-main.zip` | tiling, scene build, large radio maps | official scripts and strict output audit | Sionna large-radio-map official facility |
 
@@ -70,9 +70,10 @@ python3 -m formal_v2.formal_cli export-sionna-scenes \
 
 - Representation-baseline PASS means source-only training, checkpoint selection, unified probe,
   and target query evaluation completed. It contributes comparison rows but never C1.
-- External-baseline PASS requires at least two distinct map-conditioned model executions over the
-  exact same internally generated unit IDs and six maps. C1 additionally requires two adapters
-  explicitly eligible as official-code or paper-spec implementations; style controls never count.
+- External-baseline PASS requires at least two C1-eligible map-conditioned models over the exact same
+  internally generated units. Every condition must report map/action digests that the outer runner
+  recomputes, and each eligible model must pass cluster-macro active-effect and null-equivalence gates.
+  The shipped manifest has only Wi-GATr in that class, so it intentionally leaves C1 blocked.
 - G8 requires actual independent Sionna scene XML/assets, hashes, licenses, and retraced CFRs.
 - Formal profile execution on real, independently regenerated data is required for scientific use.
 - Fixture, smoke profile, unavailable dependency, missing asset, or hash mismatch remains permanently

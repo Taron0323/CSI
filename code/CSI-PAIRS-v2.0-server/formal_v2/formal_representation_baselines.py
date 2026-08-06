@@ -15,7 +15,8 @@ from .formal_protocol import PatchSpec
 from .formal_resources import validate_resource_registry
 
 
-CONFIG_SCHEMA = "csi-pairs-v6-representation-baselines-v1"
+CONFIG_SCHEMA = "csi-pairs-v6-representation-baselines-v2"
+LEGACY_SMOKE_CONFIG_SCHEMA = "csi-pairs-v6-representation-baselines-v1"
 MODEL_NAMES = {"CSI-MAE", "CSI-CLIP", "CSI-CLIP++", "ContraWiMAE", "WWM"}
 IMPLEMENTATION_STATUSES = {
     "paper-spec-controlled-implementation",
@@ -50,11 +51,13 @@ def run_representation_baselines(config, dataset, adapter_config_path, output_ro
     )
     spec = PatchSpec.from_metadata(dataset.metadata)
     normalizer = _fit_normalizer(dataset, dataset.indices_for_role("source_encoder_train"))
+    algorithm_seeds = tuple(int(value) for value in adapter["seeds"])
     support_draws = _target_support_draws(config, adapter, dataset)
+    expected_metric_units = _expected_metric_units(config, adapter, dataset)
     status_rows = []
     metric_rows = []
     per_query_rows = []
-    for model_index, model_config in enumerate(adapter["models"]):
+    for model_config in adapter["models"]:
         model_name = model_config["model_name"]
         resource = resources.get(model_config["resource_id"])
         if resource is None or resource["status"] != "PASS":
@@ -66,68 +69,100 @@ def run_representation_baselines(config, dataset, adapter_config_path, output_ro
             raise RuntimeError(f"representation baseline label exceeds its authenticated provenance: {model_name}")
         model_output = output_dir / _slug(model_name)
         model_output.mkdir(parents=True, exist_ok=False)
-        torch.manual_seed(int(adapter["seed"]) + model_index)
-        model = build_representation_model(
-            model_name,
-            spec,
-            dataset.maps.shape[2],
-            dataset.radio_config.shape[1] + dataset.bs_pose.shape[1] + 2,
-            model_config,
-        )
-        checkpoint, training_record = _train_model(
-            model,
-            model_name,
-            model_config,
-            dataset,
-            normalizer,
-            model_output,
-            seed=int(adapter["seed"]) + model_index,
-        )
-        write_json(model_output / "training_record.json", training_record)
-        rows, queries, probe_record = _evaluate_localization(
-            model,
-            model_name,
-            model_config,
-            adapter,
-            config,
-            dataset,
-            normalizer,
-            support_draws,
-            seed=int(adapter["seed"]) + model_index,
-        )
-        write_json(model_output / "probe_record.json", probe_record)
-        write_csv(model_output / "localization_metrics.csv", bind_rows(rows, evidence))
-        write_csv(model_output / "localization_per_query.csv", bind_rows(queries, evidence))
-        metric_rows.extend(rows)
-        per_query_rows.extend(queries)
-        status_rows.append(
-            {
-                "model_name": model_name,
-                "paper_label": model_config["paper_label"],
-                "implementation_status": model_config["implementation_status"],
-                "resource_id": model_config["resource_id"],
-                "resource_sha256": resource["sha256"],
-                "checkpoint_path": str(checkpoint.relative_to(output_dir)),
-                "checkpoint_sha256": sha256_file(checkpoint),
-                "status": "PASS",
-            }
-        )
+        for algorithm_seed in algorithm_seeds:
+            seed_output = model_output / f"seed_{algorithm_seed}"
+            seed_output.mkdir(parents=True, exist_ok=False)
+            torch.manual_seed(algorithm_seed)
+            model = build_representation_model(
+                model_name,
+                spec,
+                dataset.maps.shape[2],
+                dataset.radio_config.shape[1] + dataset.bs_pose.shape[1] + 2,
+                model_config,
+            )
+            checkpoint, training_record = _train_model(
+                model,
+                model_name,
+                model_config,
+                dataset,
+                normalizer,
+                seed_output,
+                seed=algorithm_seed,
+            )
+            write_json(seed_output / "training_record.json", training_record)
+            rows, queries, probe_record = _evaluate_localization(
+                model,
+                model_name,
+                model_config,
+                adapter,
+                config,
+                dataset,
+                normalizer,
+                support_draws,
+                seed=algorithm_seed,
+            )
+            write_json(seed_output / "probe_record.json", probe_record)
+            write_csv(seed_output / "localization_metrics.csv", bind_rows(rows, evidence))
+            write_csv(seed_output / "localization_per_query.csv", bind_rows(queries, evidence))
+            metric_rows.extend(rows)
+            per_query_rows.extend(queries)
+            status_rows.append(
+                {
+                    "model_name": model_name,
+                    "algorithm_seed": algorithm_seed,
+                    "paper_label": model_config["paper_label"],
+                    "implementation_status": model_config["implementation_status"],
+                    "resource_id": model_config["resource_id"],
+                    "resource_sha256": resource["sha256"],
+                    "checkpoint_path": str(checkpoint.relative_to(output_dir)),
+                    "checkpoint_sha256": sha256_file(checkpoint),
+                    "status": "PASS",
+                }
+            )
+            del model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     write_csv(output_dir / "model_status.csv", bind_rows(status_rows, evidence))
     write_csv(output_dir / "localization_metrics.csv", bind_rows(metric_rows, evidence))
     write_csv(output_dir / "localization_per_query.csv", bind_rows(per_query_rows, evidence))
-    passed = len(status_rows) == len(adapter["models"]) and all(row["status"] == "PASS" for row in status_rows)
+    summary_rows = _summarize_across_seeds(per_query_rows, algorithm_seeds)
+    write_csv(output_dir / "localization_across_seed_summary.csv", bind_rows(summary_rows, evidence))
+    completeness = _validate_representation_outputs(
+        status_rows,
+        metric_rows,
+        per_query_rows,
+        [row["model_name"] for row in adapter["models"]],
+        algorithm_seeds,
+        expected_metric_units,
+    )
+    summary_complete = bool(summary_rows) and all(
+        int(row["algorithm_seed_count"]) == len(algorithm_seeds)
+        and bool(row["all_expected_algorithm_seeds_present"])
+        for row in summary_rows
+    )
+    passed = bool(completeness["passed"] and summary_complete)
     gate = {
-        "schema_version": "csi-pairs-v6-representation-baseline-gate-v1",
+        "schema_version": "csi-pairs-v6-representation-baseline-gate-v2",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
         "profile": adapter["profile"],
         "adapter_config_sha256": sha256_file(adapter_config_path),
         "resource_registry_sha256": sha256_file(resource_registry_path),
-        "executed_model_count": len(status_rows),
-        "executed_models": [row["model_name"] for row in status_rows],
+        "algorithm_seeds": list(algorithm_seeds),
+        "algorithm_seed_count": len(algorithm_seeds),
+        "expected_model_seed_count": len(adapter["models"]) * len(algorithm_seeds),
+        "executed_model_seed_count": len(status_rows),
+        "executed_model_count": len({row["model_name"] for row in status_rows}),
+        "executed_models": sorted({row["model_name"] for row in status_rows}),
+        "expected_metric_unit_count_per_model_seed": len(expected_metric_units),
+        "common_metric_units_complete": completeness["metric_units_complete"],
+        "common_query_units_complete": completeness["query_units_complete"],
+        "completeness_errors": completeness["errors"],
+        "across_seed_summary_complete": summary_complete,
         "c1_eligible_model_count": 0,
-        "claim_scope": "representation/localization comparison only; these rows cannot satisfy C1",
+        "claim_eligible": False,
+        "claim_scope": "descriptive representation/localization comparison only; this stage cannot satisfy C1 or any scientific claim gate",
     }
     write_json(output_dir / "gate.json", gate)
     write_json(
@@ -143,17 +178,28 @@ def run_representation_baselines(config, dataset, adapter_config_path, output_ro
 
 def load_representation_config(path: str | Path) -> dict:
     payload = read_strict_json(path)
-    if not isinstance(payload, dict) or set(payload) != {
-        "schema_version",
-        "profile",
-        "seed",
-        "source_roles",
-        "probe",
-        "models",
-    }:
+    if not isinstance(payload, dict):
         raise ValueError("representation baseline config fields must be exact")
-    if payload["schema_version"] != CONFIG_SCHEMA:
+    expected_fields = {
+        "schema_version", "profile", "seeds", "source_roles", "probe", "models"
+    }
+    legacy_fields = {
+        "schema_version", "profile", "seed", "source_roles", "probe", "models"
+    }
+    if set(payload) == legacy_fields:
+        if (
+            payload["schema_version"] != LEGACY_SMOKE_CONFIG_SCHEMA
+            or payload["profile"] != "software-smoke-only"
+        ):
+            raise ValueError("legacy single-seed representation configs are software-smoke-only")
+        payload = dict(payload)
+        payload["seeds"] = [payload.pop("seed")]
+    elif set(payload) != expected_fields:
+        raise ValueError("representation baseline config fields must be exact")
+    if payload["schema_version"] not in {CONFIG_SCHEMA, LEGACY_SMOKE_CONFIG_SCHEMA}:
         raise ValueError("representation baseline config schema mismatch")
+    if payload["schema_version"] == LEGACY_SMOKE_CONFIG_SCHEMA and payload["profile"] != "software-smoke-only":
+        raise ValueError("legacy representation config schema is software-smoke-only")
     if payload["profile"] not in {"formal-paper-dose", "software-smoke-only"}:
         raise ValueError("representation baseline profile is invalid")
     if payload["source_roles"] != {
@@ -164,7 +210,15 @@ def load_representation_config(path: str | Path) -> dict:
         "evaluation": ["source_final_unseen_bank", "target"],
     }:
         raise ValueError("representation baseline role ledger is not frozen V6")
-    _positive_integer(payload["seed"], "seed")
+    seeds = payload["seeds"]
+    if not isinstance(seeds, list) or not seeds:
+        raise ValueError("representation algorithm seeds must be a nonempty list")
+    for index, seed in enumerate(seeds):
+        _positive_integer(seed, f"seeds[{index}]")
+    if len(set(seeds)) != len(seeds):
+        raise ValueError("representation algorithm seeds must be distinct")
+    if payload["profile"] == "formal-paper-dose" and len(seeds) < 3:
+        raise ValueError("formal representation execution requires at least three independent algorithm seeds")
     if set(payload["probe"]) != {"head_steps", "learning_rate", "hidden_dim", "label_draws"}:
         raise ValueError("representation probe config fields must be exact")
     for key in ("head_steps", "hidden_dim", "label_draws"):
@@ -238,6 +292,254 @@ def load_representation_config(path: str | Path) -> dict:
     return payload
 
 
+def _expected_metric_units(formal_config, adapter, dataset):
+    units = set()
+    for scene, _, _ in _natural_position_units(dataset, "source_final_unseen_bank", query_only=False):
+        units.add(("source_final_unseen_bank", str(dataset.city_ids[scene]), 0, 0))
+
+    support_counts = {}
+    for scene_value in dataset.indices_for_role("target"):
+        scene = int(scene_value)
+        city = str(dataset.city_ids[scene])
+        support_counts.setdefault(city, set()).update(
+            str(dataset.position_ids[scene, position])
+            for position in np.flatnonzero(dataset.position_roles[scene] == "support_pool")
+        )
+    target_cities = {
+        str(dataset.city_ids[scene])
+        for scene, _, _ in _natural_position_units(dataset, "target", query_only=True)
+    }
+    for city in target_cities:
+        for draw in range(int(adapter["probe"]["label_draws"])):
+            for budget_value in formal_config["localization"]["label_budgets"]:
+                budget = int(budget_value)
+                if len(support_counts.get(city, set())) < budget:
+                    if adapter["profile"] == "formal-paper-dose":
+                        # Evaluation fails closed before the gate for this condition.
+                        units.add(("target", city, budget, draw))
+                    continue
+                units.add(("target", city, budget, draw))
+    return tuple(sorted(units))
+
+
+def _validate_representation_outputs(
+    status_rows,
+    metric_rows,
+    per_query_rows,
+    model_names,
+    algorithm_seeds,
+    expected_metric_units,
+):
+    expected_identities = {
+        (str(model_name), int(seed))
+        for model_name in model_names
+        for seed in algorithm_seeds
+    }
+    errors = []
+
+    status_counts = {}
+    checkpoint_paths = {}
+    for row in status_rows:
+        identity = (str(row.get("model_name")), int(row.get("algorithm_seed", -1)))
+        status_counts[identity] = status_counts.get(identity, 0) + 1
+        if row.get("status") != "PASS":
+            errors.append(f"model-seed status is not PASS: {identity}")
+        checkpoint_path = str(row.get("checkpoint_path", ""))
+        checkpoint_sha256 = str(row.get("checkpoint_sha256", ""))
+        checkpoint_paths.setdefault(checkpoint_path, []).append(identity)
+        if f"seed_{identity[1]}/" not in checkpoint_path.replace("\\", "/"):
+            errors.append(f"checkpoint path is not seed-scoped for {identity}: {checkpoint_path!r}")
+        if len(checkpoint_sha256) != 64 or any(
+            value not in "0123456789abcdef" for value in checkpoint_sha256
+        ):
+            errors.append(f"checkpoint digest is invalid for {identity}")
+    status_identities = set(status_counts)
+    if status_identities != expected_identities:
+        missing = sorted(expected_identities - status_identities)
+        unexpected = sorted(status_identities - expected_identities)
+        if missing:
+            errors.append(f"missing model-seed status rows: {missing}")
+        if unexpected:
+            errors.append(f"unexpected model-seed status rows: {unexpected}")
+    duplicated_status = sorted(identity for identity, count in status_counts.items() if count != 1)
+    if duplicated_status:
+        errors.append(f"non-unique model-seed status rows: {duplicated_status}")
+    reused_checkpoints = sorted(
+        path for path, identities in checkpoint_paths.items() if not path or len(identities) != 1
+    )
+    if reused_checkpoints:
+        errors.append(f"checkpoint paths are empty or reused across model-seed runs: {reused_checkpoints}")
+
+    expected_units = set(expected_metric_units)
+    metric_units_by_identity = {identity: set() for identity in expected_identities}
+    metric_counts = {}
+    for row in metric_rows:
+        identity = (str(row.get("model_name")), int(row.get("algorithm_seed", -1)))
+        unit = (
+            str(row.get("split_role")),
+            str(row.get("city_id")),
+            int(row.get("budget", -1)),
+            int(row.get("draw", -1)),
+        )
+        metric_units_by_identity.setdefault(identity, set()).add(unit)
+        metric_counts[(identity, unit)] = metric_counts.get((identity, unit), 0) + 1
+    metric_units_complete = True
+    for identity in sorted(expected_identities):
+        observed = metric_units_by_identity.get(identity, set())
+        if observed != expected_units:
+            metric_units_complete = False
+            missing = sorted(expected_units - observed)
+            unexpected = sorted(observed - expected_units)
+            errors.append(
+                f"metric-unit mismatch for {identity}: missing={missing}, unexpected={unexpected}"
+            )
+    unexpected_metric_identities = sorted(set(metric_units_by_identity) - expected_identities)
+    if unexpected_metric_identities:
+        metric_units_complete = False
+        errors.append(f"unexpected metric identities: {unexpected_metric_identities}")
+    duplicated_metrics = sorted(key for key, count in metric_counts.items() if count != 1)
+    if duplicated_metrics:
+        metric_units_complete = False
+        errors.append(f"duplicate metric rows: {duplicated_metrics}")
+
+    query_units_by_identity = {identity: set() for identity in expected_identities}
+    query_counts = {}
+    for row in per_query_rows:
+        identity = (str(row.get("model_name")), int(row.get("algorithm_seed", -1)))
+        query_unit = (
+            str(row.get("split_role")),
+            str(row.get("city_id")),
+            int(row.get("budget", -1)),
+            int(row.get("draw", -1)),
+            str(row.get("independent_unit_id")),
+            str(row.get("bank_id")),
+            str(row.get("position_id")),
+            int(row.get("world", -1)),
+        )
+        query_units_by_identity.setdefault(identity, set()).add(query_unit)
+        query_counts[(identity, query_unit)] = query_counts.get((identity, query_unit), 0) + 1
+    reference_query_units = None
+    query_units_complete = bool(per_query_rows)
+    for identity in sorted(expected_identities):
+        observed = query_units_by_identity.get(identity, set())
+        observed_metric_units = {unit[:4] for unit in observed}
+        if not observed or observed_metric_units != expected_units:
+            query_units_complete = False
+            errors.append(
+                f"query metric-unit coverage mismatch for {identity}: "
+                f"missing={sorted(expected_units - observed_metric_units)}, "
+                f"unexpected={sorted(observed_metric_units - expected_units)}"
+            )
+        if reference_query_units is None:
+            reference_query_units = observed
+        elif observed != reference_query_units:
+            query_units_complete = False
+            errors.append(f"query units are not common across model-seed runs: {identity}")
+    unexpected_query_identities = sorted(set(query_units_by_identity) - expected_identities)
+    if unexpected_query_identities:
+        query_units_complete = False
+        errors.append(f"unexpected query identities: {unexpected_query_identities}")
+    duplicated_queries = sorted(key for key, count in query_counts.items() if count != 1)
+    if duplicated_queries:
+        query_units_complete = False
+        errors.append(f"duplicate per-query rows: {duplicated_queries}")
+
+    return {
+        "passed": not errors and metric_units_complete and query_units_complete,
+        "metric_units_complete": metric_units_complete,
+        "query_units_complete": query_units_complete,
+        "errors": errors,
+    }
+
+
+def _summarize_across_seeds(per_query_rows, algorithm_seeds, *, bootstrap_draws=2000):
+    cluster_values = {}
+    metadata = {}
+    for row in per_query_rows:
+        cell = (
+            str(row["model_name"]),
+            int(row["algorithm_seed"]),
+            str(row["split_role"]),
+            str(row["city_id"]),
+            int(row["budget"]),
+            int(row["draw"]),
+            str(row["independent_unit_id"]),
+        )
+        cluster_values.setdefault(cell, []).append(float(row["localization_error_m"]))
+        model_key = cell[0]
+        model_metadata = (
+            str(row["paper_label"]),
+            str(row["implementation_status"]),
+        )
+        if model_key in metadata and metadata[model_key] != model_metadata:
+            raise RuntimeError(f"representation metadata changes within model {model_key}")
+        metadata[model_key] = model_metadata
+
+    seed_cells = {}
+    for key, values in cluster_values.items():
+        model_name, seed, role, city, budget, draw, _ = key
+        seed_cell = (model_name, role, city, budget, draw, seed)
+        seed_cells.setdefault(seed_cell, []).append(float(np.median(values)))
+
+    across_seed = {}
+    for key, cluster_medians in seed_cells.items():
+        model_name, role, city, budget, draw, seed = key
+        output_key = (model_name, role, city, budget, draw)
+        across_seed.setdefault(output_key, {})[seed] = {
+            "cluster_macro_error_m": float(np.mean(cluster_medians)),
+            "cluster_count": len(cluster_medians),
+        }
+
+    expected_seeds = tuple(int(value) for value in algorithm_seeds)
+    rows = []
+    rng = np.random.default_rng(0x435349)
+    for key in sorted(across_seed):
+        model_name, role, city, budget, draw = key
+        values_by_seed = across_seed[key]
+        present_seeds = sorted(values_by_seed)
+        values = np.asarray(
+            [values_by_seed[seed]["cluster_macro_error_m"] for seed in present_seeds],
+            dtype=np.float64,
+        )
+        if values.size:
+            bootstrap = np.mean(
+                values[rng.integers(0, values.size, size=(int(bootstrap_draws), values.size))],
+                axis=1,
+            )
+            ci_low, ci_high = np.quantile(bootstrap, [0.025, 0.975])
+        else:
+            ci_low = ci_high = float("nan")
+        cluster_counts = [values_by_seed[seed]["cluster_count"] for seed in present_seeds]
+        paper_label, implementation_status = metadata[model_name]
+        rows.append(
+            {
+                "model_name": model_name,
+                "paper_label": paper_label,
+                "implementation_status": implementation_status,
+                "split_role": role,
+                "city_id": city,
+                "budget": budget,
+                "draw": draw,
+                "expected_algorithm_seed_count": len(expected_seeds),
+                "algorithm_seed_count": len(present_seeds),
+                "algorithm_seeds": "|".join(str(seed) for seed in present_seeds),
+                "all_expected_algorithm_seeds_present": present_seeds == sorted(expected_seeds),
+                "cluster_count_min": min(cluster_counts),
+                "cluster_count_max": max(cluster_counts),
+                "cluster_macro_across_seed_mean_error_m": float(np.mean(values)),
+                "cluster_macro_across_seed_std_m": float(np.std(values, ddof=1)) if values.size > 1 else 0.0,
+                "cluster_macro_seed_bootstrap_ci95_low_m": float(ci_low),
+                "cluster_macro_seed_bootstrap_ci95_high_m": float(ci_high),
+                "per_seed_cluster_macro_error_m": "|".join(
+                    f"{seed}:{values_by_seed[seed]['cluster_macro_error_m']:.17g}"
+                    for seed in present_seeds
+                ),
+                "claim_eligible": False,
+            }
+        )
+    return rows
+
+
 def _train_model(model, model_name, model_config, dataset, normalizer, output, *, seed):
     train_units = _world_position_units(dataset, "source_encoder_train")
     selection_units = _world_position_units(dataset, "source_method_selection")
@@ -305,8 +607,9 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
     checkpoint = output / "source_selected.pt"
     torch.save(
         {
-            "schema_version": "csi-pairs-v6-representation-checkpoint-v1",
+            "schema_version": "csi-pairs-v6-representation-checkpoint-v2",
             "model_name": model_name,
+            "algorithm_seed": int(seed),
             "paper_label": model_config["paper_label"],
             "implementation_status": model_config["implementation_status"],
             "dataset_sha256": sha256_file(dataset.source_path),
@@ -323,8 +626,9 @@ def _train_model(model, model_name, model_config, dataset, normalizer, output, *
         checkpoint,
     )
     return checkpoint, {
-        "schema_version": "csi-pairs-v6-representation-training-record-v1",
+        "schema_version": "csi-pairs-v6-representation-training-record-v2",
         "model_name": model_name,
+        "algorithm_seed": int(seed),
         "device": str(device),
         "epochs": int(model_config["epochs"]),
         "batch_size": batch_size,
@@ -469,6 +773,7 @@ def _evaluate_localization(model, model_name, model_config, adapter, formal_conf
         dataset,
         normalizer,
         source_final,
+        algorithm_seed=seed,
         budget=0,
         draw=0,
         rows=query_rows,
@@ -500,19 +805,28 @@ def _evaluate_localization(model, model_name, model_config, adapter, formal_conf
                     dataset,
                     normalizer,
                     city_queries,
+                    algorithm_seed=seed,
                     budget=budget,
                     draw=draw,
                     rows=query_rows,
                 )
     grouped = {}
     for row in query_rows:
-        key = (row["model_name"], row["split_role"], row["city_id"], row["budget"], row["draw"])
+        key = (
+            row["model_name"],
+            row["algorithm_seed"],
+            row["split_role"],
+            row["city_id"],
+            row["budget"],
+            row["draw"],
+        )
         grouped.setdefault(key, []).append(float(row["localization_error_m"]))
     for key, values in sorted(grouped.items()):
-        model_key, role, city, budget, draw = key
+        model_key, algorithm_seed, role, city, budget, draw = key
         metric_rows.append(
             {
                 "model_name": model_key,
+                "algorithm_seed": algorithm_seed,
                 "paper_label": model_config["paper_label"],
                 "implementation_status": model_config["implementation_status"],
                 "split_role": role,
@@ -525,7 +839,8 @@ def _evaluate_localization(model, model_name, model_config, adapter, formal_conf
             }
         )
     return metric_rows, query_rows, {
-        "schema_version": "csi-pairs-v6-representation-probe-record-v1",
+        "schema_version": "csi-pairs-v6-representation-probe-record-v2",
+        "algorithm_seed": int(seed),
         "probe_train_role": "source_probe_train",
         "probe_selection_role": "source_probe_selection",
         "target_support_role": "support_pool",
@@ -537,7 +852,20 @@ def _evaluate_localization(model, model_name, model_config, adapter, formal_conf
     }
 
 
-def _append_evaluation(model, head, model_name, model_config, dataset, normalizer, units, *, budget, draw, rows):
+def _append_evaluation(
+    model,
+    head,
+    model_name,
+    model_config,
+    dataset,
+    normalizer,
+    units,
+    *,
+    algorithm_seed,
+    budget,
+    draw,
+    rows,
+):
     if not units:
         return
     representations, positions, selected_units = _represent(
@@ -548,6 +876,7 @@ def _append_evaluation(model, head, model_name, model_config, dataset, normalize
         rows.append(
             {
                 "model_name": model_name,
+                "algorithm_seed": int(algorithm_seed),
                 "paper_label": model_config["paper_label"],
                 "implementation_status": model_config["implementation_status"],
                 "split_role": str(dataset.scene_roles[scene]),
@@ -695,7 +1024,8 @@ def _target_support_draws(config, adapter, dataset):
         ordered_keys = sorted(keyed)
         output[city] = {}
         for draw in range(int(adapter["probe"]["label_draws"])):
-            seed = int(adapter["seed"]) + draw + int.from_bytes(city.encode("utf-8"), "little") % 1000003
+            # The support draw is shared across algorithms and algorithm seeds.
+            seed = int(adapter["seeds"][0]) + draw + int.from_bytes(city.encode("utf-8"), "little") % 1000003
             order = np.random.default_rng(seed).permutation(len(ordered_keys))
             output[city][draw] = [keyed[ordered_keys[int(index)]] for index in order]
     return output

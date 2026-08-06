@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from formal_v2.formal_dataset import FormalDataset
+from formal_v2.formal_dataset import FormalDataset, _array_sha256
 from formal_v2.formal_io import read_strict_json
 
 
@@ -290,6 +290,43 @@ def condition_map(dataset: FormalDataset, unit: SixConditionUnit, condition: str
     if condition == "empty":
         return np.zeros_like(dataset.maps[unit.scene, unit.source_world])
     raise ValueError(f"unknown Wi-GATr condition: {condition}")
+
+
+def supplied_map_sha256(supplied_map: np.ndarray) -> str:
+    """Digest the exact map array handed to an external model."""
+    return _array_sha256(np.asarray(supplied_map))
+
+
+def condition_action_sha256(
+    dataset: FormalDataset, unit: SixConditionUnit, condition: str
+) -> str:
+    target_world = None
+    if condition == "paired_active_alternative":
+        target_world = int(unit.active_world)
+    elif condition == "paired_null_alternative":
+        target_world = int(unit.null_world)
+    payload: dict[str, object] = {"condition": condition, "action": None}
+    if target_world is not None:
+        matches = [
+            edge for edge in dataset.directed_edges(int(unit.scene))
+            if int(edge.source_world) == int(unit.source_world)
+            and int(edge.target_world) == target_world
+        ]
+        if len(matches) != 1:
+            raise RuntimeError("six-condition input does not identify one directed action")
+        edge = matches[0]
+        payload["action"] = {
+            "source_world": int(edge.source_world),
+            "target_world": int(edge.target_world),
+            "bit_index": int(edge.bit_index),
+            "primitive_id": int(edge.primitive_id),
+            "direction": int(edge.direction),
+        }
+    return hashlib.sha256(
+        json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def map_bounds(dataset: FormalDataset) -> tuple[tuple[float, float], tuple[float, float]]:

@@ -71,30 +71,6 @@ def run_formal_qualification(
         selection_scenes,
         normalization=route_normalization,
     )
-
-    repeat_rows = _repeat_rows(dataset, selection_scenes, route_normalization.channel_scale, config)
-    coverage_rows = route_coverage(dataset, routed_selection, selection_scenes)
-    branch_rows = {
-        row["scene_id"]: row
-        for row in _branch_coverage(dataset, routed_selection, selection_scenes)
-    }
-    qualification = config["qualification"]
-    for row in coverage_rows:
-        row.update(branch_rows[row["scene_id"]])
-        row["passed"] = bool(
-            row["alignment_active_units"] >= int(qualification["minimum_active_units_per_bank"])
-            and row["alignment_null_units"] >= int(qualification["minimum_null_units_per_bank"])
-            and row["response_patch_active_units"] >= int(qualification["minimum_active_units_per_bank"])
-            and row["response_patch_null_units"] >= int(qualification["minimum_null_units_per_bank"])
-            and row["active_branching_fraction"]
-            >= float(qualification["minimum_active_branching_fraction"])
-            and row["geometry_matched_wrong_action_fraction"]
-            >= float(qualification["minimum_geometry_matched_wrong_action_fraction"])
-        )
-    teacher_rows, teacher_passed = _teacher_qualification(
-        dataset, teacher_bundle, routed_selection, selection_scenes, config
-    )
-
     train_routed = route_dataset(
         dataset,
         teacher_bundle,
@@ -102,6 +78,33 @@ def run_formal_qualification(
         train_scenes,
         normalization=route_normalization,
     )
+
+    repeat_rows = _repeat_rows(dataset, selection_scenes, route_normalization.channel_scale, config)
+    selection_coverage_rows = route_coverage(dataset, routed_selection, selection_scenes)
+    branch_rows = {
+        row["scene_id"]: row
+        for row in _branch_coverage(dataset, routed_selection, selection_scenes)
+    }
+    qualification = config["qualification"]
+    for row in selection_coverage_rows:
+        row.update(branch_rows[row["scene_id"]])
+        row["coverage_scope"] = "source_method_selection_with_wrong_action_audit"
+        row["passed"] = bool(
+            _route_coverage_passed(row, qualification)
+            and row["active_branching_fraction"]
+            >= float(qualification["minimum_active_branching_fraction"])
+            and row["geometry_matched_wrong_action_fraction"]
+            >= float(qualification["minimum_geometry_matched_wrong_action_fraction"])
+        )
+    train_coverage_rows = route_coverage(dataset, train_routed, train_scenes)
+    for row in train_coverage_rows:
+        row["coverage_scope"] = "source_encoder_train_per_bank"
+        row["passed"] = _route_coverage_passed(row, qualification)
+    coverage_rows = train_coverage_rows + selection_coverage_rows
+    teacher_rows, teacher_passed = _teacher_qualification(
+        dataset, teacher_bundle, routed_selection, selection_scenes, config
+    )
+
     train_records = _build_records(dataset, train_scenes, train_routed, teacher_bundle.mask_bank)
     selection_records = _build_records(
         dataset, selection_scenes, routed_selection, teacher_bundle.mask_bank
@@ -194,7 +197,7 @@ def run_formal_qualification(
         },
         "data_verification_gate_schema": data_verification_gate["schema_version"],
         "data_verification_blocking_roles": data_verification_gate["blocking_roles"],
-        "decision_rule": "Only source-method-selection banks determine G1/G2; target, external, probe, calibration, and final-unseen banks are unread.",
+        "decision_rule": "Source-encoder-train banks determine per-bank train-route coverage; source-method-selection banks determine repeat, branch, teacher, and response qualification. Target, external, probe, calibration, and final-unseen banks are unread.",
         "config": public_formal_config(config),
     }
     write_json(output_dir / "gate.json", gate)
@@ -245,6 +248,19 @@ def qualification_blocking_scenes(dataset: FormalDataset) -> dict[str, np.ndarra
         "teacher_train": dataset.indices_for_role("source_encoder_train"),
         "method_selection": dataset.indices_for_role("source_method_selection"),
     }
+
+
+def _route_coverage_passed(row: dict, qualification: dict) -> bool:
+    return bool(
+        row["alignment_active_units"]
+        >= int(qualification["minimum_active_units_per_bank"])
+        and row["alignment_null_units"]
+        >= int(qualification["minimum_null_units_per_bank"])
+        and row["response_patch_active_units"]
+        >= int(qualification["minimum_active_units_per_bank"])
+        and row["response_patch_null_units"]
+        >= int(qualification["minimum_null_units_per_bank"])
+    )
 
 
 def _teacher_qualification(dataset, bundle, routed, scenes, config):
@@ -309,17 +325,17 @@ def _build_records(dataset, scenes, routed, mask_bank):
         position_center = dataset.positions[scene].mean(axis=0)
         position_scale = dataset.positions[scene].std(axis=0)
         position_scale[position_scale < 1e-9] = 1.0
-        lookup = {tuple(row): index for index, row in enumerate(dataset.world_bits.tolist())}
         for edge in dataset.directed_edges(scene):
-            alternative_bit = (edge.bit_index + 1) % dataset.bit_count
-            swap_bits = dataset.world_bits[edge.source_world].copy()
-            swap_bits[alternative_bit] = 1 - swap_bits[alternative_bit]
-            swap_world = lookup[tuple(int(value) for value in swap_bits)]
             source_map = dataset.maps[scene, edge.source_world]
             target_map = dataset.maps[scene, edge.target_world]
             action = typed_signed_edit(source_map, target_map, dataset.map_channel_names, material_categories)
-            swap_action = typed_signed_edit(
-                source_map, dataset.maps[scene, swap_world], dataset.map_channel_names, material_categories
+            swap_action, swap_status, swap_world = _select_wrong_action(
+                dataset,
+                scene,
+                edge.source_world,
+                edge.bit_index,
+                action,
+                material_categories,
             )
             zero_action = zero_typed_edit((), source_map.shape[-1], material_categories)
             for position in range(dataset.position_count):
@@ -362,6 +378,8 @@ def _build_records(dataset, scenes, routed, mask_bank):
                                 dataset.world_bits[edge.source_world], dataset.world_bits[edge.target_world]
                             ),
                             "action_swap": protocol_response_features(**common, typed_action=swap_action),
+                            "wrong_action_match_status": swap_status,
+                            "wrong_action_world": swap_world,
                         }
                     )
     return records
@@ -372,6 +390,7 @@ def _response_gate_rows(dataset, records, target, predictions, config):
     null_rows = []
     gate_rows = []
     routes = np.asarray([row["route"] for row in records])
+    wrong_action_status = np.asarray([row["wrong_action_match_status"] for row in records])
     for scene in sorted({int(row["scene"]) for row in records}):
         scene_mask = np.asarray([int(row["scene"]) == scene for row in records])
         active = scene_mask & (routes == 2)
@@ -398,11 +417,25 @@ def _response_gate_rows(dataset, records, target, predictions, config):
         violation = float(np.mean(null_norm > float(config["response_physical_null_rms_max"])))
         improvements = {
             baseline: _relative_improvement(active_scores["no_x"], active_scores[baseline])
-            for baseline in BASELINES
+            for baseline in BASELINES[:2]
         }
+        exact_wrong_action = active & (wrong_action_status == "exact")
+        if np.any(exact_wrong_action):
+            exact_no_x = normalized_mse(target[exact_wrong_action], predictions["no_x"][exact_wrong_action])
+            exact_swap = normalized_mse(
+                target[exact_wrong_action], predictions["action_swap"][exact_wrong_action]
+            )
+            improvements["action_swap"] = _relative_improvement(exact_no_x, exact_swap)
+        else:
+            improvements["action_swap"] = None
         oracle = _relative_improvement(active_scores["oracle_x"], active_scores["copy"])
         passed = bool(
-            all(value >= float(config["no_x_min_relative_improvement"]) for value in improvements.values())
+            improvements["action_swap"] is not None
+            and all(
+                value >= float(config["no_x_min_relative_improvement"])
+                for value in improvements.values()
+                if value is not None
+            )
             and oracle >= float(config["oracle_min_relative_improvement"])
             and violation <= float(config["null_violation_rate_max"])
         )
@@ -423,6 +456,7 @@ def _response_gate_rows(dataset, records, target, predictions, config):
                 "relative_improvement_vs_copy": improvements["copy"],
                 "relative_improvement_vs_no_action": improvements["no_action"],
                 "relative_improvement_vs_action_swap": improvements["action_swap"],
+                "action_swap_exact_common_denominator": int(np.sum(exact_wrong_action)),
                 "oracle_relative_improvement_vs_copy": oracle,
                 "null_violation_rate": violation,
                 "passed": passed,
@@ -434,15 +468,33 @@ def _response_gate_rows(dataset, records, target, predictions, config):
 def _branch_coverage(dataset, routed, scenes):
     rows = []
     material_categories = int(dataset.metadata["assets"]["material_category_count"])
-    lookup = {tuple(row): index for index, row in enumerate(dataset.world_bits.tolist())}
     for scene_value in scenes:
         scene = int(scene_value)
         active_states = 0
         active_branching = 0
         active_units = 0
-        geometry_matched = 0
+        match_units = {"exact": 0, "fallback": 0, "failed": 0}
+        match_actions = {"exact": 0, "fallback": 0, "failed": 0}
         for source in range(dataset.world_count):
             edges = [edge for edge in dataset.directed_edges(scene) if edge.source_world == source]
+            edge_match_status = {}
+            for edge in edges:
+                correct = typed_signed_edit(
+                    dataset.maps[scene, source],
+                    dataset.maps[scene, edge.target_world],
+                    dataset.map_channel_names,
+                    material_categories,
+                )
+                _, status, _ = _select_wrong_action(
+                    dataset,
+                    scene,
+                    source,
+                    edge.bit_index,
+                    correct,
+                    material_categories,
+                )
+                edge_match_status[edge.bit_index] = status
+                match_actions[status] += 1
             for position in range(dataset.position_count):
                 for query in range(routed.physical_patches[scene].shape[-2]):
                     active_targets = [
@@ -454,34 +506,18 @@ def _branch_coverage(dataset, routed, scenes):
                         active_states += 1
                         active_branching += int(len(active_targets) >= 2)
                 for edge in edges:
-                    correct = typed_signed_edit(
-                        dataset.maps[scene, source],
-                        dataset.maps[scene, edge.target_world],
-                        dataset.map_channel_names,
-                        material_categories,
-                    )
-                    other_bit = (edge.bit_index + 1) % dataset.bit_count
-                    bits = dataset.world_bits[source].copy()
-                    bits[other_bit] = 1 - bits[other_bit]
-                    alternative = lookup[tuple(int(value) for value in bits)]
-                    wrong = typed_signed_edit(
-                        dataset.maps[scene, source],
-                        dataset.maps[scene, alternative],
-                        dataset.map_channel_names,
-                        material_categories,
-                    )
-                    matched = bool(
-                        np.isclose(np.linalg.norm(correct), np.linalg.norm(wrong), rtol=0.05, atol=1e-12)
-                    )
+                    status = edge_match_status[edge.bit_index]
                     routes = [
                         routed.response_route[(scene, source, edge.target_world, position, query)]
                         for query in range(routed.physical_patches[scene].shape[-2])
                     ]
-                    active_units += int(np.sum(np.asarray(routes) == 2))
-                    if matched:
-                        geometry_matched += int(np.sum(np.asarray(routes) == 2))
+                    units = int(np.sum(np.asarray(routes) == 2))
+                    active_units += units
+                    match_units[status] += units
         if active_states == 0 or active_units == 0:
             raise RuntimeError("branch coverage has an empty active denominator")
+        if sum(match_units.values()) != active_units:
+            raise AssertionError("wrong-action coverage does not partition the active denominator")
         rows.append(
             {
                 "scene_id": str(dataset.scene_ids[scene]),
@@ -489,11 +525,103 @@ def _branch_coverage(dataset, routed, scenes):
                 "active_branching_units": active_branching,
                 "active_branching_fraction": active_branching / active_states,
                 "active_response_units_for_wrong_action": active_units,
-                "geometry_matched_wrong_action_units": geometry_matched,
-                "geometry_matched_wrong_action_fraction": geometry_matched / active_units,
+                "wrong_action_exact_units": match_units["exact"],
+                "wrong_action_fallback_units": match_units["fallback"],
+                "wrong_action_failed_units": match_units["failed"],
+                "wrong_action_exact_actions": match_actions["exact"],
+                "wrong_action_fallback_actions": match_actions["fallback"],
+                "wrong_action_failed_actions": match_actions["failed"],
+                "wrong_action_exact_fraction": match_units["exact"] / active_units,
+                "wrong_action_fallback_fraction": match_units["fallback"] / active_units,
+                "wrong_action_failed_fraction": match_units["failed"] / active_units,
+                "geometry_matched_wrong_action_units": match_units["exact"],
+                "geometry_matched_wrong_action_fraction": match_units["exact"] / active_units,
             }
         )
     return rows
+
+
+def _select_wrong_action(
+    dataset,
+    scene: int,
+    source_world: int,
+    correct_bit: int,
+    correct_action: np.ndarray,
+    material_categories: int,
+) -> tuple[np.ndarray, str, int | None]:
+    """Choose a different primitive and report exact/fallback/failed matching."""
+    lookup = {tuple(row): index for index, row in enumerate(dataset.world_bits.tolist())}
+    candidates = []
+    for bit_index in range(dataset.bit_count):
+        if bit_index == int(correct_bit):
+            continue
+        bits = dataset.world_bits[int(source_world)].copy()
+        bits[bit_index] = 1 - bits[bit_index]
+        target_world = int(lookup[tuple(int(value) for value in bits)])
+        action = typed_signed_edit(
+            dataset.maps[int(scene), int(source_world)],
+            dataset.maps[int(scene), target_world],
+            dataset.map_channel_names,
+            material_categories,
+        )
+        candidates.append((action, target_world, _wrong_action_distance(correct_action, action)))
+    if not candidates:
+        return np.zeros_like(correct_action), "failed", None
+    exact = [candidate for candidate in candidates if candidate[2][0] == 0 and candidate[2][1] == 0]
+    if exact:
+        action, target_world, _ = min(exact, key=lambda candidate: candidate[2])
+        return action, "exact", target_world
+    fallback = [candidate for candidate in candidates if candidate[2][0] == 0]
+    if fallback:
+        action, target_world, _ = min(fallback, key=lambda candidate: candidate[2])
+        return action, "fallback", target_world
+    action, target_world, _ = min(candidates, key=lambda candidate: candidate[2])
+    return action, "failed", target_world
+
+
+def _wrong_action_distance(reference: np.ndarray, candidate: np.ndarray) -> tuple:
+    reference_profile = _action_geometry_profile(reference)
+    candidate_profile = _action_geometry_profile(candidate)
+    family_mismatch = int(reference_profile["family"] != candidate_profile["family"])
+    reference_area = max(int(reference_profile["area"]), 1)
+    reference_norm = max(float(reference_profile["norm"]), np.finfo(np.float64).eps)
+    area_relative = abs(int(candidate_profile["area"]) - int(reference_profile["area"])) / reference_area
+    norm_relative = abs(float(candidate_profile["norm"]) - float(reference_profile["norm"])) / reference_norm
+    bbox_distance = sum(
+        abs(int(left) - int(right))
+        for left, right in zip(reference_profile["bbox_shape"], candidate_profile["bbox_shape"])
+    )
+    geometry_mismatch = int(
+        area_relative > 0.05 or norm_relative > 0.05 or bbox_distance != 0
+    )
+    return family_mismatch, geometry_mismatch, area_relative + norm_relative, bbox_distance
+
+
+def _action_geometry_profile(action: np.ndarray) -> dict:
+    values = np.asarray(action, dtype=np.float64)
+    if values.ndim != 3 or values.shape[0] < 5:
+        raise ValueError("typed action must have shape [channel,row,column]")
+    active_planes = np.any(np.abs(values) > 1e-12, axis=(1, 2))
+    family = (
+        bool(active_planes[0]),
+        bool(active_planes[1]),
+        bool(active_planes[2]),
+        bool(active_planes[3]),
+        bool(np.any(active_planes[4:])),
+    )
+    support = np.any(np.abs(values) > 1e-12, axis=0)
+    coordinates = np.argwhere(support)
+    if coordinates.size:
+        extent = coordinates.max(axis=0) - coordinates.min(axis=0) + 1
+        bbox_shape = tuple(int(value) for value in extent)
+    else:
+        bbox_shape = (0, 0)
+    return {
+        "family": family,
+        "area": int(np.sum(support)),
+        "norm": float(np.linalg.norm(values)),
+        "bbox_shape": bbox_shape,
+    }
 
 
 def _shortcut_warnings(records, target, predictions, config):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -13,7 +14,12 @@ from .formal_evidence import (
     require_stage_manifested_gate,
 )
 from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_csv, write_json
-from .formal_statistics import interval_decision, paired_cluster_interval
+from .formal_statistics import (
+    holm_adjust,
+    interval_decision,
+    paired_cluster_interval,
+    paired_sign_flip_test,
+)
 
 
 CONTROL_IDS = (
@@ -23,6 +29,16 @@ CONTROL_IDS = (
     "flop_matched_concat",
     "generous_2x_concat",
 )
+G4_CONCAT_CONTROL_IDS = CONTROL_IDS[2:4]
+REPORT_ONLY_CONTROL_IDS = ("generous_2x_concat",)
+
+CONTROL_CONTRACTS = {
+    "equal_flop_alignment": ("single_branch_alignment", {"endpoint", "alignment"}),
+    "equal_flop_response": ("single_branch_response", {"endpoint", "response"}),
+    "parameter_matched_concat": ("concat_parameter_matched", {"endpoint", "alignment", "response"}),
+    "flop_matched_concat": ("concat_flop_matched", {"endpoint", "alignment", "response"}),
+    "generous_2x_concat": ("concat_generous_2x", {"endpoint", "alignment", "response"}),
+}
 
 
 def run_resource_controls(config, dataset, manifest_path, output_root):
@@ -34,11 +50,26 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         dataset,
         ("source_encoder_train", "source_method_selection", "target"),
     )
+    manifest_path = Path(manifest_path).resolve()
     manifest = read_strict_json(manifest_path)
-    _validate_manifest(manifest)
+    _validate_manifest(manifest, manifest_path.parent)
     root = Path(output_root)
     output_dir = root / "controls"
     output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_copy = output_dir / "resource_control_manifest.json"
+    bound_input_dir = output_dir / "bound_inputs"
+    bound_input_dir.mkdir(parents=True, exist_ok=True)
+    bound_manifest = {"schema_version": manifest["schema_version"], "controls": []}
+    for item in manifest["controls"]:
+        bound = dict(item)
+        for prefix in ("adapter_source", "architecture_spec"):
+            source_path = (manifest_path.parent / item[f"{prefix}_path"]).resolve()
+            suffix = source_path.suffix or ".bin"
+            copied = bound_input_dir / f"{item['control_id']}_{prefix}{suffix}"
+            shutil.copyfile(source_path, copied)
+            bound[f"{prefix}_path"] = str(copied.relative_to(output_dir))
+        bound_manifest["controls"].append(bound)
+    write_json(manifest_copy, bound_manifest)
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
@@ -50,10 +81,17 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
     utilities = {}
     for adapter in manifest["controls"]:
         control_id = adapter["control_id"]
+        source = (manifest_path.parent / adapter["adapter_source_path"]).resolve()
+        architecture_path = (manifest_path.parent / adapter["architecture_spec_path"]).resolve()
+        architecture = read_strict_json(architecture_path)
+        _validate_architecture_spec(control_id, architecture)
         target = output_dir / control_id
         target.mkdir(parents=True, exist_ok=True)
         command = [
-            value.format(dataset=str(dataset.source_path), output=str(target), root=str(root))
+            value.format(
+                dataset=str(dataset.source_path), output=str(target), root=str(root),
+                adapter_source=str(source), architecture_spec=str(architecture_path),
+            )
             for value in adapter["command"]
         ]
         completed = subprocess.run(command, check=False, capture_output=True, text=True)
@@ -65,7 +103,25 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         if {row["arm"] for row in rows} != {control_id}:
             raise RuntimeError(f"resource control {control_id} emitted an incorrect arm name")
         resource = read_strict_json(target / "resource.json")
-        _validate_resource(control_id, resource, evidence, target)
+        _validate_resource(
+            control_id,
+            resource,
+            evidence,
+            target,
+            architecture=architecture,
+            architecture_sha256=adapter["architecture_spec_sha256"],
+            adapter_source_sha256=adapter["adapter_source_sha256"],
+        )
+        _run_replay(
+            adapter,
+            dataset,
+            root,
+            target,
+            resource,
+            architecture_path,
+            source,
+            evidence,
+        )
         if _localization_cells(rows) != _localization_cells(main_rows):
             raise RuntimeError(f"resource control {control_id} changes the frozen J estimand cells")
         utilities[control_id] = _utility(rows, control_id, config["localization"]["primary_budgets"])
@@ -93,6 +149,17 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         )
         for index, name in enumerate(CONTROL_IDS[2:])
     }
+    control_family_names = list(CONTROL_IDS[:2]) + list(G4_CONCAT_CONTROL_IDS)
+    control_family = {
+        **{name: equal_intervals[name] for name in CONTROL_IDS[:2]},
+        **{name: concat_intervals[name] for name in G4_CONCAT_CONTROL_IDS},
+    }
+    for name, adjusted in zip(
+        control_family_names,
+        holm_adjust([control_family[name]["p_value_two_sided"] for name in control_family_names]),
+    ):
+        control_family[name]["holm_adjusted_p"] = float(adjusted)
+    alpha = float(config["evaluation"]["familywise_alpha"])
     gate6 = bool(
         matches["equal_flop_alignment"]
         and matches["equal_flop_response"]
@@ -102,18 +169,21 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
                 threshold=float(config["evaluation"]["minimum_equal_flop_superiority"]),
                 relation="superiority",
             )
+            and value["holm_adjusted_p"] < alpha
             for value in equal_intervals.values()
         )
     )
     gate7 = bool(
-        all(matches[name] for name in CONTROL_IDS[2:])
+        all(matches[name] for name in G4_CONCAT_CONTROL_IDS)
         and all(
             interval_decision(
                 value,
                 threshold=float(config["evaluation"]["minimum_concat_superiority"]),
                 relation="superiority",
             )
-            for value in concat_intervals.values()
+            and value["holm_adjusted_p"] < alpha
+            for name, value in concat_intervals.items()
+            if name in G4_CONCAT_CONTROL_IDS
         )
     )
     evaluation_gate = read_strict_json(root / "evaluation" / "gate.json")
@@ -140,7 +210,21 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         "resource_matches": matches,
         "equal_flop_superiority_intervals": equal_intervals,
         "concat_superiority_intervals": concat_intervals,
+        "g4_control_comparison_family": {
+            "method": "Holm",
+            "familywise_alpha": alpha,
+            "members": control_family_names,
+            "note": "The generous 2x control is report-only and excluded from the confirmatory family.",
+        },
+        "generous_2x_report_only": {
+            "resource_match": matches["generous_2x_concat"],
+            "superiority_interval": concat_intervals["generous_2x_concat"],
+            "included_in_g4_subgate_7": False,
+        },
         "relative_tolerance": tolerance,
+        "resource_integrity_verified": True,
+        "input_manifest_path": manifest_copy.name,
+        "input_manifest_sha256": sha256_file(manifest_copy),
     }
     write_json(output_dir / "gate.json", gate)
     write_json(
@@ -154,17 +238,72 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
     return gate
 
 
-def _validate_manifest(manifest):
+def _validate_manifest(manifest, manifest_root=None):
     if not isinstance(manifest, dict) or set(manifest) != {"schema_version", "controls"}:
         raise ValueError("resource-control manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-resource-controls-v1":
+    if manifest["schema_version"] != "csi-pairs-v6-resource-controls-v2":
         raise ValueError("resource-control manifest schema mismatch")
     controls = manifest["controls"]
     if not isinstance(controls, list) or {item.get("control_id") for item in controls} != set(CONTROL_IDS):
         raise ValueError("resource-control manifest must contain the exact five V6 controls")
     for item in controls:
-        if set(item) != {"control_id", "command"} or not isinstance(item["command"], list) or not item["command"]:
+        required = {
+            "control_id", "command", "replay_command",
+            "adapter_source_path", "adapter_source_sha256",
+            "architecture_spec_path", "architecture_spec_sha256",
+        }
+        if set(item) != required or not isinstance(item["command"], list) or not item["command"]:
             raise ValueError("resource-control adapter fields must be exact")
+        if not isinstance(item["replay_command"], list) or not item["replay_command"]:
+            raise ValueError("resource-control replay command must be nonempty")
+        for key in ("adapter_source_sha256", "architecture_spec_sha256"):
+            if not _lower_sha256(item[key]):
+                raise ValueError(f"resource-control {key} must be lowercase SHA-256")
+        for key in ("adapter_source_path", "architecture_spec_path"):
+            if not isinstance(item[key], str) or not item[key].strip():
+                raise ValueError(f"resource-control {key} must be nonempty")
+        if manifest_root is not None:
+            for prefix in ("adapter_source", "architecture_spec"):
+                path = (Path(manifest_root) / item[f"{prefix}_path"]).resolve()
+                if Path(manifest_root).resolve() not in path.parents or not path.is_file():
+                    raise ValueError(f"resource-control {prefix} is missing or escapes its manifest root")
+                if sha256_file(path) != item[f"{prefix}_sha256"]:
+                    raise ValueError(f"resource-control {prefix} hash mismatch")
+            _validate_architecture_spec(
+                item["control_id"],
+                read_strict_json(Path(manifest_root) / item["architecture_spec_path"]),
+            )
+
+
+def _validate_architecture_spec(control_id, spec):
+    required = {
+        "schema_version", "control_id", "architecture_family", "state_keys",
+        "objective_terms", "training_role", "selection_role", "evaluation_roles",
+    }
+    if not isinstance(spec, dict) or set(spec) != required:
+        raise ValueError(f"{control_id} architecture spec fields must be exact")
+    expected_family, expected_terms = CONTROL_CONTRACTS[control_id]
+    if (
+        spec["schema_version"] != "csi-pairs-v6-control-architecture-v1"
+        or spec["control_id"] != control_id
+        or spec["architecture_family"] != expected_family
+    ):
+        raise ValueError(f"{control_id} architecture identity is not frozen")
+    keys = spec["state_keys"]
+    if (
+        not isinstance(keys, list) or len(keys) < 4
+        or len(keys) != len(set(keys))
+        or not all(isinstance(key, str) and key.strip() for key in keys)
+    ):
+        raise ValueError(f"{control_id} architecture state-key contract is invalid")
+    if set(spec["objective_terms"]) != expected_terms:
+        raise ValueError(f"{control_id} loss contract differs from the frozen control")
+    if (
+        spec["training_role"] != "source_encoder_train"
+        or spec["selection_role"] != "source_method_selection"
+        or spec["evaluation_roles"] != ["source_final_unseen_bank", "target_query"]
+    ):
+        raise ValueError(f"{control_id} role ledger differs from the frozen control")
 
 
 def _read_localization(path, evidence):
@@ -227,17 +366,36 @@ def _main_resource(path):
     }
 
 
-def _validate_resource(control_id, resource, evidence, control_root):
-    required = {"schema_version", "control_id", "dataset_sha256", "config_sha256", "fixture", "training_flops", "inference_flops", "parameters", "wall_seconds", "checkpoint_path", "checkpoint_sha256", "profiler_trace_path", "profiler_trace_sha256", "training_log_path", "training_log_sha256"}
+def _validate_resource(
+    control_id,
+    resource,
+    evidence,
+    control_root,
+    *,
+    architecture,
+    architecture_sha256,
+    adapter_source_sha256,
+):
+    required = {
+        "schema_version", "control_id", "dataset_sha256", "config_sha256", "fixture",
+        "training_flops", "inference_flops", "parameters", "wall_seconds",
+        "checkpoint_path", "checkpoint_sha256", "profiler_trace_path", "profiler_trace_sha256",
+        "training_log_path", "training_log_sha256", "architecture_spec_sha256",
+        "adapter_source_sha256",
+    }
     if not isinstance(resource, dict) or set(resource) != required:
         raise RuntimeError(f"{control_id} resource fields must be exact")
-    if resource["schema_version"] != "csi-pairs-v6-resource-record-v1" or resource["control_id"] != control_id:
+    if resource["schema_version"] != "csi-pairs-v6-resource-record-v2" or resource["control_id"] != control_id:
         raise RuntimeError(f"{control_id} resource identity mismatch")
     for key in ("dataset_sha256", "config_sha256"):
         if resource[key] != evidence[key]:
             raise RuntimeError(f"{control_id} resource {key} mismatch")
     if resource["fixture"] is not evidence["fixture"]:
         raise RuntimeError(f"{control_id} resource fixture mismatch")
+    if resource["architecture_spec_sha256"] != architecture_sha256:
+        raise RuntimeError(f"{control_id} resource architecture-spec hash mismatch")
+    if resource["adapter_source_sha256"] != adapter_source_sha256:
+        raise RuntimeError(f"{control_id} resource adapter-source hash mismatch")
     for key in ("training_flops", "inference_flops", "parameters", "wall_seconds"):
         if not np.isfinite(resource[key]) or float(resource[key]) <= 0:
             raise RuntimeError(f"{control_id} resource {key} must be positive and measured")
@@ -254,13 +412,36 @@ def _validate_resource(control_id, resource, evidence, control_root):
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     except Exception as error:
         raise RuntimeError(f"{control_id} checkpoint is not a readable training checkpoint") from error
-    if (
-        not isinstance(checkpoint, dict)
-        or checkpoint.get("schema_version") != "csi-pairs-v6-control-checkpoint-v1"
-        or checkpoint.get("control_id") != control_id
-        or not isinstance(checkpoint.get("state_dict"), dict)
-    ):
+    checkpoint_fields = {
+        "schema_version", "control_id", "architecture_family", "architecture_spec_sha256",
+        "adapter_source_sha256", "dataset_sha256", "config_sha256", "fixture", "state_dict",
+    }
+    if not isinstance(checkpoint, dict) or set(checkpoint) != checkpoint_fields:
         raise RuntimeError(f"{control_id} checkpoint contract mismatch")
+    if (
+        checkpoint["schema_version"] != "csi-pairs-v6-control-checkpoint-v2"
+        or checkpoint["control_id"] != control_id
+        or checkpoint["architecture_family"] != architecture["architecture_family"]
+        or checkpoint["architecture_spec_sha256"] != architecture_sha256
+        or checkpoint["adapter_source_sha256"] != adapter_source_sha256
+        or checkpoint["dataset_sha256"] != evidence["dataset_sha256"]
+        or checkpoint["config_sha256"] != evidence["config_sha256"]
+        or checkpoint["fixture"] is not evidence["fixture"]
+        or not isinstance(checkpoint["state_dict"], dict)
+        or set(checkpoint["state_dict"]) != set(architecture["state_keys"])
+    ):
+        raise RuntimeError(f"{control_id} checkpoint architecture/state-key contract mismatch")
+    try:
+        import torch
+        if any(
+            not isinstance(value, torch.Tensor)
+            or value.numel() == 0
+            or not bool(torch.isfinite(value).all())
+            for value in checkpoint["state_dict"].values()
+        ):
+            raise RuntimeError(f"{control_id} checkpoint contains invalid parameter tensors")
+    except ImportError as error:
+        raise RuntimeError("resource controls require PyTorch checkpoint validation") from error
     parameter_count = sum(
         int(value.numel())
         for value in checkpoint["state_dict"].values()
@@ -272,18 +453,40 @@ def _validate_resource(control_id, resource, evidence, control_root):
     expected_profiler = {
         "schema_version",
         "profiler",
+        "events",
         "measured_training_flops",
         "measured_inference_flops",
         "profiled_step_count",
     }
     if not isinstance(profiler, dict) or set(profiler) != expected_profiler:
         raise RuntimeError(f"{control_id} profiler trace fields must be exact")
-    if profiler["schema_version"] != "csi-pairs-v6-profiler-summary-v1":
+    if profiler["schema_version"] != "csi-pairs-v6-profiler-summary-v2":
         raise RuntimeError(f"{control_id} profiler schema mismatch")
     if not isinstance(profiler["profiler"], str) or not profiler["profiler"].strip():
         raise RuntimeError(f"{control_id} profiler identity is missing")
     if int(profiler["profiled_step_count"]) < 1:
         raise RuntimeError(f"{control_id} profiler did not observe a training step")
+    events = profiler["events"]
+    if not isinstance(events, list) or len(events) < 2:
+        raise RuntimeError(f"{control_id} profiler lacks operator-level events")
+    totals = {"training": 0.0, "inference": 0.0}
+    for event in events:
+        if not isinstance(event, dict) or set(event) != {"name", "phase", "count", "flops"}:
+            raise RuntimeError(f"{control_id} profiler event fields must be exact")
+        if (
+            not isinstance(event["name"], str) or not event["name"].strip()
+            or event["phase"] not in totals
+            or type(event["count"]) is not int or event["count"] < 1
+            or not np.isfinite(event["flops"]) or float(event["flops"]) <= 0
+        ):
+            raise RuntimeError(f"{control_id} profiler event is invalid")
+        totals[event["phase"]] += int(event["count"]) * float(event["flops"])
+    if any(value <= 0 for value in totals.values()):
+        raise RuntimeError(f"{control_id} profiler must measure training and inference")
+    if not np.isclose(totals["training"], float(resource["training_flops"])):
+        raise RuntimeError(f"{control_id} training FLOPs are not the sum of profiler events")
+    if not np.isclose(totals["inference"], float(resource["inference_flops"])):
+        raise RuntimeError(f"{control_id} inference FLOPs are not the sum of profiler events")
     if not np.isclose(float(profiler["measured_training_flops"]), float(resource["training_flops"])):
         raise RuntimeError(f"{control_id} training FLOPs disagree with profiler")
     if not np.isclose(float(profiler["measured_inference_flops"]), float(resource["inference_flops"])):
@@ -296,18 +499,127 @@ def _validate_resource(control_id, resource, evidence, control_root):
         "fixed_final_checkpoint",
         "target_selection_used",
         "checkpoint_sha256",
+        "architecture_spec_sha256",
+        "adapter_source_sha256",
+        "loss_trace_path",
+        "loss_trace_sha256",
     }
     if not isinstance(training, dict) or set(training) != expected_training:
         raise RuntimeError(f"{control_id} training log fields must be exact")
     if (
-        training["schema_version"] != "csi-pairs-v6-control-training-log-v1"
+        training["schema_version"] != "csi-pairs-v6-control-training-log-v2"
         or training["control_id"] != control_id
         or int(training["optimizer_steps"]) < 1
         or training["fixed_final_checkpoint"] is not True
         or training["target_selection_used"] is not False
         or training["checkpoint_sha256"] != resource["checkpoint_sha256"]
+        or training["architecture_spec_sha256"] != architecture_sha256
+        or training["adapter_source_sha256"] != adapter_source_sha256
     ):
         raise RuntimeError(f"{control_id} training log contract failed")
+    loss_path = (Path(control_root) / training["loss_trace_path"]).resolve()
+    if (
+        Path(control_root).resolve() not in loss_path.parents
+        or not loss_path.is_file()
+        or sha256_file(loss_path) != training["loss_trace_sha256"]
+    ):
+        raise RuntimeError(f"{control_id} training loss trace is missing or hash-mismatched")
+    _validate_loss_trace(
+        control_id,
+        loss_path,
+        int(training["optimizer_steps"]),
+        set(architecture["objective_terms"]),
+    )
+
+
+def _validate_loss_trace(control_id, path, optimizer_steps, objective_terms):
+    with Path(path).open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    fields = {"step", "total_loss", "endpoint_loss", "alignment_loss", "response_loss", "gradient_norm"}
+    if len(rows) != optimizer_steps or any(set(row) != fields for row in rows):
+        raise RuntimeError(f"{control_id} loss trace does not cover every optimizer step")
+    for index, row in enumerate(rows, start=1):
+        if int(row["step"]) != index:
+            raise RuntimeError(f"{control_id} loss trace steps are not contiguous")
+        values = {key: float(row[key]) for key in fields.difference({"step"})}
+        if not all(np.isfinite(value) and value >= 0 for value in values.values()):
+            raise RuntimeError(f"{control_id} loss trace contains invalid values")
+        for term in {"endpoint", "alignment", "response"}.difference(objective_terms):
+            if values[f"{term}_loss"] != 0.0:
+                raise RuntimeError(f"{control_id} optimized a loss outside its frozen objective")
+        component_total = sum(
+            values[f"{term}_loss"] for term in ("endpoint", "alignment", "response")
+        )
+        if not np.isclose(values["total_loss"], component_total):
+            raise RuntimeError(f"{control_id} total loss does not replay from weighted components")
+        if values["gradient_norm"] <= 0:
+            raise RuntimeError(f"{control_id} loss trace has no measured gradient")
+
+
+def _run_replay(
+    adapter,
+    dataset,
+    root,
+    target,
+    resource,
+    architecture_path,
+    source,
+    evidence,
+):
+    replay_path = target / "replay.json"
+    command = [
+        value.format(
+            dataset=str(dataset.source_path), output=str(target), root=str(root),
+            checkpoint=str((target / resource["checkpoint_path"]).resolve()),
+            architecture_spec=str(architecture_path), adapter_source=str(source),
+            replay_output=str(replay_path),
+        )
+        for value in adapter["replay_command"]
+    ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    (target / "replay_stdout.txt").write_text(completed.stdout, encoding="utf-8")
+    (target / "replay_stderr.txt").write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0 or not replay_path.is_file():
+        raise RuntimeError(f"resource control {adapter['control_id']} replay failed")
+    replay = read_strict_json(replay_path)
+    required = {
+        "schema_version", "control_id", "dataset_sha256", "config_sha256",
+        "checkpoint_sha256", "architecture_spec_sha256", "adapter_source_sha256",
+        "localization_per_bank_sha256", "training_log_sha256", "profiler_trace_sha256",
+        "recomputed_parameters", "recomputed_training_flops", "recomputed_inference_flops",
+    }
+    if not isinstance(replay, dict) or set(replay) != required:
+        raise RuntimeError(f"resource control {adapter['control_id']} replay fields must be exact")
+    expected = {
+        "schema_version": "csi-pairs-v6-resource-replay-v1",
+        "control_id": adapter["control_id"],
+        "dataset_sha256": evidence["dataset_sha256"],
+        "config_sha256": evidence["config_sha256"],
+        "checkpoint_sha256": resource["checkpoint_sha256"],
+        "architecture_spec_sha256": adapter["architecture_spec_sha256"],
+        "adapter_source_sha256": adapter["adapter_source_sha256"],
+        "localization_per_bank_sha256": sha256_file(target / "localization_per_bank.csv"),
+        "training_log_sha256": resource["training_log_sha256"],
+        "profiler_trace_sha256": resource["profiler_trace_sha256"],
+    }
+    for key, value in expected.items():
+        if replay[key] != value:
+            raise RuntimeError(f"resource control {adapter['control_id']} replay {key} mismatch")
+    numeric = {
+        "recomputed_parameters": resource["parameters"],
+        "recomputed_training_flops": resource["training_flops"],
+        "recomputed_inference_flops": resource["inference_flops"],
+    }
+    if any(not np.isclose(float(replay[key]), float(value)) for key, value in numeric.items()):
+        raise RuntimeError(f"resource control {adapter['control_id']} replay measurements disagree")
+
+
+def _lower_sha256(value):
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def _localization_cells(rows):
@@ -341,7 +653,9 @@ def _control_superiority_interval(main_rows, rows, resamples, seed):
     clusters = np.asarray([key[1] for key in cells])
     full = np.asarray([np.mean(grouped[("full", key)]) for key in cells])
     control = np.asarray([np.mean(grouped[("control", key)]) for key in cells])
-    return paired_cluster_interval(clusters, full, control, resamples, seed)
+    interval = paired_cluster_interval(clusters, full, control, resamples, seed)
+    test = paired_sign_flip_test(clusters, full, control, seed + 1)
+    return {**interval, "p_value_two_sided": test["p_value_two_sided"]}
 
 
 def _resource_matches(main, rows, tolerance):

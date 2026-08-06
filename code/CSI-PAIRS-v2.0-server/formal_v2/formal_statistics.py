@@ -9,7 +9,10 @@ def paired_cluster_interval(
     second: np.ndarray,
     resamples: int,
     seed: int,
+    alpha: float = 0.05,
 ) -> dict[str, float | int]:
+    if not 0.0 < float(alpha) < 1.0:
+        raise ValueError("alpha must lie strictly between zero and one")
     clusters, differences = _cluster_differences(cluster_ids, first, second)
     rng = np.random.default_rng(seed)
     estimates = np.empty(int(resamples), dtype=np.float64)
@@ -19,8 +22,9 @@ def paired_cluster_interval(
     return {
         "cluster_count": int(clusters.size),
         "paired_mean_difference": float(np.mean(differences)),
-        "ci95_low": float(np.percentile(estimates, 2.5)),
-        "ci95_high": float(np.percentile(estimates, 97.5)),
+        "ci95_low": float(np.percentile(estimates, 100.0 * float(alpha) / 2.0)),
+        "ci95_high": float(np.percentile(estimates, 100.0 * (1.0 - float(alpha) / 2.0))),
+        "confidence_level": 1.0 - float(alpha),
     }
 
 
@@ -217,6 +221,32 @@ def hierarchical_factorial_interval(
         samples["full_vs_alignment"][index] = utility["full"] - utility["alignment"]
         samples["full_vs_response"][index] = utility["full"] - utility["response"]
     exact = exact_factorial_utilities(rows, budgets)
+    records = {
+        "interaction": _interval_record(exact["interaction"], samples["interaction"]),
+        "full_vs_alignment": _interval_record(exact["full_vs_alignment"], samples["full_vs_alignment"]),
+        "full_vs_response": _interval_record(exact["full_vs_response"], samples["full_vs_response"]),
+    }
+    # The three primary G4 hypotheses share each synchronized bootstrap draw.
+    # A max-deviation critical value gives one simultaneous 95% family rather
+    # than treating three marginal 95% intervals as independent gates.
+    estimates = {
+        "interaction": float(exact["interaction"]),
+        "full_vs_alignment": float(exact["full_vs_alignment"]),
+        "full_vs_response": float(exact["full_vs_response"]),
+    }
+    maximum_deviation = np.max(
+        np.column_stack(
+            [
+                np.abs(samples[name] - estimates[name])
+                for name in ("interaction", "full_vs_alignment", "full_vs_response")
+            ]
+        ),
+        axis=1,
+    )
+    simultaneous_critical = float(np.percentile(maximum_deviation, 95.0))
+    for name, record in records.items():
+        record["familywise_ci95_low"] = estimates[name] - simultaneous_critical
+        record["familywise_ci95_high"] = estimates[name] + simultaneous_critical
     return {
         "resampling_layers": [
             "base_map_cluster_within_fixed_city",
@@ -224,9 +254,10 @@ def hierarchical_factorial_interval(
             "k_positive_label_draw",
         ],
         "resamples": int(resamples),
-        "interaction": _interval_record(exact["interaction"], samples["interaction"]),
-        "full_vs_alignment": _interval_record(exact["full_vs_alignment"], samples["full_vs_alignment"]),
-        "full_vs_response": _interval_record(exact["full_vs_response"], samples["full_vs_response"]),
+        "familywise_method": "synchronized_bootstrap_max_absolute_deviation",
+        "familywise_alpha": 0.05,
+        "simultaneous_critical_value": simultaneous_critical,
+        **records,
     }
 
 
@@ -351,15 +382,15 @@ def _macro_utility(rows, arm, cities, budgets):
                 raise ValueError(f"missing factorial cell for {arm}/{city}/k={budget}")
             cluster_values = []
             for cluster in clusters:
-                values = [
-                    float(row["utility_neg_log_median"])
+                selected = [
+                    row
                     for row in rows
                     if str(row["arm"]) == arm
                     and str(row["city_id"]) == city
                     and int(row["budget"]) == budget
                     and _independent_unit(row) == cluster
                 ]
-                cluster_values.append(float(np.mean(values)))
+                cluster_values.append(_layered_cell_mean(selected))
             budget_values.append(float(np.mean(cluster_values)))
         city_values.append(float(np.mean(budget_values)))
     return float(np.mean(city_values))
@@ -378,8 +409,8 @@ def _collapsed_cells(rows, budgets):
         if int(row["budget"]) in set(int(value) for value in budgets)
     }
     for key in keys:
-        values = [
-            float(row["utility_neg_log_median"])
+        selected = [
+            row
             for row in rows
             if (
                 str(row["arm"]),
@@ -389,7 +420,7 @@ def _collapsed_cells(rows, budgets):
             )
             == key
         ]
-        output[key] = float(np.mean(values))
+        output[key] = _layered_cell_mean(selected)
     return output
 
 
@@ -407,17 +438,60 @@ def _factorial_cell_lookup(rows, budgets):
             int(row["seed"]),
             int(row["draw"]),
         )
-        grouped.setdefault(key, []).append(float(row["utility_neg_log_median"]))
+        grouped.setdefault(key, {}).setdefault(_bank_unit(row), []).append(
+            float(row["utility_neg_log_median"])
+        )
     if not grouped:
         raise ValueError("factorial lookup is empty")
-    return {key: float(np.mean(values)) for key, values in grouped.items()}
+    return {
+        key: float(np.mean([np.mean(values) for values in by_bank.values()]))
+        for key, by_bank in grouped.items()
+    }
+
+
+def _layered_cell_mean(rows: list[dict]) -> float:
+    """Equal bank, positive-budget draw, and training-seed macro mean."""
+    if not rows:
+        raise ValueError("factorial macro cell is empty")
+    seeds = sorted({int(row["seed"]) for row in rows})
+    seed_values = []
+    for seed in seeds:
+        draws = sorted({int(row["draw"]) for row in rows if int(row["seed"]) == seed})
+        draw_values = []
+        for draw in draws:
+            by_bank = {}
+            for row in rows:
+                if int(row["seed"]) == seed and int(row["draw"]) == draw:
+                    by_bank.setdefault(_bank_unit(row), []).append(
+                        float(row["utility_neg_log_median"])
+                    )
+            draw_values.append(
+                float(np.mean([np.mean(values) for values in by_bank.values()]))
+            )
+        seed_values.append(float(np.mean(draw_values)))
+    return float(np.mean(seed_values))
 
 
 def _independent_unit(row: dict) -> str:
+    digest = row.get("canonical_base_map_digest")
+    if digest is not None and str(digest).strip():
+        return "canonical-foundation:" + str(digest)
     value = row.get("base_map_cluster_id")
     if value is None or not str(value).strip():
         raise ValueError("factorial rows require base_map_cluster_id")
     return str(value)
+
+
+def _bank_unit(row: dict) -> str:
+    value = row.get("canonical_bank_digest")
+    if value is not None and str(value).strip():
+        return str(value)
+    # Compatibility for historical artifacts; newly generated formal rows are
+    # always content-bound by canonical_bank_digest.
+    value = row.get("bank_id")
+    if value is None or not str(value).strip():
+        raise ValueError("factorial rows require canonical_bank_digest or bank_id")
+    return "legacy-bank-id:" + str(value)
 
 
 def _interval_record(estimate: float, samples: np.ndarray) -> dict[str, float]:

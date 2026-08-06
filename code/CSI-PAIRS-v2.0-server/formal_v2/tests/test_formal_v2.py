@@ -654,6 +654,24 @@ class EvidenceAndPathTests(unittest.TestCase):
 
     def test_candidate_or_forbidden_nonfixture_cannot_start_factorial(self):
         arrays = _archive_arrays(self.path)
+        arrays["maps"] = arrays["maps"].copy()
+        arrays["noop_maps"] = arrays["noop_maps"].copy()
+        arrays["canonical_map_sha256"] = arrays["canonical_map_sha256"].copy()
+        arrays["noop_map_sha256"] = arrays["noop_map_sha256"].copy()
+        for scene in range(arrays["maps"].shape[0]):
+            # The toy fixture intentionally reuses foundations. Give this synthetic
+            # non-fixture candidate a distinct invariant foundation per scene so this
+            # test reaches the evidence gate it is intended to exercise.
+            offset = 0.001 * (scene + 1)
+            arrays["maps"][scene, :, 1, 0, 0] += offset
+            arrays["noop_maps"][scene, :, 1, 0, 0] += offset
+            for world in range(arrays["maps"].shape[1]):
+                arrays["canonical_map_sha256"][scene, world] = hashlib.sha256(
+                    np.ascontiguousarray(arrays["maps"][scene, world], dtype="<f8").tobytes()
+                ).hexdigest()
+                arrays["noop_map_sha256"][scene, world] = hashlib.sha256(
+                    np.ascontiguousarray(arrays["noop_maps"][scene, world], dtype="<f8").tobytes()
+                ).hexdigest()
         metadata = parse_strict_json(str(arrays["metadata_json"].item()))
         metadata["fixture"] = False
         metadata["scientific_use"] = "CANDIDATE"

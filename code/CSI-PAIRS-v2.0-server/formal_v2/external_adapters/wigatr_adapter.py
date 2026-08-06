@@ -18,11 +18,13 @@ from .wigatr_protocol import (
     SIX_CONDITIONS,
     WIGATR_SOURCE_REVISION,
     build_six_condition_units,
+    condition_action_sha256,
     condition_map,
     grid_to_triangular_mesh,
     load_wigatr_config,
     map_bounds,
     relative_total_power_db,
+    supplied_map_sha256,
     validate_fixed_radio_contract,
 )
 
@@ -382,12 +384,15 @@ def _evaluate_six_conditions(runtime, model, dataset, routed, config, num_materi
             )
         )
         predictions = {}
+        input_digests = {}
         for condition in SIX_CONDITIONS:
+            supplied_map = condition_map(dataset, unit, condition)
+            input_digests[condition] = supplied_map_sha256(supplied_map)
             predictions[condition] = inverse_localize_power(
                 runtime,
                 model,
                 dataset,
-                condition_map(dataset, unit, condition),
+                supplied_map,
                 dataset.bs_pose[unit.scene, :3],
                 observed_power,
                 bounds,
@@ -408,6 +413,9 @@ def _evaluate_six_conditions(runtime, model, dataset, routed, config, num_materi
                     "position_id": str(dataset.position_ids[unit.scene, unit.position]),
                     "localization_error_m": error,
                     "csi_context_sha256": unit.csi_context_sha256,
+                    "base_map_cluster_id": str(dataset.base_map_cluster_ids[unit.scene]),
+                    "map_sha256": input_digests[condition],
+                    "action_sha256": condition_action_sha256(dataset, unit, condition),
                     "query_count": 1,
                 }
             )

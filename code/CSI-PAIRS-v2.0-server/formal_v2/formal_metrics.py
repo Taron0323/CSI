@@ -50,18 +50,34 @@ def risk_coverage(errors: np.ndarray, risk_scores: np.ndarray) -> dict:
     risk = np.asarray(risk_scores, dtype=np.float64)
     if error.shape != risk.shape or error.ndim != 1 or error.size < 2:
         raise ValueError("risk-coverage requires aligned one-dimensional arrays")
-    order = np.argsort(risk)
-    sorted_error = error[order]
+    if not np.all(np.isfinite(error)) or not np.all(np.isfinite(risk)):
+        raise ValueError("risk-coverage requires finite errors and risk scores")
+
+    # A risk threshold cannot distinguish observations with the same score.  Use
+    # the expected cumulative error under a random ordering inside every tie
+    # group, so neither AURC nor retained summaries depend on input row order.
+    order = np.argsort(risk, kind="mergesort")
+    sorted_risk = risk[order]
+    observed_error = error[order]
+    sorted_error = observed_error.copy()
+    group_ends = []
+    start = 0
+    for end in np.flatnonzero(np.r_[sorted_risk[1:] != sorted_risk[:-1], True]) + 1:
+        sorted_error[start:end] = float(np.mean(observed_error[start:end]))
+        group_ends.append(int(end))
+        start = int(end)
     coverages = np.arange(1, error.size + 1, dtype=np.float64) / error.size
     selective_risk = np.cumsum(sorted_error) / np.arange(1, error.size + 1)
     aurc = float(np.trapz(selective_risk, coverages))
     retained = {}
     for coverage in (0.9, 0.75, 0.5):
-        count = max(1, int(np.floor(coverage * error.size)))
-        values = sorted_error[:count]
+        requested = max(1, int(np.floor(coverage * error.size)))
+        count = next(end for end in group_ends if end >= requested)
+        values = observed_error[:count]
         retained[str(coverage)] = {
             "median_error": float(np.median(values)),
             "p90_error": float(np.percentile(values, 90)),
+            "effective_coverage": float(count / error.size),
         }
     return {"aurc": aurc, "retained": retained}
 
