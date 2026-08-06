@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from .formal_evidence import bind_rows, evidence_context
-from .formal_io import artifact_manifest, read_strict_json, write_csv, write_json
+from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_csv, write_json
 
 
 def run_external_validity(config, dataset, manifest_path, output_root):
@@ -17,10 +17,14 @@ def run_external_validity(config, dataset, manifest_path, output_root):
     require_verified_roles_from_root(
         output_root, config, dataset, ("external_validation",)
     )
-    manifest = read_strict_json(manifest_path)
+    manifest_file = Path(manifest_path).resolve()
+    manifest = read_strict_json(manifest_file)
     _validate_manifest(manifest)
+    adapter_source = _verify_adapter_source(manifest)
     output_dir = Path(output_root) / "external_validity"
     output_dir.mkdir(parents=True, exist_ok=True)
+    bound_manifest = output_dir / "adapter_manifest.json"
+    write_json(bound_manifest, {**manifest, "adapter_source_path": str(adapter_source)})
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
@@ -52,8 +56,9 @@ def run_external_validity(config, dataset, manifest_path, output_root):
     null = [row for row in rows if row["route"] == "null"]
     if len({row["base_map_cluster_id"] for row in active}) < 2 or len({row["base_map_cluster_id"] for row in null}) < 2:
         raise RuntimeError("G8 requires at least two independent base-map clusters in active and null strata")
-    agreement = float(
-        np.mean([int(row["primary_direction"]) == int(row["external_direction"]) for row in active])
+    agreement = _cluster_direction_interval(
+        active,
+        int(config["external_validity"]["bootstrap_resamples"]),
     )
     equivalence = _paired_bank_equivalence(
         null,
@@ -61,7 +66,8 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         int(config["external_validity"]["bootstrap_resamples"]),
     )
     passed = bool(
-        agreement >= float(config["external_validity"]["minimum_active_direction_agreement"])
+        agreement["ci95_low"]
+        >= float(config["external_validity"]["minimum_active_direction_agreement"])
         and equivalence["passed"]
     )
     clean_rows = [
@@ -74,7 +80,7 @@ def run_external_validity(config, dataset, manifest_path, output_root):
     ]
     write_csv(output_dir / "validated_paired_effects.csv", bind_rows(clean_rows, evidence))
     gate = {
-        "schema_version": "csi-pairs-v6-external-validity-gate-v1",
+        "schema_version": "csi-pairs-v6-external-validity-gate-v2",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
@@ -82,7 +88,14 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         "evidence_type": manifest["evidence_type"],
         "source_revision": manifest["source_revision"],
         "license_id": manifest["license_id"],
-        "active_direction_agreement": agreement,
+        "adapter_source_path": str(adapter_source),
+        "adapter_source_sha256": manifest["adapter_source_sha256"],
+        "input_manifest_path": bound_manifest.name,
+        "input_manifest_sha256": sha256_file(bound_manifest),
+        "active_direction_agreement": agreement["estimate"],
+        "active_direction_agreement_ci95_low": agreement["ci95_low"],
+        "active_direction_agreement_ci95_high": agreement["ci95_high"],
+        "active_direction_cluster_count": agreement["base_map_cluster_count"],
         "minimum_active_direction_agreement": float(
             config["external_validity"]["minimum_active_direction_agreement"]
         ),
@@ -101,10 +114,13 @@ def run_external_validity(config, dataset, manifest_path, output_root):
 
 
 def _validate_manifest(manifest):
-    required = {"schema_version", "evidence_type", "source_revision", "license_id", "command"}
+    required = {
+        "schema_version", "evidence_type", "source_revision", "license_id", "command",
+        "adapter_source_path", "adapter_source_sha256",
+    }
     if not isinstance(manifest, dict) or set(manifest) != required:
         raise ValueError("external-validity manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-external-validity-adapter-v1":
+    if manifest["schema_version"] != "csi-pairs-v6-external-validity-adapter-v2":
         raise ValueError("external-validity manifest schema mismatch")
     if manifest["evidence_type"] not in {"independent_rt_engine", "controlled_real_intervention"}:
         raise ValueError("external-validity evidence type is unsupported")
@@ -113,6 +129,19 @@ def _validate_manifest(manifest):
     for key in ("source_revision", "license_id"):
         if not isinstance(manifest[key], str) or not manifest[key].strip():
             raise ValueError(f"external-validity {key} must be nonempty")
+    digest = manifest["adapter_source_sha256"]
+    if not isinstance(digest, str) or len(digest) != 64 or any(value not in "0123456789abcdef" for value in digest):
+        raise ValueError("external-validity adapter source hash must be lowercase SHA-256")
+
+
+def _verify_adapter_source(manifest):
+    path = Path(manifest["adapter_source_path"])
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parents[1] / path
+    path = path.resolve()
+    if not path.is_file() or sha256_file(path) != manifest["adapter_source_sha256"]:
+        raise RuntimeError("external-validity adapter source is missing or hash-mismatched")
+    return path
 
 
 def _validate_rows(rows, evidence, dataset):
@@ -123,7 +152,11 @@ def _validate_rows(rows, evidence, dataset):
     }
     if not rows or any(set(row) != required for row in rows):
         raise RuntimeError("external-validity row fields must be exact")
+    unit_ids = set()
     for row in rows:
+        if not row["unit_id"] or row["unit_id"] in unit_ids:
+            raise RuntimeError("external-validity unit IDs must be nonempty and unique")
+        unit_ids.add(row["unit_id"])
         if row["route"] not in {"active", "null"}:
             raise RuntimeError("external-validity rows may only use active/null frozen routes")
         if int(row["primary_direction"]) not in {-1, 1} or int(row["external_direction"]) not in {-1, 1}:
@@ -141,6 +174,35 @@ def _validate_rows(rows, evidence, dataset):
         digest = row["context_sha256"]
         if len(digest) != 64 or any(value not in "0123456789abcdef" for value in digest):
             raise RuntimeError("external-validity context hash is invalid")
+
+
+def _cluster_direction_interval(rows, resamples):
+    clusters = sorted({row["base_map_cluster_id"] for row in rows})
+    if len(clusters) < 2:
+        raise RuntimeError("external-validity direction inference requires two base-map clusters")
+    values = np.asarray(
+        [
+            np.mean(
+                [
+                    int(row["primary_direction"]) == int(row["external_direction"])
+                    for row in rows
+                    if row["base_map_cluster_id"] == cluster
+                ]
+            )
+            for cluster in clusters
+        ],
+        dtype=np.float64,
+    )
+    rng = np.random.default_rng(180000)
+    samples = np.asarray(
+        [np.mean(values[rng.integers(0, len(values), size=len(values))]) for _ in range(int(resamples))]
+    )
+    return {
+        "base_map_cluster_count": len(clusters),
+        "estimate": float(np.mean(values)),
+        "ci95_low": float(np.percentile(samples, 2.5)),
+        "ci95_high": float(np.percentile(samples, 97.5)),
+    }
 
 
 def _paired_bank_equivalence(rows, margin, resamples):

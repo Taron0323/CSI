@@ -107,7 +107,7 @@ sibling world to have a scene XML, canonical-map hash, asset manifest, per-asset
 It retraces CFRs with `PathSolver` and emits paired active/null effects. A source archive alone cannot
 pass G8; actual scene assets and a formal non-fixture run are mandatory.
 
-The standard outer adapter is `../configs/sionna_external_validity_adapter_v1.json`. It expects the
+The standard outer adapter is `../configs/sionna_external_validity_adapter_v2.json`. It expects the
 scene manifest at `RUN_ROOT/inputs/sionna_scene_manifest.json`; this fixed location keeps the exact
 command hash and scene bundle inside the formal run tree.
 

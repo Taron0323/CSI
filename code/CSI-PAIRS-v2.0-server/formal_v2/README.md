@@ -35,5 +35,14 @@ the unified localization comparison. Signal-only representation rows can never c
 WiSER is a paper-spec controlled adaptation over sparse tokens derived from the formal 2.5D map;
 RFIR remains style-controlled because the data contract lacks its multi-view RGB 3DGS geometry stage.
 Only Wi-GATr and WiSER are C1-eligible. The shipped
-`configs/sionna_external_validity_adapter_v1.json` is the standard G8 adapter manifest.
+`configs/sionna_external_validity_adapter_v2.json` is the standard G8 adapter manifest.
 See `WAIBU_INTEGRATION.md` and `external_adapters/README.md` for provenance and execution limits.
+
+External evidence contracts are fail-closed. Scene-ID adapters must bind their implementation source
+and trained checkpoint, cover each held-out position with one exact four-condition unit, and pass
+base-map-cluster bootstrap intervals rather than row-level point estimates. RT calibration manifests
+must bind separate fit/validation files, the frozen protocol, adapter source, and fitted-parameter
+artifact. G8 direction agreement and null equivalence are both cluster-macro confidence-interval
+decisions. G0 literature records must bind locally readable content and explicitly reconcile the
+direct-overlap decision with the recorded search. Each validated input manifest is copied into its
+stage output and reauthenticated during claim assembly.

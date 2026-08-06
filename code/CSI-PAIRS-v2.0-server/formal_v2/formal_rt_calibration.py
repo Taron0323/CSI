@@ -14,17 +14,53 @@ STATISTICS = ("path_loss", "delay_spread", "angular_spread", "visible_path_count
 
 
 def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
-    manifest = read_strict_json(manifest_path)
+    manifest_file = Path(manifest_path).resolve()
+    manifest = read_strict_json(manifest_file)
     _validate_manifest(manifest)
-    protocol_path = Path(manifest["protocol_path"])
-    if sha256_file(protocol_path) != manifest["protocol_sha256"]:
-        raise RuntimeError("RT calibration protocol hash mismatch")
+    protocol_path = _bound_input(
+        manifest["protocol_path"], manifest["protocol_sha256"], manifest_file.parent, "protocol"
+    )
+    fit_dataset_path = _bound_input(
+        manifest["fit_dataset_path"], manifest["fit_dataset_sha256"], manifest_file.parent, "fit dataset"
+    )
+    validation_dataset_path = _bound_input(
+        manifest["validation_dataset_path"],
+        manifest["validation_dataset_sha256"],
+        manifest_file.parent,
+        "validation dataset",
+    )
+    adapter_source_path = _bound_input(
+        manifest["adapter_source_path"],
+        manifest["adapter_source_sha256"],
+        manifest_file.parent,
+        "adapter source",
+    )
+    if fit_dataset_path == validation_dataset_path:
+        raise RuntimeError("RT calibration fit and validation paths must be independent")
     protocol = read_strict_json(protocol_path)
     _validate_protocol(protocol)
     output_dir = Path(output_root) / "qualification" / "rt_calibration"
     output_dir.mkdir(parents=True, exist_ok=True)
+    bound_manifest = output_dir / "adapter_manifest.json"
+    write_json(
+        bound_manifest,
+        {
+            **manifest,
+            "protocol_path": str(protocol_path),
+            "fit_dataset_path": str(fit_dataset_path),
+            "validation_dataset_path": str(validation_dataset_path),
+            "adapter_source_path": str(adapter_source_path),
+        },
+    )
     command = [
-        value.format(dataset=str(dataset.source_path), output=str(output_dir), python=sys.executable)
+        value.format(
+            dataset=str(dataset.source_path),
+            output=str(output_dir),
+            python=sys.executable,
+            fit_dataset=str(fit_dataset_path),
+            validation_dataset=str(validation_dataset_path),
+            protocol=str(protocol_path),
+        )
         for value in manifest["command"]
     ]
     completed = subprocess.run(command, check=False, capture_output=True, text=True)
@@ -33,16 +69,33 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
     result_path = output_dir / "statistics.json"
     if completed.returncode != 0 or not result_path.is_file():
         raise RuntimeError("RT calibration adapter failed")
-    results = read_strict_json(result_path)
+    result_record = read_strict_json(result_path)
+    required_result = {
+        "schema_version", "fit_dataset_sha256", "validation_dataset_sha256",
+        "fitted_parameters_path", "fitted_parameters_sha256", "statistics",
+    }
+    if not isinstance(result_record, dict) or set(result_record) != required_result:
+        raise RuntimeError("RT calibration result fields must be exact")
+    if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-statistics-v2":
+        raise RuntimeError("RT calibration result schema mismatch")
+    for key in ("fit_dataset_sha256", "validation_dataset_sha256"):
+        if result_record[key] != manifest[key]:
+            raise RuntimeError(f"RT calibration result {key} mismatch")
+    fitted_path = (output_dir / str(result_record["fitted_parameters_path"])).resolve()
+    if output_dir.resolve() not in fitted_path.parents or not fitted_path.is_file():
+        raise RuntimeError("RT fitted parameters are missing or escape the stage output")
+    if sha256_file(fitted_path) != result_record["fitted_parameters_sha256"]:
+        raise RuntimeError("RT fitted-parameter hash mismatch")
+    results = result_record["statistics"]
     if not isinstance(results, dict) or set(results) != set(STATISTICS):
         raise RuntimeError("RT calibration must emit exactly four statistics")
     assessments = {}
     for statistic in STATISTICS:
-        result = results[statistic]
-        if not isinstance(result, dict) or set(result) != {"reference", "simulated"}:
+        statistic_result = results[statistic]
+        if not isinstance(statistic_result, dict) or set(statistic_result) != {"reference", "simulated"}:
             raise RuntimeError(f"RT calibration {statistic} result fields must be exact")
-        reference = float(result["reference"])
-        simulated = float(result["simulated"])
+        reference = float(statistic_result["reference"])
+        simulated = float(statistic_result["simulated"])
         tolerance = float(protocol["absolute_tolerances"][statistic])
         if not np.isfinite(reference) or not np.isfinite(simulated):
             raise RuntimeError("RT calibration statistics must be finite")
@@ -59,14 +112,19 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
     gate = {
-        "schema_version": "csi-pairs-v6-rt-calibration-gate-v1",
+        "schema_version": "csi-pairs-v6-rt-calibration-gate-v2",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
         "claim": "C11",
         "protocol_sha256": manifest["protocol_sha256"],
+        "adapter_source_path": str(adapter_source_path),
+        "adapter_source_sha256": manifest["adapter_source_sha256"],
+        "input_manifest_path": bound_manifest.name,
+        "input_manifest_sha256": sha256_file(bound_manifest),
         "fit_dataset_sha256": manifest["fit_dataset_sha256"],
         "validation_dataset_sha256": manifest["validation_dataset_sha256"],
+        "fitted_parameters_sha256": result_record["fitted_parameters_sha256"],
         "fit_validation_are_independent": True,
         "statistics": assessments,
     }
@@ -85,14 +143,18 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
 
 def _validate_manifest(manifest):
     required = {
-        "schema_version", "protocol_path", "protocol_sha256", "fit_dataset_sha256",
-        "validation_dataset_sha256", "command",
+        "schema_version", "protocol_path", "protocol_sha256", "fit_dataset_path",
+        "fit_dataset_sha256", "validation_dataset_path", "validation_dataset_sha256",
+        "adapter_source_path", "adapter_source_sha256", "command",
     }
     if not isinstance(manifest, dict) or set(manifest) != required:
         raise ValueError("RT calibration manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-v1":
+    if manifest["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-v2":
         raise ValueError("RT calibration manifest schema mismatch")
-    for key in ("protocol_sha256", "fit_dataset_sha256", "validation_dataset_sha256"):
+    for key in (
+        "protocol_sha256", "fit_dataset_sha256", "validation_dataset_sha256",
+        "adapter_source_sha256",
+    ):
         value = manifest[key]
         if not isinstance(value, str) or len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
             raise ValueError(f"RT calibration {key} must be lowercase SHA-256")
@@ -100,6 +162,19 @@ def _validate_manifest(manifest):
         raise ValueError("RT calibration fit and validation datasets must be independent")
     if not isinstance(manifest["command"], list) or not manifest["command"]:
         raise ValueError("RT calibration command must be nonempty argv")
+    for key in ("protocol_path", "fit_dataset_path", "validation_dataset_path", "adapter_source_path"):
+        if not isinstance(manifest[key], str) or not manifest[key].strip():
+            raise ValueError(f"RT calibration {key} must be nonempty")
+
+
+def _bound_input(path_value, digest, manifest_root, label):
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = Path(manifest_root) / path
+    path = path.resolve()
+    if not path.is_file() or sha256_file(path) != digest:
+        raise RuntimeError(f"RT calibration {label} is missing or hash-mismatched")
+    return path
 
 
 def _validate_protocol(protocol):

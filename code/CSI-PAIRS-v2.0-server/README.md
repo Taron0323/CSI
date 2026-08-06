@@ -82,7 +82,11 @@ The latest file-by-file runtime audit is `artifacts/waibu_integration_audit_2026
 
 Use `formal_cli export-sionna-scenes` to generate the hashed PLY/XML/assets manifest for every
 `external_validation` sibling world before running the shipped
-`formal_v2/configs/sionna_external_validity_adapter_v1.json` G8 adapter.
+`formal_v2/configs/sionna_external_validity_adapter_v2.json` G8 adapter.
+G8 PASS uses the lower cluster-bootstrap confidence bound for active direction agreement and a
+cluster-level null-equivalence interval; repeated rows from one base map cannot increase its weight.
+Scene-ID, RT-calibration, and literature manifests use the V2 evidence schemas documented in
+`formal_v2/README.md`; legacy aggregate-only manifests are rejected.
 
 ## 4. Inspect formal data
 

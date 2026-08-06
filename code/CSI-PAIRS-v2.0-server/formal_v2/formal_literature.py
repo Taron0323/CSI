@@ -8,25 +8,42 @@ from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_j
 
 
 def run_literature_resource_gate(config, dataset, manifest_path, output_root):
-    path = Path(manifest_path)
+    path = Path(manifest_path).resolve()
     manifest = read_strict_json(path)
-    _validate_manifest(config, manifest)
+    _validate_manifest(config, manifest, path.parent)
     output_dir = Path(output_root) / "literature_resources"
     output_dir.mkdir(parents=True, exist_ok=True)
+    bound_manifest = output_dir / "literature_manifest.json"
+    bound_records = []
+    for record in manifest["records"]:
+        content = Path(record["content_path"])
+        if not content.is_absolute():
+            content = path.parent / content
+        bound_records.append({**record, "content_path": str(content.resolve())})
+    write_json(bound_manifest, {**manifest, "records": bound_records})
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
+    decision = manifest["decision"]
+    passed = bool(
+        decision["no_direct_overlap"]
+        and decision["rt_path_ready"]
+        and decision["map_path_ready"]
+        and decision["external_validity_path_ready"]
+    )
     gate = {
-        "schema_version": "csi-pairs-v6-literature-resource-gate-v1",
-        "status": "PASS",
-        "passed": True,
+        "schema_version": "csi-pairs-v6-literature-resource-gate-v2",
+        "status": "PASS" if passed else "FAIL",
+        "passed": passed,
         **evidence,
         "gate": "G0",
-        "manifest_sha256": sha256_file(path),
+        "input_manifest_path": bound_manifest.name,
+        "input_manifest_sha256": sha256_file(bound_manifest),
         "search_completed_utc": manifest["search_completed_utc"],
         "databases": manifest["databases"],
         "record_count": len(manifest["records"]),
         "resource_plan": manifest["resource_plan"],
+        "decision": decision,
     }
     write_json(output_dir / "gate.json", gate)
     write_json(
@@ -40,14 +57,14 @@ def run_literature_resource_gate(config, dataset, manifest_path, output_root):
     return gate
 
 
-def _validate_manifest(config, manifest):
+def _validate_manifest(config, manifest, manifest_root=None):
     required = {
         "schema_version", "search_completed_utc", "databases", "queries", "records",
-        "resource_plan", "licenses_reviewed",
+        "resource_plan", "licenses_reviewed", "decision",
     }
     if not isinstance(manifest, dict) or set(manifest) != required:
         raise ValueError("literature/resource manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-literature-resource-manifest-v1":
+    if manifest["schema_version"] != "csi-pairs-v6-literature-resource-manifest-v2":
         raise ValueError("literature/resource manifest schema mismatch")
     completed = _parse_utc(manifest["search_completed_utc"])
     age = (datetime.now(timezone.utc) - completed).total_seconds() / 86400.0
@@ -59,7 +76,7 @@ def _validate_manifest(config, manifest):
         raise ValueError("literature search queries must be recorded")
     records = manifest["records"]
     record_fields = {
-        "citation_key", "title", "doi_or_url", "verified_utc", "content_sha256",
+        "citation_key", "title", "doi_or_url", "verified_utc", "content_path", "content_sha256",
         "relation_to_claim", "implementation_status",
     }
     if not isinstance(records, list) or not records:
@@ -75,6 +92,21 @@ def _validate_manifest(config, manifest):
         if len(digest) != 64 or any(value not in "0123456789abcdef" for value in digest):
             raise ValueError("literature record content hash is invalid")
         _parse_utc(record["verified_utc"])
+        if record["relation_to_claim"] not in {
+            "direct_overlap", "adjacent_nonoverlap", "baseline", "facility"
+        }:
+            raise ValueError("literature relation_to_claim is not a frozen category")
+        if record["implementation_status"] not in {
+            "integrated", "adapter_ready", "paper_only", "unavailable"
+        }:
+            raise ValueError("literature implementation_status is not a frozen category")
+        content = Path(record["content_path"])
+        if not content.is_absolute():
+            if manifest_root is None:
+                raise ValueError("relative literature content requires a manifest root")
+            content = Path(manifest_root) / content
+        if not content.is_file() or sha256_file(content) != digest:
+            raise ValueError("literature content is missing or hash-mismatched")
     resource = manifest["resource_plan"]
     resource_fields = {
         "gpu_hours", "storage_gb", "seed_count", "failure_policy", "adapter_owners",
@@ -89,6 +121,24 @@ def _validate_manifest(config, manifest):
         raise ValueError("resource plan ownership/failure policy must be explicit")
     if manifest["licenses_reviewed"] is not True:
         raise ValueError("resource gate requires an explicit license review")
+    decision = manifest["decision"]
+    decision_fields = {
+        "no_direct_overlap", "rt_path_ready", "map_path_ready",
+        "external_validity_path_ready", "novelty_scope",
+    }
+    if not isinstance(decision, dict) or set(decision) != decision_fields:
+        raise ValueError("literature/resource decision fields must be exact")
+    for key in (
+        "no_direct_overlap", "rt_path_ready", "map_path_ready",
+        "external_validity_path_ready",
+    ):
+        if type(decision[key]) is not bool:
+            raise ValueError(f"literature/resource decision {key} must be boolean")
+    if not isinstance(decision["novelty_scope"], str) or not decision["novelty_scope"].strip():
+        raise ValueError("literature novelty scope must be explicit")
+    direct_overlap = any(record["relation_to_claim"] == "direct_overlap" for record in records)
+    if decision["no_direct_overlap"] == direct_overlap:
+        raise ValueError("literature direct-overlap decision contradicts its records")
 
 
 def _parse_utc(value):

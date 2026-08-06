@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +16,7 @@ from formal_v2.formal_claims import (
     CLAIM_DEPENDENCIES,
     _semantic_status,
     _validate_external_manifest_binding,
+    _validate_stage_bound_input,
     assemble_claim_evidence,
 )
 from formal_v2.formal_cli import build_parser
@@ -38,7 +40,10 @@ from formal_v2.formal_evidence import (
 )
 from formal_v2.formal_factorial import city_support_candidates, eligible_query_indices
 from formal_v2.formal_evaluation import _eligible_evaluation_positions, _paired_score_differences
-from formal_v2.formal_external_validity import _validate_manifest as validate_external_validity_manifest
+from formal_v2.formal_external_validity import (
+    _cluster_direction_interval,
+    _validate_manifest as validate_external_validity_manifest,
+)
 from formal_v2.formal_external import (
     _validate_manifest as validate_external_manifest,
     _validate_execution_manifest as validate_external_execution_manifest,
@@ -99,6 +104,11 @@ from formal_v2.formal_representation_baselines import (
 )
 from formal_v2.formal_resources import validate_resource_registry
 from formal_v2.formal_qualification import qualification_blocking_scenes
+from formal_v2.formal_literature import _validate_manifest as validate_literature_manifest
+from formal_v2.formal_rt_calibration import (
+    _validate_manifest as validate_rt_calibration_manifest,
+    run_rt_calibration_gate,
+)
 from formal_v2.formal_risk import (
     TemperatureCalibration,
     _coverage_error_monotonic,
@@ -107,7 +117,12 @@ from formal_v2.formal_risk import (
     randomized_candidate_labels,
 )
 from formal_v2.formal_routing import route_code
-from formal_v2.formal_scene_id import _validate_manifest as validate_scene_id_manifest
+from formal_v2.formal_scene_id import (
+    _cluster_spearman_interval,
+    _model_assessment as scene_id_model_assessment,
+    _validate_manifest as validate_scene_id_manifest,
+    _validate_rows as validate_scene_id_rows,
+)
 from formal_v2.sionna_scene_export import export_sionna_scenes
 from formal_v2.formal_statistics import (
     exact_factorial_utilities,
@@ -513,6 +528,77 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(set(CLAIM_DEPENDENCIES), set(CLAIM_IDS))
         self.assertEqual(set(complete_gate_vector()), set(GATE_IDS))
 
+    def test_claim_semantics_recheck_g0_c2_c11_and_g8_evidence(self):
+        g0 = {
+            "status": "PASS",
+            "passed": True,
+            "input_manifest_sha256": "a" * 64,
+            "decision": {
+                "no_direct_overlap": True,
+                "rt_path_ready": True,
+                "map_path_ready": True,
+                "external_validity_path_ready": True,
+                "novelty_scope": "local paired interventions",
+            },
+        }
+        self.assertEqual(_semantic_status("G0", g0), "PASS")
+        g0["decision"]["rt_path_ready"] = False
+        self.assertEqual(_semantic_status("G0", g0), "FAIL")
+
+        scene = {
+            "status": "PASS",
+            "passed": True,
+            "models_assessed": 1,
+            "input_manifest_sha256": "b" * 64,
+            "model_assessments": [
+                {
+                    "passed": True,
+                    "base_map_cluster_count": 3,
+                    "scene_id_minus_map_ci95_high": 0.1,
+                    "scene_id_error_noninferiority_margin_m": 0.25,
+                    "map_swap_id_swap_spearman_ci95_low": 0.9,
+                    "minimum_swap_spearman": 0.8,
+                    "adapter_source_sha256": "c" * 64,
+                    "model_checkpoint_sha256": "d" * 64,
+                }
+            ],
+        }
+        self.assertEqual(_semantic_status("scene_id_mechanism", scene), "PASS")
+        scene["model_assessments"][0]["scene_id_minus_map_ci95_high"] = 0.3
+        self.assertEqual(_semantic_status("scene_id_mechanism", scene), "FAIL")
+
+        rt = {
+            "status": "PASS",
+            "passed": True,
+            "fit_validation_are_independent": True,
+            "protocol_sha256": "a" * 64,
+            "input_manifest_sha256": "b" * 64,
+            "adapter_source_sha256": "c" * 64,
+            "fit_dataset_sha256": "d" * 64,
+            "validation_dataset_sha256": "e" * 64,
+            "fitted_parameters_sha256": "f" * 64,
+            "statistics": {
+                name: {"passed": True}
+                for name in ("path_loss", "delay_spread", "angular_spread", "visible_path_count")
+            },
+        }
+        self.assertEqual(_semantic_status("rt_calibration", rt), "PASS")
+        rt["statistics"]["path_loss"]["passed"] = False
+        self.assertEqual(_semantic_status("rt_calibration", rt), "FAIL")
+
+        g8 = {
+            "status": "PASS",
+            "passed": True,
+            "active_direction_cluster_count": 3,
+            "active_direction_agreement_ci95_low": 0.85,
+            "minimum_active_direction_agreement": 0.8,
+            "adapter_source_sha256": "a" * 64,
+            "null_equivalence": {"passed": True, "base_map_cluster_count": 3},
+        }
+        self.assertEqual(_semantic_status("G8", g8), "PASS")
+        g8["active_direction_agreement_ci95_low"] = 0.7
+        self.assertEqual(_semantic_status("G8", g8), "FAIL")
+
     def test_not_assessed_from_later_stage_cannot_erase_upstream_gate(self):
         (self.root / "qualification").mkdir()
         (self.root / "evaluation").mkdir()
@@ -739,6 +825,26 @@ class EvidenceAndPathTests(unittest.TestCase):
                 schema_version="test-gate-v1",
             )
 
+    def test_claim_reauthenticates_copied_stage_input_manifest(self):
+        stage = self.root / "bound-stage"
+        stage.mkdir()
+        source = stage / "adapter_manifest.json"
+        write_json(source, {"schema_version": "adapter-v1"})
+        payload = {
+            "input_manifest_path": source.name,
+            "input_manifest_sha256": sha256_file(source),
+        }
+        write_json(
+            stage / "manifest.json",
+            {
+                "files": [{"path": source.name, "sha256": sha256_file(source)}],
+            },
+        )
+        _validate_stage_bound_input(stage / "gate.json", payload)
+        write_json(source, {"schema_version": "tampered"})
+        with self.assertRaisesRegex(RuntimeError, "hash-mismatched"):
+            _validate_stage_bound_input(stage / "gate.json", payload)
+
     def test_control_and_scene_id_manifests_are_fail_closed(self):
         controls = {
             "schema_version": "csi-pairs-v6-resource-controls-v1",
@@ -750,21 +856,260 @@ class EvidenceAndPathTests(unittest.TestCase):
             validate_control_manifest(controls)
         validate_scene_id_manifest(
             {
-                "schema_version": "csi-pairs-v6-scene-id-adapters-v1",
+                "schema_version": "csi-pairs-v6-scene-id-adapters-v2",
                 "adapters": [
-                    {"adapter_id": "m", "model_name": "model", "command": ["true"]}
+                    {
+                        "adapter_id": "m",
+                        "model_name": "model",
+                        "implementation_revision": "revision",
+                        "adapter_source_path": "adapter.py",
+                        "adapter_source_sha256": "a" * 64,
+                        "model_checkpoint_path": "model.pt",
+                        "model_checkpoint_sha256": "b" * 64,
+                        "command": ["true"],
+                    }
                 ],
             }
         )
         validate_external_validity_manifest(
             {
-                "schema_version": "csi-pairs-v6-external-validity-adapter-v1",
+                "schema_version": "csi-pairs-v6-external-validity-adapter-v2",
                 "evidence_type": "independent_rt_engine",
                 "source_revision": "revision",
                 "license_id": "license",
+                "adapter_source_path": "adapter.py",
+                "adapter_source_sha256": "a" * 64,
                 "command": ["true"],
             }
         )
+
+    def test_scene_id_rows_are_exactly_paired_to_held_out_positions(self):
+        scene = int(self.dataset.indices_for_role("source_final_unseen_bank")[0])
+        evidence = evidence_context(self.config, self.dataset, "FORBIDDEN")
+        adapter = {"adapter_id": "test", "model_name": "model", "command": ["true"]}
+        rows = [
+            {
+                "unit_id": "u0",
+                "model_name": "model",
+                "condition": condition,
+                "bank_id": str(self.dataset.bank_ids[scene]),
+                "position_id": str(self.dataset.position_ids[scene, 0]),
+                "localization_error_m": "1.0",
+                "response_score": str(index),
+                "source_role": "source_final_unseen_bank",
+                "dataset_sha256": str(evidence["dataset_sha256"]),
+                "config_sha256": str(evidence["config_sha256"]),
+            }
+            for index, condition in enumerate(("map", "scene_id", "map_swap", "id_swap"))
+        ]
+        validate_scene_id_rows(adapter, [dict(row) for row in rows], self.dataset, evidence)
+        with self.assertRaisesRegex(RuntimeError, "duplicates"):
+            validate_scene_id_rows(adapter, [dict(row) for row in rows] + [dict(rows[0])], self.dataset, evidence)
+
+    def test_scene_id_gate_uses_cluster_macro_confidence_intervals(self):
+        rows = []
+        for cluster_index, cluster in enumerate(("a", "b", "c", "d")):
+            for repeat in range(1 if cluster != "a" else 20):
+                unit = f"{cluster}-{repeat}"
+                for condition, error, score in (
+                    ("map", 1.0, 0.0),
+                    ("scene_id", 1.05, 0.0),
+                    ("map_swap", 0.0, float(cluster_index)),
+                    ("id_swap", 0.0, float(cluster_index)),
+                ):
+                    rows.append(
+                        {
+                            "unit_id": unit,
+                            "condition": condition,
+                            "localization_error_m": error,
+                            "response_score": score,
+                            "base_map_cluster_id": cluster,
+                        }
+                    )
+        result = scene_id_model_assessment(
+            self.config, {"adapter_id": "a", "model_name": "m"}, rows
+        )
+        self.assertEqual(result["base_map_cluster_count"], 4)
+        self.assertAlmostEqual(result["scene_id_minus_map_error_m"], 0.05)
+        self.assertTrue(result["passed"])
+        interval = _cluster_spearman_interval(
+            np.asarray(["a", "a", "b", "c"]),
+            np.asarray([0.0, 0.0, 1.0, 2.0]),
+            np.asarray([0.0, 0.0, 1.0, 2.0]),
+            100,
+            9,
+        )
+        self.assertAlmostEqual(interval["estimate"], 1.0)
+
+    def test_external_direction_gate_cannot_be_inflated_by_duplicate_rows(self):
+        rows = []
+        for cluster, matches, count in (("a", 1, 20), ("b", 0, 1)):
+            rows.extend(
+                {
+                    "base_map_cluster_id": cluster,
+                    "primary_direction": "1",
+                    "external_direction": "1" if matches else "-1",
+                }
+                for _ in range(count)
+            )
+        interval = _cluster_direction_interval(rows, 100)
+        self.assertEqual(interval["base_map_cluster_count"], 2)
+        self.assertAlmostEqual(interval["estimate"], 0.5)
+
+    def test_rt_calibration_manifest_requires_bound_input_and_source_paths(self):
+        manifest = {
+            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v2",
+            "protocol_path": "protocol.json",
+            "protocol_sha256": "a" * 64,
+            "fit_dataset_path": "fit.bin",
+            "fit_dataset_sha256": "b" * 64,
+            "validation_dataset_path": "validation.bin",
+            "validation_dataset_sha256": "c" * 64,
+            "adapter_source_path": "adapter.py",
+            "adapter_source_sha256": "d" * 64,
+            "command": ["true"],
+        }
+        validate_rt_calibration_manifest(manifest)
+        del manifest["fit_dataset_path"]
+        with self.assertRaisesRegex(ValueError, "fields"):
+            validate_rt_calibration_manifest(manifest)
+
+    def test_rt_calibration_stage_executes_and_binds_fitted_artifacts_end_to_end(self):
+        fit = self.root / "rt-fit.bin"
+        validation = self.root / "rt-validation.bin"
+        fit.write_bytes(b"independent fit")
+        validation.write_bytes(b"independent validation")
+        protocol = self.root / "rt-protocol.json"
+        write_json(
+            protocol,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-protocol-v1",
+                "frozen_utc": "2026-08-06T00:00:00Z",
+                "absolute_tolerances": {
+                    "path_loss": 0.2,
+                    "delay_spread": 0.2,
+                    "angular_spread": 0.2,
+                    "visible_path_count": 0.2,
+                },
+                "exclusion_rules": [],
+            },
+        )
+        adapter = self.root / "rt_adapter.py"
+        adapter.write_text(
+            "import argparse, hashlib, json\n"
+            "from pathlib import Path\n"
+            "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation'); a=p.parse_args()\n"
+            "out=Path(a.output); fitted=out/'fitted.json'; fitted.write_text('{\"gain\":1.0}', encoding='utf-8')\n"
+            "sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
+            "stats={k:{'reference':1.0,'simulated':1.05} for k in ('path_loss','delay_spread','angular_spread','visible_path_count')}\n"
+            "payload={'schema_version':'csi-pairs-v6-rt-calibration-statistics-v2','fit_dataset_sha256':sha(a.fit),'validation_dataset_sha256':sha(a.validation),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'statistics':stats}\n"
+            "(out/'statistics.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        manifest = self.root / "rt-manifest.json"
+        write_json(
+            manifest,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v2",
+                "protocol_path": str(protocol),
+                "protocol_sha256": sha256_file(protocol),
+                "fit_dataset_path": str(fit),
+                "fit_dataset_sha256": sha256_file(fit),
+                "validation_dataset_path": str(validation),
+                "validation_dataset_sha256": sha256_file(validation),
+                "adapter_source_path": str(adapter),
+                "adapter_source_sha256": sha256_file(adapter),
+                "command": [
+                    sys.executable,
+                    str(adapter),
+                    "--output",
+                    "{output}",
+                    "--fit",
+                    "{fit_dataset}",
+                    "--validation",
+                    "{validation_dataset}",
+                ],
+            },
+        )
+        output = self.root / "formal-run"
+        gate = run_rt_calibration_gate(self.config, self.dataset, manifest, output)
+        self.assertTrue(gate["passed"])
+        self.assertEqual(len(gate["statistics"]), 4)
+        _validate_stage_bound_input(
+            output / "qualification/rt_calibration/gate.json",
+            gate,
+            self.config,
+            "rt_calibration",
+        )
+        fit.write_bytes(b"tampered fit")
+        with self.assertRaisesRegex(RuntimeError, "fit dataset"):
+            _validate_stage_bound_input(
+                output / "qualification/rt_calibration/gate.json",
+                gate,
+                self.config,
+                "rt_calibration",
+            )
+
+    def test_literature_gate_rejects_unbound_or_contradictory_novelty_records(self):
+        content = self.root / "paper.pdf"
+        content.write_bytes(b"paper")
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        manifest = {
+            "schema_version": "csi-pairs-v6-literature-resource-manifest-v2",
+            "search_completed_utc": now,
+            "databases": list(self.config["literature"]["required_databases"]),
+            "queries": ["map-conditioned CSI"],
+            "records": [
+                {
+                    "citation_key": "paper",
+                    "title": "Paper",
+                    "doi_or_url": "https://example.invalid/paper",
+                    "verified_utc": now,
+                    "content_path": str(content),
+                    "content_sha256": sha256_file(content),
+                    "relation_to_claim": "adjacent_nonoverlap",
+                    "implementation_status": "integrated",
+                }
+            ],
+            "resource_plan": {
+                "gpu_hours": 1,
+                "storage_gb": 1,
+                "seed_count": 3,
+                "failure_policy": "fail closed",
+                "adapter_owners": ["research-team"],
+            },
+            "licenses_reviewed": True,
+            "decision": {
+                "no_direct_overlap": True,
+                "rt_path_ready": True,
+                "map_path_ready": True,
+                "external_validity_path_ready": True,
+                "novelty_scope": "paired local geometry supervision",
+            },
+        }
+        validate_literature_manifest(self.config, manifest, self.root)
+        manifest["decision"]["no_direct_overlap"] = False
+        with self.assertRaisesRegex(ValueError, "contradicts"):
+            validate_literature_manifest(self.config, manifest, self.root)
+        manifest["decision"]["no_direct_overlap"] = True
+        stage = self.root / "literature-stage"
+        stage.mkdir()
+        bound = stage / "literature_manifest.json"
+        write_json(bound, manifest)
+        payload = {
+            "input_manifest_path": bound.name,
+            "input_manifest_sha256": sha256_file(bound),
+        }
+        write_json(
+            stage / "manifest.json",
+            {"files": [{"path": bound.name, "sha256": sha256_file(bound)}]},
+        )
+        _validate_stage_bound_input(stage / "gate.json", payload, self.config, "G0")
+        content.write_bytes(b"changed paper")
+        with self.assertRaisesRegex(ValueError, "hash-mismatched"):
+            _validate_stage_bound_input(stage / "gate.json", payload, self.config, "G0")
 
     def test_cli_exposes_all_fail_closed_stages(self):
         help_text = build_parser().format_help()
@@ -1365,7 +1710,7 @@ class WaibuIntegrationTests(unittest.TestCase):
 
     def test_shipped_sionna_manifest_is_a_valid_g8_adapter(self):
         manifest = parse_strict_json(
-            (ROOT / "formal_v2/configs/sionna_external_validity_adapter_v1.json").read_text()
+            (ROOT / "formal_v2/configs/sionna_external_validity_adapter_v2.json").read_text()
         )
         validate_external_validity_manifest(manifest)
         self.assertIn("formal_v2.external_adapters.sionna_external_validity", manifest["command"])

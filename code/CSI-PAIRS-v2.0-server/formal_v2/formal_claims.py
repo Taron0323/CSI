@@ -30,19 +30,19 @@ CLAIM_DEPENDENCIES = {
 
 
 STAGE_SPECS = {
-    "G0": ("literature_resources/gate.json", "csi-pairs-v6-literature-resource-gate-v1"),
+    "G0": ("literature_resources/gate.json", "csi-pairs-v6-literature-resource-gate-v2"),
     "G1_G2": ("qualification/gate.json", "csi-pairs-formal-qualification-gate-v2.1-v6"),
     "G3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
     "G4": ("controls/gate.json", "csi-pairs-v6-resource-control-gate-v2"),
     "G5": ("factorial/gate.json", "csi-pairs-formal-factorial-gate-v2.1-v6"),
     "G6": ("risk/gate.json", "csi-pairs-v6-risk-gate-v2"),
     "G7": ("path/gate.json", "csi-pairs-v6-path-gate-v3"),
-    "G8": ("external_validity/gate.json", "csi-pairs-v6-external-validity-gate-v1"),
+    "G8": ("external_validity/gate.json", "csi-pairs-v6-external-validity-gate-v2"),
     "external_baselines": (
         "external_baselines/gate.json",
         "csi-pairs-v6-external-baseline-gate-v2",
     ),
-    "scene_id_mechanism": ("scene_id/gate.json", "csi-pairs-v6-scene-id-gate-v1"),
+    "scene_id_mechanism": ("scene_id/gate.json", "csi-pairs-v6-scene-id-gate-v2"),
     "shuffled_pair": (
         "controls/shuffled_pair/gate.json",
         "csi-pairs-v6-shuffled-pair-gate-v2",
@@ -53,7 +53,7 @@ STAGE_SPECS = {
     ),
     "rt_calibration": (
         "qualification/rt_calibration/gate.json",
-        "csi-pairs-v6-rt-calibration-gate-v1",
+        "csi-pairs-v6-rt-calibration-gate-v2",
     ),
 }
 
@@ -139,13 +139,35 @@ def _assess_stage(path, schema, name, config, dataset):
         )
         if name == "external_baselines":
             _validate_external_manifest_binding(path, payload)
+        if name in {"G0", "G8", "scene_id_mechanism", "rt_calibration"}:
+            _validate_stage_bound_input(path, payload, config, name)
         return _semantic_status(name, payload), None
     except Exception as error:
         return "INVALID", f"{type(error).__name__}: {error}"
 
 
 def _semantic_status(name, payload):
-    if name == "G1_G2":
+    if name == "G0":
+        decision = payload.get("decision")
+        if (
+            not isinstance(decision, dict)
+            or set(decision) != {
+                "no_direct_overlap", "rt_path_ready", "map_path_ready",
+                "external_validity_path_ready", "novelty_scope",
+            }
+            or any(
+                decision.get(key) is not True
+                for key in (
+                    "no_direct_overlap", "rt_path_ready", "map_path_ready",
+                    "external_validity_path_ready",
+                )
+            )
+            or not isinstance(decision.get("novelty_scope"), str)
+            or not decision["novelty_scope"].strip()
+            or not _lower_sha256(payload.get("input_manifest_sha256"))
+        ):
+            return "FAIL"
+    elif name == "G1_G2":
         vector = payload.get("upstream_gates")
         if not isinstance(vector, dict):
             raise RuntimeError("qualification gate lacks upstream_gates")
@@ -167,6 +189,18 @@ def _semantic_status(name, payload):
     elif name == "G7":
         if not _require_pass_subgates(payload, "g7_subgates", 5):
             return "FAIL"
+    elif name == "G8":
+        null = payload.get("null_equivalence")
+        if (
+            not isinstance(null, dict)
+            or null.get("passed") is not True
+            or int(null.get("base_map_cluster_count", 0)) < 2
+            or int(payload.get("active_direction_cluster_count", 0)) < 2
+            or float(payload.get("active_direction_agreement_ci95_low", -1.0))
+            < float(payload.get("minimum_active_direction_agreement", 1.0))
+            or not _lower_sha256(payload.get("adapter_source_sha256"))
+        ):
+            return "FAIL"
     elif name == "external_baselines":
         eligible = payload.get("c1_eligible_models")
         if (
@@ -180,6 +214,45 @@ def _semantic_status(name, payload):
             return "FAIL"
     elif name in {"shuffled_pair", "retention"}:
         if not payload.get("checkpoint_hashes_verified"):
+            return "FAIL"
+    elif name == "scene_id_mechanism":
+        assessments = payload.get("model_assessments")
+        if (
+            not isinstance(assessments, list)
+            or not assessments
+            or len(assessments) != int(payload.get("models_assessed", 0))
+            or not _lower_sha256(payload.get("input_manifest_sha256"))
+        ):
+            return "FAIL"
+        for row in assessments:
+            if (
+                not isinstance(row, dict)
+                or row.get("passed") is not True
+                or int(row.get("base_map_cluster_count", 0)) < 2
+                or float(row.get("scene_id_minus_map_ci95_high", float("inf")))
+                > float(row.get("scene_id_error_noninferiority_margin_m", -1.0))
+                or float(row.get("map_swap_id_swap_spearman_ci95_low", -1.0))
+                < float(row.get("minimum_swap_spearman", 1.0))
+                or not _lower_sha256(row.get("adapter_source_sha256"))
+                or not _lower_sha256(row.get("model_checkpoint_sha256"))
+            ):
+                return "FAIL"
+    elif name == "rt_calibration":
+        statistics = payload.get("statistics")
+        if (
+            not isinstance(statistics, dict)
+            or set(statistics) != {"path_loss", "delay_spread", "angular_spread", "visible_path_count"}
+            or any(not isinstance(value, dict) or value.get("passed") is not True for value in statistics.values())
+            or payload.get("fit_validation_are_independent") is not True
+            or payload.get("fit_dataset_sha256") == payload.get("validation_dataset_sha256")
+            or any(
+                not _lower_sha256(payload.get(key))
+                for key in (
+                    "protocol_sha256", "input_manifest_sha256", "adapter_source_sha256",
+                    "fit_dataset_sha256", "validation_dataset_sha256", "fitted_parameters_sha256",
+                )
+            )
+        ):
             return "FAIL"
     if payload.get("passed") is True and payload.get("status") == "PASS":
         return "PASS"
@@ -226,6 +299,67 @@ def _validate_external_manifest_binding(gate_path, payload):
     if len(matches) != 1 or matches[0].get("sha256") != payload.get("adapter_manifest_sha256"):
         raise RuntimeError("external adapter manifest is absent from or mismatched with the stage manifest")
     _validate_manifest(read_strict_json(manifest_path))
+
+
+def _validate_stage_bound_input(gate_path, payload, config=None, stage_name=None):
+    relative = payload.get("input_manifest_path")
+    digest = payload.get("input_manifest_sha256")
+    if not isinstance(relative, str) or Path(relative).name != relative or not _lower_sha256(digest):
+        raise RuntimeError("stage gate has an invalid bound input-manifest reference")
+    path = gate_path.parent / relative
+    if not path.is_file() or sha256_file(path) != digest:
+        raise RuntimeError("stage input manifest is missing or hash-mismatched")
+    stage_manifest = read_strict_json(gate_path.parent / "manifest.json")
+    files = stage_manifest.get("files") if isinstance(stage_manifest, dict) else None
+    matches = [
+        row for row in files
+        if isinstance(row, dict) and row.get("path") == relative
+    ] if isinstance(files, list) else []
+    if len(matches) != 1 or matches[0].get("sha256") != digest:
+        raise RuntimeError("bound input manifest is absent from or mismatched with the stage manifest")
+    if stage_name is None:
+        return
+    manifest = read_strict_json(path)
+    if stage_name == "G0":
+        from .formal_literature import _validate_manifest
+
+        _validate_manifest(config, manifest, path.parent)
+    elif stage_name == "G8":
+        from .formal_external_validity import _validate_manifest, _verify_adapter_source
+
+        _validate_manifest(manifest)
+        _verify_adapter_source(manifest)
+    elif stage_name == "scene_id_mechanism":
+        from .formal_scene_id import _validate_manifest, _verify_adapter_files
+
+        _validate_manifest(manifest)
+        for adapter in manifest["adapters"]:
+            _verify_adapter_files(adapter, path.parent)
+    elif stage_name == "rt_calibration":
+        from .formal_rt_calibration import _bound_input, _validate_manifest, _validate_protocol
+
+        _validate_manifest(manifest)
+        protocol = _bound_input(
+            manifest["protocol_path"], manifest["protocol_sha256"], path.parent, "protocol"
+        )
+        fit = _bound_input(
+            manifest["fit_dataset_path"], manifest["fit_dataset_sha256"], path.parent, "fit dataset"
+        )
+        validation = _bound_input(
+            manifest["validation_dataset_path"],
+            manifest["validation_dataset_sha256"],
+            path.parent,
+            "validation dataset",
+        )
+        _bound_input(
+            manifest["adapter_source_path"],
+            manifest["adapter_source_sha256"],
+            path.parent,
+            "adapter source",
+        )
+        if fit == validation:
+            raise RuntimeError("RT calibration fit and validation paths are not independent")
+        _validate_protocol(read_strict_json(protocol))
 
 
 def _gate_state(status):

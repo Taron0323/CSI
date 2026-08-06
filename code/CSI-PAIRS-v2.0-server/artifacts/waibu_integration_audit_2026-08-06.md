@@ -65,8 +65,8 @@ only Wi-GATr plus WiSER to count toward C1. Style-controlled SigMap/RFIR results
 - SigMap, WiSER, RFIR: real differentiable losses and nonzero parameter gradients.
 - Sionna: package dependency check PASS; exact source/RT/Torch/h5py versions authenticated; official LRM
   script help paths execute; exported four-world fixture scene traced to four finite `(16, 16)` CFR arrays.
-- Unit suite: 77/77 PASS.
-- Clean extracted server bundle: 147/147 package hashes and 77/77 tests after this report is included.
+- Unit suite: 85/85 PASS, including cluster-level external-evidence, RT end-to-end, and claim mutation coverage.
+- Clean extracted server bundle: 147/147 package hashes and 85/85 tests after this report is included.
 
 ## Defects found and corrected during this audit
 
