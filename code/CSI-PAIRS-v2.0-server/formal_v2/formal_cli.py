@@ -19,6 +19,10 @@ def build_parser() -> argparse.ArgumentParser:
     fixture = subparsers.add_parser("make-fixture", help="create a permanently non-scientific code fixture")
     fixture.add_argument("--output", required=True)
     fixture.add_argument("--seed", type=int, default=20270805)
+    resources = subparsers.add_parser("verify-waibu-resources")
+    resources.add_argument("--registry", required=True)
+    resources.add_argument("--waibu-root", required=True)
+    resources.add_argument("--output", required=True)
 
     for command in (
         "inspect-data",
@@ -30,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
         "run-risk",
         "run-path",
         "run-external-baselines",
+        "run-representation-baselines",
         "run-resource-controls",
         "run-scene-id-audit",
         "run-external-validity",
@@ -67,6 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("--rt-calibration-manifest", required=True)
             child.add_argument("--shuffled-pair-manifest", required=True)
             child.add_argument("--retention-manifest", required=True)
+            child.add_argument(
+                "--representation-baseline-config",
+                default=str(Path(__file__).resolve().parent / "configs" / "representation_baselines_v1.json"),
+            )
         if command == "run-wrong-map":
             child.add_argument("--qualification-gate", help="defaults to OUTPUT/qualification/gate.json")
         if command == "run-evaluation":
@@ -76,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("--risk-features", required=True)
         if command == "run-external-baselines":
             child.add_argument("--adapter-manifest", required=True)
+        if command == "run-representation-baselines":
+            child.add_argument("--representation-baseline-config", required=True)
         if command == "run-resource-controls":
             child.add_argument("--control-manifest", required=True)
         if command == "run-scene-id-audit":
@@ -97,6 +108,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "make-fixture":
             path = write_nonscientific_fixture(args.output, seed=int(args.seed))
             print(json.dumps({"status": "success", "fixture": str(path.resolve()), "scientific_use": "FORBIDDEN"}))
+            return 0
+        if args.command == "verify-waibu-resources":
+            from .formal_resources import verify_waibu_resources
+
+            result = verify_waibu_resources(args.registry, args.waibu_root, args.output)
+            print(json.dumps({"status": result["status"], "output": str(Path(args.output).resolve())}, sort_keys=True))
             return 0
         config = load_formal_config(args.config)
         dataset_path = Path(args.dataset).resolve() if args.dataset else resolve_dataset_path(config)
@@ -183,6 +200,12 @@ def main(argv: list[str] | None = None) -> int:
             from .formal_external import run_external_baselines
 
             result = run_external_baselines(config, dataset, args.adapter_manifest, output)
+        elif args.command == "run-representation-baselines":
+            from .formal_representation_baselines import run_representation_baselines
+
+            result = run_representation_baselines(
+                config, dataset, args.representation_baseline_config, output
+            )
         elif args.command == "run-resource-controls":
             from .formal_controls import run_resource_controls
 
@@ -226,6 +249,13 @@ def main(argv: list[str] | None = None) -> int:
 
             result = assemble_claim_evidence(config, dataset, output)
         else:
+            from .formal_resources import verify_waibu_resources
+
+            verify_waibu_resources(
+                Path(__file__).resolve().parent / "configs" / "waibu_resources_v1.json",
+                Path(__file__).resolve().parents[1] / "waibu",
+                output,
+            )
             from .formal_data_verification import run_data_verification
 
             verification = run_data_verification(config, dataset, args.verifier_manifest, output)
@@ -263,6 +293,11 @@ def main(argv: list[str] | None = None) -> int:
             from .formal_external import run_external_baselines
 
             run_external_baselines(config, dataset, args.adapter_manifest, output)
+            from .formal_representation_baselines import run_representation_baselines
+
+            run_representation_baselines(
+                config, dataset, args.representation_baseline_config, output
+            )
             from .formal_controls import run_resource_controls
 
             run_resource_controls(config, dataset, args.control_manifest, output)

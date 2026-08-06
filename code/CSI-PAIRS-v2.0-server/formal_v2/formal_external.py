@@ -97,13 +97,16 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
             )
             for value in adapter["command"]
         ]
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            cwd=Path(__file__).resolve().parents[1],
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=Path(__file__).resolve().parents[1],
+            )
+        except OSError as error:
+            completed = subprocess.CompletedProcess(command, 127, "", f"{type(error).__name__}: {error}")
         (adapter_output / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
         (adapter_output / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
         result_path = adapter_output / "six_condition_results.csv"
@@ -141,7 +144,18 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
             }
         )
     write_csv(output_dir / "adapter_status.csv", bind_rows(status_rows, evidence))
-    write_csv(output_dir / "literature_baseline_registry.csv", bind_rows(manifest["literature_registry"], evidence))
+    resolved_registry = []
+    passed_adapter_ids = {
+        row["adapter_id"] for row in status_rows if row["status"] == "PASS"
+    }
+    for row in manifest["literature_registry"]:
+        resolved = dict(row)
+        if resolved["status"] == "executed" and resolved["adapter_id"] not in passed_adapter_ids:
+            resolved["status"] = "not_executed"
+            resolved["reason"] = resolved["reason"] + " Adapter execution did not authenticate in this run."
+            resolved["adapter_id"] = ""
+        resolved_registry.append(resolved)
+    write_csv(output_dir / "literature_baseline_registry.csv", bind_rows(resolved_registry, evidence))
     write_csv(output_dir / "six_condition_results.csv", bind_rows(all_rows, evidence))
     passed_models = {
         row["model_name"] for row in status_rows if row["status"] == "PASS"
@@ -349,6 +363,9 @@ def _validate_execution_manifest(adapter, output_dir, result_path, dataset):
             raise RuntimeError(f"external {prefix} is missing or escapes adapter output")
         if sha256_file(artifact) != payload[f"{prefix}_sha256"]:
             raise RuntimeError(f"external {prefix} hash mismatch")
+    adapter_config = read_strict_json(output_dir / payload["adapter_config_path"])
+    if not dataset.is_fixture and adapter_config.get("profile") != "formal-paper-dose":
+        raise RuntimeError("scientific external adapter did not use its formal-paper-dose profile")
     training_record = read_strict_json(output_dir / payload["training_record_path"])
     if (
         training_record.get("train_role") != "source_encoder_train"

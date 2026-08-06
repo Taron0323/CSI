@@ -35,9 +35,18 @@ from formal_v2.formal_factorial import city_support_candidates, eligible_query_i
 from formal_v2.formal_evaluation import _eligible_evaluation_positions, _paired_score_differences
 from formal_v2.formal_external_validity import _validate_manifest as validate_external_validity_manifest
 from formal_v2.formal_external import (
+    _validate_manifest as validate_external_manifest,
     _validate_execution_manifest as validate_external_execution_manifest,
     _validate_six_condition_rows,
 )
+from formal_v2.external_adapters.controlled_map_adapter import (
+    _batch as controlled_batch,
+    _build_model as build_controlled_model,
+    _fit_data_normalizer,
+    _loss as controlled_loss,
+    load_controlled_map_config,
+)
+from formal_v2.external_adapters.representation_models import build_representation_model
 from formal_v2.external_adapters.wigatr_adapter import (
     _verify_vendor_tree,
     inverse_localize_power,
@@ -70,6 +79,12 @@ from formal_v2.formal_protocol import (
     typed_signed_edit,
     unpatchify_csi,
 )
+from formal_v2.formal_representation_baselines import (
+    _fit_normalizer as fit_representation_normalizer,
+    _make_batch as make_representation_batch,
+    load_representation_config,
+)
+from formal_v2.formal_resources import validate_resource_registry
 from formal_v2.formal_qualification import qualification_blocking_scenes
 from formal_v2.formal_risk import (
     TemperatureCalibration,
@@ -1037,6 +1052,131 @@ class WiGATrAdapterTests(unittest.TestCase):
         self.assertLess(
             abs(float(prediction[0] + 0.5 * prediction[1]) - 1.25), 0.05
         )
+
+
+class WaibuIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.path = Path(self.temporary.name) / "fixture.npz"
+        write_nonscientific_fixture(self.path)
+        self.dataset = FormalDataset.load(self.path)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_every_waibu_resource_is_hash_authenticated(self):
+        registry = parse_strict_json(
+            (ROOT / "formal_v2/configs/waibu_resources_v1.json").read_text()
+        )
+        rows = validate_resource_registry(registry, ROOT / "waibu")
+        self.assertEqual(len(rows), 10)
+        self.assertTrue(all(row["status"] == "PASS" for row in rows))
+        registry["resources"][0]["sha256"] = "0" * 64
+        changed = validate_resource_registry(registry, ROOT / "waibu")
+        self.assertEqual(changed[0]["status"], "FAIL")
+
+    def test_representation_registry_preserves_paper_labels_and_roles(self):
+        config = load_representation_config(
+            ROOT / "formal_v2/configs/representation_baselines_v1.json"
+        )
+        self.assertEqual(
+            [row["model_name"] for row in config["models"]],
+            ["CSI-MAE", "CSI-CLIP", "CSI-CLIP++", "ContraWiMAE", "WWM"],
+        )
+        self.assertEqual(config["source_roles"]["pretrain"], "source_encoder_train")
+        self.assertEqual(config["source_roles"]["selection"], "source_method_selection")
+
+    def test_csi_mae_controlled_model_runs_masked_backward(self):
+        config = load_representation_config(
+            ROOT / "formal_v2/configs/representation_baselines_smoke_v1.json"
+        )["models"][0]
+        spec = PatchSpec.from_metadata(self.dataset.metadata)
+        model = build_representation_model(
+            "CSI-MAE",
+            spec,
+            self.dataset.maps.shape[2],
+            self.dataset.radio_config.shape[1] + 9,
+            config,
+        )
+        scene = int(self.dataset.indices_for_role("source_encoder_train")[0])
+        normalizer = fit_representation_normalizer(
+            self.dataset, self.dataset.indices_for_role("source_encoder_train")
+        )
+        batch = make_representation_batch(
+            self.dataset,
+            [(scene, 0, 0), (scene, 1, 1)],
+            normalizer,
+            torch.device("cpu"),
+        )
+        loss = model.pretraining_loss(batch, config["mask_fraction"])
+        loss.backward()
+        self.assertTrue(torch.isfinite(loss))
+        self.assertEqual(model.encode(batch).shape, (2, config["dim"]))
+
+    def test_all_controlled_map_models_have_real_gradients(self):
+        scene = int(self.dataset.indices_for_role("source_encoder_train")[0])
+        normalizer = _fit_data_normalizer(self.dataset)
+        files = (
+            "controlled_map_smoke_v1.json",
+            "wiser_controlled_v1.json",
+            "rfir_controlled_v1.json",
+        )
+        for file_name in files:
+            config = load_controlled_map_config(ROOT / "formal_v2/configs" / file_name)
+            config["model"].update(
+                {
+                    "hidden_dim": 16,
+                    "scene_dim": 16,
+                    "heads": 4,
+                    "layers": 1,
+                    "grid_size": 4,
+                    "corridor_tokens": 4,
+                    "tap_count": 2,
+                    "maximum_primitives": 16,
+                }
+            )
+            model, _ = build_controlled_model(config, self.dataset)
+            batch = controlled_batch(
+                self.dataset,
+                [(scene, 0, 0), (scene, 1, 1)],
+                normalizer,
+                torch.device("cpu"),
+                config["method"],
+            )
+            loss = controlled_loss(model, config["method"], batch)
+            loss.backward()
+            gradients = [parameter.grad for parameter in model.parameters() if parameter.requires_grad]
+            self.assertTrue(torch.isfinite(loss), config["method"])
+            self.assertTrue(any(value is not None and torch.any(value != 0) for value in gradients), config["method"])
+            if config["method"] in {"wiser", "rfir"}:
+                with torch.no_grad():
+                    first = model(
+                        batch["maps"], batch["tx"], batch["context"], batch["receiver"],
+                        batch["origin"], batch["resolution"],
+                    )
+                    second = model(
+                        batch["maps"], batch["tx"], batch["context"] + 1.0, batch["receiver"],
+                        batch["origin"], batch["resolution"],
+                    )
+                first_tensor = first[1] if isinstance(first, tuple) else first
+                second_tensor = second[1] if isinstance(second, tuple) else second
+                self.assertFalse(torch.equal(first_tensor, second_tensor), config["method"])
+
+    def test_complete_map_manifest_has_four_distinct_c1_models(self):
+        manifest = parse_strict_json(
+            (ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json").read_text()
+        )
+        validate_external_manifest(manifest)
+        self.assertEqual(
+            {row["model_name"] for row in manifest["adapters"]},
+            {"SigMap", "Wi-GATr", "WiSER", "RFIR"},
+        )
+
+    def test_cli_exposes_resource_and_representation_stages(self):
+        parser = build_parser()
+        help_text = parser.format_help()
+        self.assertIn("verify-waibu-resources", help_text)
+        self.assertIn("run-representation-baselines", help_text)
 
 
 def _archive_arrays(path: Path) -> dict[str, np.ndarray]:

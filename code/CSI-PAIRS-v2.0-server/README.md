@@ -2,7 +2,7 @@
 
 Status: engineering `READY_FOR_DATA`; scientific `POST_AUDIT_NO_GO` until non-fixture gates pass.
 
-This bundle is self-contained for the V2.1 runtime. It does not require the frozen V1 `experiments/` tree. It includes the formal code, tests, configs, data contract, paper source, official LaTeX style files, draft PDF, claim contract, and verification report. It intentionally contains no formal dataset, external model checkpoint, licensed scene asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain `v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated bundle root are V2.1.
+This bundle is self-contained for the V2.1 runtime. It does not require the frozen V1 `experiments/` tree. It includes the formal code, tests, configs, data contract, paper source, official LaTeX style files, draft PDF, claim contract, verification report, supplied external papers, and authenticated official source archives. It intentionally contains no formal dataset, external model checkpoint, licensed scene asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain `v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated bundle root are V2.1.
 
 ## 1. Server requirements
 
@@ -37,19 +37,39 @@ Expected software outcome:
 - no teacher, qualification, four-arm, localization, RT, or external-model experiment is run;
 - no scientific gate changes state.
 
-## 3.1 Optional official Wi-GATr environment
+## 3.1 External papers, baselines, and Sionna facilities
 
-The core environment intentionally does not install Wi-GATr's Python 3.10/Torch 2.0 dependency
-stack. To execute the vendored official-code adaptation in a separate unused environment:
+Authenticate all ten supplied resources before any external experiment:
 
 ```bash
-formal_v2/external_adapters/setup_wigatr.sh /absolute/path/wigatr-env
+"$PWD/.venv/bin/python" -m formal_v2.formal_cli verify-waibu-resources \
+  --registry "$PWD/formal_v2/configs/waibu_resources_v1.json" \
+  --waibu-root "$PWD/waibu" \
+  --output "$PWD/runs/resource-auth-001"
 ```
 
-Then merge `formal_v2/external_adapters/wigatr_adapter_entry.json` into an external-adapter
-manifest together with at least one other executable map-conditioned model. Read
-`formal_v2/external_adapters/README.md` for the exact six-condition, source-role, inverse
-localization, and provenance contract. Adapter code or fixture execution is not C1 evidence.
+The core environment runs the paper-spec CSI-MAE, CSI-CLIP, CSI-CLIP++, ContraWiMAE, WWM,
+SigMap, WiSER, and RFIR controlled implementations. Wi-GATr retains its separate Python 3.10
+environment:
+
+```bash
+formal_v2/external_adapters/setup_wigatr.sh
+```
+
+Sionna and the official large-radio-map tools use a separate Python 3.12 environment because of
+their Mitsuba/Dr.Jit/Open3D stack:
+
+```bash
+formal_v2/external_adapters/setup_sionna.sh
+"$PWD/formal_v2/external_adapters/.runtime-sionna/venv/bin/python" \
+  -m formal_v2.sionna_facility \
+  --runtime-root "$PWD/formal_v2/external_adapters/.runtime-sionna" verify
+```
+
+Use `formal_v2/external_adapters/all_map_adapters_v1.json` for C1 and
+`formal_v2/configs/representation_baselines_v1.json` for the representation comparison. Read
+`formal_v2/WAIBU_INTEGRATION.md` for the exact mapping. Code, authenticated paper bytes, smoke
+execution, and an installed simulator still do not constitute C1/G8 evidence.
 
 ## 4. Inspect formal data
 

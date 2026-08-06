@@ -25,7 +25,13 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
     command = [
-        value.format(dataset=str(dataset.source_path), output=str(output_dir), python=sys.executable)
+        value.format(
+            dataset=str(dataset.source_path),
+            output=str(output_dir),
+            run_root=str(Path(output_root).resolve()),
+            project_root=str(Path(__file__).resolve().parents[1]),
+            python=sys.executable,
+        )
         for value in manifest["command"]
     ]
     completed = subprocess.run(command, check=False, capture_output=True, text=True)

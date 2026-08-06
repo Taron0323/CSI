@@ -1,0 +1,82 @@
+{
+  "schema_version": "csi-pairs-v6-external-adapters-v2",
+  "adapters": [
+    {
+      "adapter_id": "sigmap-controlled-csi-pairs-v1",
+      "model_name": "SigMap",
+      "implementation_status": "style-controlled-implementation",
+      "license_id": "NO_EXTERNAL_SOURCE-BESPOKE_CONTROL",
+      "citation_key": "sigmap-controlled",
+      "source_revision": "frozen-v6-sigmap-spec-2026-08-06",
+      "map_conditioned": true,
+      "command": [
+        "/usr/bin/env", "python3", "-m", "formal_v2.external_adapters.controlled_map_adapter",
+        "--config", "{project_root}/formal_v2/configs/sigmap_controlled_v1.json",
+        "--dataset", "{dataset}", "--output", "{output}", "--run-root", "{run_root}",
+        "--command-sha256", "{adapter_command_sha256}", "--source-revision", "{source_revision}",
+        "--adapter-id", "{adapter_id}", "--model-name", "{model_name}"
+      ]
+    },
+    {
+      "adapter_id": "wigatr-official-csi-pairs-v1",
+      "model_name": "Wi-GATr",
+      "implementation_status": "official-code-adaptation",
+      "license_id": "BSD-3-Clause-Clear",
+      "citation_key": "hehn2024wigatr",
+      "source_revision": "6daa5bd49d9499817d903ab335830221d01e9daa",
+      "map_conditioned": true,
+      "command": [
+        "{project_root}/formal_v2/external_adapters/.venv-wigatr/bin/python", "-m", "formal_v2.external_adapters.wigatr_adapter",
+        "--config", "{project_root}/formal_v2/configs/wigatr_official_v1.json",
+        "--dataset", "{dataset}", "--output", "{output}", "--run-root", "{run_root}",
+        "--command-sha256", "{adapter_command_sha256}", "--source-revision", "{source_revision}",
+        "--adapter-id", "{adapter_id}", "--model-name", "{model_name}"
+      ]
+    },
+    {
+      "adapter_id": "wiser-controlled-csi-pairs-v1",
+      "model_name": "WiSER",
+      "implementation_status": "paper-spec-controlled-implementation",
+      "license_id": "NO_SOURCE_RELEASE-PAPER_SPEC",
+      "citation_key": "qiao2026wiser",
+      "source_revision": "arxiv:2606.04770v1:97e368043d0c111987d26993ec88c295c5bb997126e21711223ca5448d1645ec",
+      "map_conditioned": true,
+      "command": [
+        "/usr/bin/env", "python3", "-m", "formal_v2.external_adapters.controlled_map_adapter",
+        "--config", "{project_root}/formal_v2/configs/wiser_controlled_v1.json",
+        "--dataset", "{dataset}", "--output", "{output}", "--run-root", "{run_root}",
+        "--command-sha256", "{adapter_command_sha256}", "--source-revision", "{source_revision}",
+        "--adapter-id", "{adapter_id}", "--model-name", "{model_name}"
+      ]
+    },
+    {
+      "adapter_id": "rfir-controlled-csi-pairs-v1",
+      "model_name": "RFIR",
+      "implementation_status": "paper-spec-controlled-implementation",
+      "license_id": "NO_SOURCE_RELEASE-PAPER_SPEC",
+      "citation_key": "wang2026rfir",
+      "source_revision": "arxiv:2604.07086v1:24838f6a01eab58bf31d7fe54167dc13a245d3e6a6986da4e3023cafe2e0ff83",
+      "map_conditioned": true,
+      "command": [
+        "/usr/bin/env", "python3", "-m", "formal_v2.external_adapters.controlled_map_adapter",
+        "--config", "{project_root}/formal_v2/configs/rfir_controlled_v1.json",
+        "--dataset", "{dataset}", "--output", "{output}", "--run-root", "{run_root}",
+        "--command-sha256", "{adapter_command_sha256}", "--source-revision", "{source_revision}",
+        "--adapter-id", "{adapter_id}", "--model-name", "{model_name}"
+      ]
+    }
+  ],
+  "literature_registry": [
+    {"baseline_name": "CSI-MAE", "status": "not_applicable", "adapter_id": "", "reason": "Executed by the separate representation-baseline stage; it is map-free and cannot count for C1."},
+    {"baseline_name": "CSI-CLIP", "status": "not_applicable", "adapter_id": "", "reason": "Executed by the separate representation-baseline stage; CIR-CSI consistency is not a six-map intervention."},
+    {"baseline_name": "CSI-CLIP++", "status": "not_applicable", "adapter_id": "", "reason": "Executed by the separate representation-baseline stage; it is not C1 map-conditioned evidence."},
+    {"baseline_name": "ContraWiMAE", "status": "not_applicable", "adapter_id": "", "reason": "Executed by the separate representation-baseline stage; it is map-free."},
+    {"baseline_name": "WWM", "status": "not_applicable", "adapter_id": "", "reason": "Executed as WWM-inspired same-world matched prediction, not as a faithful six-condition WWM reproduction."},
+    {"baseline_name": "SigMap", "status": "executed", "adapter_id": "sigmap-controlled-csi-pairs-v1", "reason": "Bespoke V6 style-controlled map-conditioned localization control."},
+    {"baseline_name": "Wi-GATr", "status": "executed", "adapter_id": "wigatr-official-csi-pairs-v1", "reason": "Official source adaptation with CSI-PAIRS inverse localization."},
+    {"baseline_name": "WiSER", "status": "executed", "adapter_id": "wiser-controlled-csi-pairs-v1", "reason": "Paper-spec sparse-scene multi-view forward model with inverse localization."},
+    {"baseline_name": "CSI-only", "status": "not_applicable", "adapter_id": "", "reason": "Map-free negative control belongs to the internal unified-probe evaluation."},
+    {"baseline_name": "oracle-x", "status": "oracle_only", "adapter_id": "", "reason": "Privileged true-position information upper bound; never counted as a strict no-x baseline."},
+    {"baseline_name": "RFIR", "status": "executed", "adapter_id": "rfir-controlled-csi-pairs-v1", "reason": "Paper-spec RF-BSDF controlled implementation because no source release is present."}
+  ]
+}

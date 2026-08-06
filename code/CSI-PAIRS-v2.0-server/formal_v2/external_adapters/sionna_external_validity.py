@@ -1,0 +1,286 @@
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+from pathlib import Path
+import sys
+
+import numpy as np
+
+from formal_v2.formal_dataset import FormalDataset
+from formal_v2.formal_evidence import evidence_context, require_manifested_formal_qualification
+from formal_v2.formal_io import read_strict_json, sha256_file, write_csv
+from formal_v2.formal_protocol import PatchSpec
+from formal_v2.formal_routing import fit_route_normalization, route_dataset
+from formal_v2.formal_teacher import load_teacher_bundle
+
+
+SCHEMA = "csi-pairs-v6-sionna-scene-manifest-v1"
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="Sionna RT independent-engine G8 adapter")
+    parser.add_argument("--dataset", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--run-root", required=True)
+    parser.add_argument("--scene-manifest", required=True)
+    try:
+        run(parser.parse_args(argv))
+        return 0
+    except Exception as error:
+        print(f"Sionna external-validity error: {error}", file=sys.stderr)
+        return 2
+
+
+def run(args):
+    dataset = FormalDataset.load(args.dataset)
+    run_root = Path(args.run_root).resolve()
+    qualification = read_strict_json(run_root / "qualification" / "gate.json")
+    config = qualification["config"]
+    qualification = require_manifested_formal_qualification(
+        qualification, config, dataset, allow_nonscientific_fixture=True
+    )
+    manifest = load_scene_manifest(args.scene_manifest, dataset)
+    _require_sionna_version(manifest["sionna_rt_version"])
+    teacher = load_teacher_bundle(qualification["teacher_checkpoint"], config)
+    normalization = fit_route_normalization(dataset, teacher)
+    scenes = dataset.indices_for_role("external_validation")
+    routed = route_dataset(dataset, teacher, config, scenes, normalization=normalization)
+    cfr = _trace_all(dataset, manifest, scenes)
+    evidence = evidence_context(config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM")
+    entries = {(row["scene_id"], int(row["world"])): row for row in manifest["worlds"]}
+    rows = []
+    for scene_value in scenes:
+        scene = int(scene_value)
+        for edge in dataset.directed_edges(scene):
+            for position in range(dataset.position_count):
+                route = int(routed.alignment_route[(scene, edge.source_world, edge.target_world, position)])
+                if route not in {0, 2}:
+                    continue
+                primary_source = dataset.csi_clean[scene, edge.source_world, position]
+                primary_target = dataset.csi_clean[scene, edge.target_world, position]
+                external_source = cfr[(scene, edge.source_world)][position]
+                external_target = cfr[(scene, edge.target_world)][position]
+                primary_effect = _relative_effect(primary_source, primary_target)
+                external_effect = _relative_effect(external_source, external_target)
+                primary_direction = _power_direction(primary_source, primary_target)
+                external_direction = _power_direction(external_source, external_target)
+                source_entry = entries[(str(dataset.scene_ids[scene]), edge.source_world)]
+                target_entry = entries[(str(dataset.scene_ids[scene]), edge.target_world)]
+                context = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "scene_id": str(dataset.scene_ids[scene]),
+                            "source_world": edge.source_world,
+                            "target_world": edge.target_world,
+                            "position_id": str(dataset.position_ids[scene, position]),
+                            "source_scene_sha256": source_entry["scene_xml_sha256"],
+                            "target_scene_sha256": target_entry["scene_xml_sha256"],
+                            "engine": manifest["sionna_revision"],
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+                rows.append(
+                    {
+                        "unit_id": f"{dataset.bank_ids[scene]}:{edge.source_world}:{edge.target_world}:{dataset.position_ids[scene, position]}",
+                        "bank_id": str(dataset.bank_ids[scene]),
+                        "route": "active" if route == 2 else "null",
+                        "primary_direction": primary_direction,
+                        "external_direction": external_direction,
+                        "primary_effect": primary_effect,
+                        "external_effect": external_effect,
+                        "context_sha256": context,
+                        "dataset_sha256": evidence["dataset_sha256"],
+                        "config_sha256": evidence["config_sha256"],
+                        "fixture": evidence["fixture"],
+                    }
+                )
+    if not rows:
+        raise RuntimeError("Sionna external-validity adapter found no active/null routed units")
+    output = Path(args.output).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    write_csv(output / "paired_effects.csv", rows)
+
+
+def load_scene_manifest(path: str | Path, dataset) -> dict:
+    payload = read_strict_json(path)
+    required = {
+        "schema_version",
+        "dataset_sha256",
+        "engine_config_sha256",
+        "sionna_revision",
+        "sionna_rt_version",
+        "license_id",
+        "carrier_frequency_hz",
+        "bandwidth_hz",
+        "subcarrier_spacing_hz",
+        "max_depth",
+        "refraction",
+        "receiver_z_m",
+        "tx_array",
+        "rx_array",
+        "worlds",
+    }
+    if not isinstance(payload, dict) or set(payload) != required or payload["schema_version"] != SCHEMA:
+        raise ValueError("Sionna scene manifest fields or schema are invalid")
+    if payload["dataset_sha256"] != sha256_file(dataset.source_path):
+        raise ValueError("Sionna scene manifest dataset hash mismatch")
+    if payload["engine_config_sha256"] != dataset.metadata["engine"]["config_sha256"]:
+        raise ValueError("Sionna scene manifest engine config hash mismatch")
+    if payload["license_id"] != "Apache-2.0" or not str(payload["sionna_revision"]).strip():
+        raise ValueError("Sionna engine provenance is invalid")
+    spec = PatchSpec.from_metadata(dataset.metadata)
+    for key in ("carrier_frequency_hz", "bandwidth_hz", "subcarrier_spacing_hz", "receiver_z_m"):
+        if not isinstance(payload[key], (int, float)) or not np.isfinite(payload[key]) or payload[key] <= 0:
+            raise ValueError(f"Sionna {key} must be positive")
+    if round(payload["bandwidth_hz"] / payload["subcarrier_spacing_hz"]) != spec.subcarriers:
+        raise ValueError("Sionna frequency grid differs from the formal CSI subcarrier grid")
+    if not isinstance(payload["max_depth"], int) or payload["max_depth"] <= 0 or not isinstance(payload["refraction"], bool):
+        raise ValueError("Sionna path-solver settings are invalid")
+    array_fields = {"num_rows", "num_cols", "vertical_spacing", "horizontal_spacing", "pattern", "polarization"}
+    for name in ("tx_array", "rx_array"):
+        if not isinstance(payload[name], dict) or set(payload[name]) != array_fields:
+            raise ValueError(f"Sionna {name} fields must be exact")
+    antenna_product = (
+        int(payload["tx_array"]["num_rows"])
+        * int(payload["tx_array"]["num_cols"])
+        * int(payload["rx_array"]["num_rows"])
+        * int(payload["rx_array"]["num_cols"])
+    )
+    if antenna_product != spec.antennas:
+        raise ValueError("Sionna Tx/Rx array product differs from the formal antenna axis")
+    expected_worlds = {
+        (str(dataset.scene_ids[int(scene)]), world)
+        for scene in dataset.indices_for_role("external_validation")
+        for world in range(dataset.world_count)
+    }
+    entries = payload["worlds"]
+    entry_fields = {
+        "scene_id", "world", "scene_xml", "scene_xml_sha256", "asset_manifest", "asset_manifest_sha256", "canonical_map_sha256"
+    }
+    if not isinstance(entries, list) or any(not isinstance(row, dict) or set(row) != entry_fields for row in entries):
+        raise ValueError("Sionna world entries have invalid fields")
+    if {(row["scene_id"], int(row["world"])) for row in entries} != expected_worlds:
+        raise ValueError("Sionna scene manifest does not cover every external-validation sibling world")
+    for row in entries:
+        scene = int(np.flatnonzero(dataset.scene_ids == row["scene_id"])[0])
+        world = int(row["world"])
+        if row["canonical_map_sha256"] != str(dataset.canonical_map_sha256[scene, world]):
+            raise ValueError("Sionna world is not bound to its canonical map")
+        scene_path = Path(row["scene_xml"]).resolve()
+        assets_path = Path(row["asset_manifest"]).resolve()
+        if sha256_file(scene_path) != row["scene_xml_sha256"] or sha256_file(assets_path) != row["asset_manifest_sha256"]:
+            raise ValueError("Sionna scene or asset manifest hash mismatch")
+        _validate_assets(read_strict_json(assets_path), scene_path.parent)
+    return payload
+
+
+def _validate_assets(payload, root):
+    if not isinstance(payload, dict) or set(payload) != {"schema_version", "assets"} or payload["schema_version"] != "csi-pairs-v6-sionna-assets-v1":
+        raise ValueError("Sionna asset manifest schema mismatch")
+    if not isinstance(payload["assets"], list) or not payload["assets"]:
+        raise ValueError("Sionna asset manifest is empty")
+    for row in payload["assets"]:
+        if not isinstance(row, dict) or set(row) != {"path", "sha256", "license_id"}:
+            raise ValueError("Sionna asset fields must be exact")
+        path = (root / row["path"]).resolve()
+        if root.resolve() not in path.parents or not path.is_file() or sha256_file(path) != row["sha256"]:
+            raise ValueError("Sionna scene asset is missing, escapes its scene, or changed")
+        if not str(row["license_id"]).strip():
+            raise ValueError("Sionna scene asset license is missing")
+
+
+def _trace_all(dataset, manifest, scenes):
+    import torch
+    from sionna.rt import PathSolver, PlanarArray, Receiver, Transmitter, load_scene, subcarrier_frequencies
+
+    entries = {(row["scene_id"], int(row["world"])): row for row in manifest["worlds"]}
+    frequencies = subcarrier_frequencies(
+        PatchSpec.from_metadata(dataset.metadata).subcarriers,
+        float(manifest["subcarrier_spacing_hz"]),
+    )
+    solver = PathSolver()
+    output = {}
+    for scene_value in scenes:
+        scene_index = int(scene_value)
+        for world in range(dataset.world_count):
+            entry = entries[(str(dataset.scene_ids[scene_index]), world)]
+            scene = load_scene(entry["scene_xml"])
+            scene.frequency = float(manifest["carrier_frequency_hz"])
+            scene.bandwidth = float(manifest["bandwidth_hz"])
+            scene.tx_array = PlanarArray(**manifest["tx_array"])
+            scene.rx_array = PlanarArray(**manifest["rx_array"])
+            scene.add(
+                Transmitter(
+                    "tx",
+                    position=dataset.bs_pose[scene_index, :3],
+                    orientation=_quaternion_to_euler(dataset.bs_pose[scene_index, 3:]),
+                )
+            )
+            for position in range(dataset.position_count):
+                xy = dataset.positions[scene_index, position]
+                scene.add(Receiver(f"rx-{position}", position=[xy[0], xy[1], manifest["receiver_z_m"]]))
+            paths = solver(
+                scene,
+                max_depth=int(manifest["max_depth"]),
+                refraction=bool(manifest["refraction"]),
+            )
+            values = paths.cfr(
+                frequencies=frequencies,
+                sampling_frequency=float(manifest["bandwidth_hz"]),
+                num_time_steps=1,
+                out_type="torch",
+            )
+            array = values.detach().cpu().numpy() if isinstance(values, torch.Tensor) else np.asarray(values)
+            output[(scene_index, world)] = _flatten_cfr(array, dataset.channel_count)
+    return output
+
+
+def _flatten_cfr(array, channel_count):
+    values = np.asarray(array)
+    if values.ndim != 6:
+        raise RuntimeError(f"unexpected Sionna CFR rank: {values.shape}")
+    # [rx, rx_ant, tx, tx_ant, time, subcarrier]
+    values = values[:, :, 0, :, 0, :].reshape(values.shape[0], -1)
+    joined = np.concatenate((values.real, values.imag), axis=1)
+    if joined.shape[1] != channel_count:
+        raise RuntimeError("Sionna CFR does not match the formal CSI channel axis")
+    return joined
+
+
+def _quaternion_to_euler(quaternion):
+    x, y, z, w = (float(value) for value in quaternion)
+    roll = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    pitch = math.asin(max(-1.0, min(1.0, 2 * (w * y - z * x))))
+    yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    return [yaw, pitch, roll]
+
+
+def _relative_effect(source, target):
+    source = np.asarray(source)
+    target = np.asarray(target)
+    return float(np.linalg.norm(target - source) / max(np.linalg.norm(source), 1e-12))
+
+
+def _power_direction(source, target):
+    source = np.asarray(source)
+    target = np.asarray(target)
+    half = source.shape[-1] // 2
+    source_power = np.mean(source[:half] ** 2 + source[half:] ** 2)
+    target_power = np.mean(target[:half] ** 2 + target[half:] ** 2)
+    return 1 if target_power >= source_power else -1
+
+
+def _require_sionna_version(expected):
+    import importlib.metadata
+    actual = importlib.metadata.version("sionna-rt")
+    if actual != expected:
+        raise RuntimeError(f"Sionna RT version mismatch: expected {expected}, got {actual}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

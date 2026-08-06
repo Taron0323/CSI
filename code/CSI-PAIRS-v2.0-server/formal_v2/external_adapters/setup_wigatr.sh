@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENDOR_ROOT="${PROJECT_ROOT}/formal_v2/external_adapters/vendor/Wi-GATr"
-ENV_DIR="${1:?usage: setup_wigatr.sh UNUSED_ENV_DIRECTORY}"
+ENV_DIR="${1:-${PROJECT_ROOT}/formal_v2/external_adapters/.venv-wigatr}"
 PYTHON310="${CSI_PAIRS_PYTHON310:-/usr/bin/python3.10}"
 
 if [[ -e "${ENV_DIR}" ]]; then

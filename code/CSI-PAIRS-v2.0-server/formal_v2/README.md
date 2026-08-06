@@ -13,7 +13,8 @@ Implemented code surfaces:
 - one frozen source-method-selection pilot and canonical no-op Alignment tolerance;
 - strict four arms with common batch plans, measured resource fields, and fail-closed seven-part G4;
 - city-level k, heteroscedastic localization, exact V6 J_a, multilevel and bank-only bootstrap, leave-one sensitivity;
-- active CGS plus gray/null distributions, unified response probes, q_comp/p_fail calibration, path matching/equivalence, external/scene-ID/resource/claim controls, independent RT calibration and external-validity adapters, literature/resource G0, and C1-C13/G0-G8 assembly.
+- active CGS plus gray/null distributions, unified response probes, q_comp/p_fail calibration, path matching/equivalence, external/scene-ID/resource/claim controls, independent RT calibration and external-validity adapters, literature/resource G0, and C1-C13/G0-G8 assembly;
+- authenticated `waibu/` resource inventory, five source-only representation baselines, four map-conditioned C1 adapters, and Sionna RT/large-radio-map facilities.
 
 Unavailable data, external models, independent RT calibration, or unrun controls produce `NOT_ASSESSED/BLOCKED`. Code presence is not scientific evidence.
 
@@ -23,11 +24,10 @@ CLI stages are visible with:
 python3 -m formal_v2.formal_cli --help
 ```
 
-`all` is the complete evidence chain. It requires the verifier, risk archive, external-baseline, resource-control, scene-ID, external-validity, literature, RT-calibration, shuffled-pair, and retention manifests. Missing inputs fail at argument parsing; no independent stage is silently skipped. Fixtures remain `FORBIDDEN` at every artifact layer. Code and tests do not constitute scientific evidence.
+`all` is the complete evidence chain. It authenticates every local `waibu/` resource and runs the five representation baselines in addition to the verifier, risk archive, external-baseline, resource-control, scene-ID, external-validity, literature, RT-calibration, shuffled-pair, and retention stages. Missing inputs fail at argument parsing; no independent stage is silently skipped. Fixtures remain `FORBIDDEN` at every artifact layer. Code and tests do not constitute scientific evidence.
 
-The first concrete external baseline is under `external_adapters/`: an authenticated adaptation of
-the official Wi-GATr snapshot for the V6 six-condition localization audit. It retains the official
-geometric tokenizer/GATr architecture and inverse-coordinate objective, and deterministically
-converts CSI-PAIRS 2.5D maps to triangular meshes (columns map to x, rows map to y, and height to
-z). See `external_adapters/README.md`. Its presence does not pass C1: a formal non-fixture run and
-at least one other distinct executed map-conditioned model are still required.
+`external_adapters/all_map_adapters_v1.json` registers SigMap, Wi-GATr, WiSER, and RFIR for the
+same internally generated six-condition unit registry. `configs/representation_baselines_v1.json`
+registers CSI-MAE, CSI-CLIP, CSI-CLIP++, ContraWiMAE, and WWM-inspired same-world prediction for
+the unified localization comparison. Signal-only representation rows can never count toward C1.
+See `WAIBU_INTEGRATION.md` and `external_adapters/README.md` for provenance and execution limits.

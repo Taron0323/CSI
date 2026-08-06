@@ -1,8 +1,12 @@
 code/CSI-PAIRS-v2.0-server/.venv/
+code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.venv-wigatr/
+code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.runtime-sionna/
 code/CSI-PAIRS-v2.0-server/runs/
 code/CSI-PAIRS-v2.0-server/waibu/
 archive/
 *.zip
+!code/CSI-PAIRS-v2.0-server/waibu/
+!code/CSI-PAIRS-v2.0-server/waibu/**
 SERVER_README_V2.0.md
 v2_0_server_bundle_verification.md
 **/__pycache__/

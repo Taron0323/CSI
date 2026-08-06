@@ -21,6 +21,7 @@ trap 'rm -rf "${STAGING_ROOT}"' EXIT
 
 mkdir -p "${BUNDLE_ROOT}/artifacts" "${BUNDLE_ROOT}/output/pdf" "${BUNDLE_ROOT}/paper/official_style"
 cp -R "${PROJECT_ROOT}/formal_v2" "${BUNDLE_ROOT}/"
+cp -R "${PROJECT_ROOT}/waibu" "${BUNDLE_ROOT}/"
 cp -R "${PROJECT_ROOT}/paper_v2" "${BUNDLE_ROOT}/"
 cp -R "${PROJECT_ROOT}/paper/official_style/iclr2027" "${BUNDLE_ROOT}/paper/official_style/"
 cp -p "${PROJECT_ROOT}/CSI-PAIRS-startup-package-v2.0.md" \
