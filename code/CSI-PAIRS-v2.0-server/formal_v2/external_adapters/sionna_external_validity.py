@@ -174,7 +174,10 @@ def load_scene_manifest(path: str | Path, dataset) -> dict:
     }
     if not isinstance(entries, list) or any(not isinstance(row, dict) or set(row) != entry_fields for row in entries):
         raise ValueError("Sionna world entries have invalid fields")
-    if {(row["scene_id"], int(row["world"])) for row in entries} != expected_worlds:
+    observed_worlds = {
+        (row["scene_id"], int(row["world"])) for row in entries
+    }
+    if len(entries) != len(expected_worlds) or observed_worlds != expected_worlds:
         raise ValueError("Sionna scene manifest does not cover every external-validation sibling world")
     for row in entries:
         scene = int(np.flatnonzero(dataset.scene_ids == row["scene_id"])[0])

@@ -492,11 +492,15 @@ def validate_formal_config(config: object) -> None:
         raise ValueError("risk.audit_mixture must contain exact correct/active/gray/null proportions")
     for key, value in mixture.items():
         _finite_number(value, f"risk.audit_mixture.{key}", minimum=0.0)
+        if float(value) <= 0.0:
+            raise ValueError(f"risk.audit_mixture.{key} must be strictly positive")
     if not math.isclose(sum(float(value) for value in mixture.values()), 1.0, abs_tol=1e-12):
         raise ValueError("risk.audit_mixture proportions must sum to 1")
 
     path = config["path"]
     _finite_number(path["power_coverage"], "path.power_coverage", minimum=0.0, maximum=1.0)
+    if not 0.0 < float(path["power_coverage"]) < 1.0:
+        raise ValueError("path.power_coverage must be strictly between zero and one")
     _finite_number(path["zero_quantile"], "path.zero_quantile", minimum=0.0, maximum=1.0)
     _finite_number(path["balance_smd_max"], "path.balance_smd_max", minimum=0.0)
     _finite_number(path["equivalence_margin"], "path.equivalence_margin", minimum=0.0)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -91,6 +92,7 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
             value.format(
                 dataset=str(dataset.source_path), output=str(target), root=str(root),
                 adapter_source=str(source), architecture_spec=str(architecture_path),
+                python=sys.executable,
             )
             for value in adapter["command"]
         ]
@@ -137,6 +139,9 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
             rows=[row for row in result_rows if row["arm"] == name],
             resamples=int(config["evaluation"]["bootstrap_resamples"]),
             seed=84000 + index,
+            superiority_margin=float(
+                config["evaluation"]["minimum_equal_flop_superiority"]
+            ),
         )
         for index, name in enumerate(CONTROL_IDS[:2])
     }
@@ -146,6 +151,9 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
             rows=[row for row in result_rows if row["arm"] == name],
             resamples=int(config["evaluation"]["bootstrap_resamples"]),
             seed=84100 + index,
+            superiority_margin=float(
+                config["evaluation"]["minimum_concat_superiority"]
+            ),
         )
         for index, name in enumerate(CONTROL_IDS[2:])
     }
@@ -256,6 +264,18 @@ def _validate_manifest(manifest, manifest_root=None):
             raise ValueError("resource-control adapter fields must be exact")
         if not isinstance(item["replay_command"], list) or not item["replay_command"]:
             raise ValueError("resource-control replay command must be nonempty")
+        if item["command"][:2] != ["{python}", "{adapter_source}"]:
+            raise ValueError(
+                "resource-control command must execute the authenticated adapter source directly"
+            )
+        if item["replay_command"][:2] != ["{python}", "{adapter_source}"]:
+            raise ValueError(
+                "resource-control replay must execute the authenticated adapter source directly"
+            )
+        if "{architecture_spec}" not in item["command"] or "{architecture_spec}" not in item["replay_command"]:
+            raise ValueError(
+                "resource-control commands must consume the authenticated architecture spec"
+            )
         for key in ("adapter_source_sha256", "architecture_spec_sha256"):
             if not _lower_sha256(item[key]):
                 raise ValueError(f"resource-control {key} must be lowercase SHA-256")
@@ -312,7 +332,9 @@ def _read_localization(path, evidence):
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     required = {
-        "arm", "city_id", "bank_id", "base_map_cluster_id", "seed", "budget", "draw",
+        "arm", "city_id", "bank_id", "base_map_cluster_id",
+        "canonical_base_map_digest", "canonical_bank_digest",
+        "seed", "budget", "draw",
         "utility_neg_log_median", "dataset_sha256", "config_sha256", "fixture",
     }
     if not rows or any(not required.issubset(row) for row in rows):
@@ -343,14 +365,31 @@ def _utility(rows, arm, budgets):
     for city in cities:
         budget_values = []
         for budget in map(int, budgets):
-            bank_values = []
-            banks = sorted({row["base_map_cluster_id"] for row in selected if row["city_id"] == city and row["budget"] == budget})
-            if not banks:
+            cluster_values = []
+            clusters = sorted(
+                {
+                    row["canonical_base_map_digest"]
+                    for row in selected
+                    if row["city_id"] == city and row["budget"] == budget
+                }
+            )
+            if not clusters:
                 raise RuntimeError(f"control {arm} is missing city={city}, k={budget}")
-            for bank in banks:
-                values = [row["utility_neg_log_median"] for row in selected if row["city_id"] == city and row["budget"] == budget and row["base_map_cluster_id"] == bank]
-                bank_values.append(float(np.mean(values)))
-            budget_values.append(float(np.mean(bank_values)))
+            for cluster in clusters:
+                by_bank = {}
+                for row in selected:
+                    if (
+                        row["city_id"] == city
+                        and row["budget"] == budget
+                        and row["canonical_base_map_digest"] == cluster
+                    ):
+                        by_bank.setdefault(row["canonical_bank_digest"], []).append(
+                            row["utility_neg_log_median"]
+                        )
+                cluster_values.append(
+                    float(np.mean([np.mean(values) for values in by_bank.values()]))
+                )
+            budget_values.append(float(np.mean(cluster_values)))
         city_values.append(float(np.mean(budget_values)))
     return float(np.mean(city_values))
 
@@ -573,6 +612,7 @@ def _run_replay(
             checkpoint=str((target / resource["checkpoint_path"]).resolve()),
             architecture_spec=str(architecture_path), adapter_source=str(source),
             replay_output=str(replay_path),
+            python=sys.executable,
         )
         for value in adapter["replay_command"]
     ]
@@ -626,7 +666,7 @@ def _localization_cells(rows):
     return {
         (
             row["city_id"],
-            row["base_map_cluster_id"],
+            row["canonical_base_map_digest"],
             int(row["seed"]),
             int(row["budget"]),
             int(row["draw"]),
@@ -635,27 +675,54 @@ def _localization_cells(rows):
     }
 
 
-def _control_superiority_interval(main_rows, rows, resamples, seed):
+def _control_superiority_interval(
+    main_rows,
+    rows,
+    resamples,
+    seed,
+    superiority_margin,
+):
     grouped = {}
     for label, source in (("full", [row for row in main_rows if row["arm"] == "full"]), ("control", rows)):
         for row in source:
             key = (
                 row["city_id"],
-                row["base_map_cluster_id"],
+                row["canonical_base_map_digest"],
                 int(row["seed"]),
                 int(row["budget"]),
                 int(row["draw"]),
             )
-            grouped.setdefault((label, key), []).append(float(row["utility_neg_log_median"]))
+            grouped.setdefault((label, key), {}).setdefault(
+                row["canonical_bank_digest"], []
+            ).append(float(row["utility_neg_log_median"]))
     cells = sorted(
         key for key in {item[1] for item in grouped} if ("full", key) in grouped and ("control", key) in grouped
     )
     clusters = np.asarray([key[1] for key in cells])
-    full = np.asarray([np.mean(grouped[("full", key)]) for key in cells])
-    control = np.asarray([np.mean(grouped[("control", key)]) for key in cells])
+    full = np.asarray(
+        [
+            np.mean([np.mean(values) for values in grouped[("full", key)].values()])
+            for key in cells
+        ]
+    )
+    control = np.asarray(
+        [
+            np.mean(
+                [np.mean(values) for values in grouped[("control", key)].values()]
+            )
+            for key in cells
+        ]
+    )
     interval = paired_cluster_interval(clusters, full, control, resamples, seed)
-    test = paired_sign_flip_test(clusters, full, control, seed + 1)
-    return {**interval, "p_value_two_sided": test["p_value_two_sided"]}
+    margin = float(superiority_margin)
+    if not np.isfinite(margin) or margin < 0.0:
+        raise ValueError("control superiority margin must be finite and nonnegative")
+    test = paired_sign_flip_test(clusters, full, control + margin, seed + 1)
+    return {
+        **interval,
+        "superiority_margin": margin,
+        "p_value_two_sided": test["p_value_two_sided"],
+    }
 
 
 def _resource_matches(main, rows, tolerance):

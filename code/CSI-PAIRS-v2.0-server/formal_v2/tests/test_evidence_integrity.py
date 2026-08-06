@@ -9,18 +9,36 @@ from types import SimpleNamespace
 import numpy as np
 
 from formal_v2.formal_claims import _semantic_status
+from formal_v2.formal_claim_controls import (
+    SHUFFLED_SYSTEMS,
+    _retention_assessment,
+    _run_adapter as run_claim_control_adapter,
+    _shuffled_assessment,
+)
 from formal_v2.formal_controls import (
+    CONTROL_IDS,
     G4_CONCAT_CONTROL_IDS,
     REPORT_ONLY_CONTROL_IDS,
+    _control_superiority_interval,
     _validate_manifest as validate_resource_manifest,
     _validate_resource,
 )
 from formal_v2.formal_external import (
     _c1_model_assessment,
+    _resolve_adapter_command,
     _validate_manifest as validate_external_manifest,
     _validate_six_condition_rows,
 )
+from formal_v2.formal_external_validity import (
+    _cluster_direction_interval,
+    _validate_manifest as validate_external_validity_manifest,
+    _validate_rows as validate_external_validity_rows,
+)
 from formal_v2.formal_io import sha256_file, write_json
+from formal_v2.formal_statistics import (
+    interval_decision,
+    paired_sign_flip_test,
+)
 from formal_v2.external_adapters.wigatr_protocol import SIX_CONDITIONS as CONDITIONS
 
 
@@ -88,6 +106,160 @@ class EvidenceIntegrityTests(unittest.TestCase):
             [row["model_name"] for row in manifest["adapters"] if row["c1_eligible"]],
             ["Wi-GATr"],
         )
+
+    def test_external_adapter_command_must_execute_hashed_source(self):
+        manifest = json.loads(
+            (ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json").read_text()
+        )
+        manifest["adapters"][0]["command"] = [
+            "/usr/bin/env",
+            "python3",
+            "-c",
+            "print('fabricated')",
+            "{adapter_source}",
+        ]
+        with self.assertRaisesRegex(ValueError, "authenticated source"):
+            validate_external_manifest(manifest)
+
+    def test_external_adapter_config_path_hash_and_command_are_frozen(self):
+        source = ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json"
+        manifest = json.loads(source.read_text())
+        validate_external_manifest(manifest)
+
+        changed = json.loads(source.read_text())
+        changed["adapters"][0]["adapter_config_path"] = str(
+            ROOT / changed["adapters"][0]["adapter_config_path"]
+        )
+        with self.assertRaisesRegex(ValueError, "config path/hash"):
+            validate_external_manifest(changed)
+
+        changed = json.loads(source.read_text())
+        changed["adapters"][0]["adapter_config_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "config path/hash"):
+            validate_external_manifest(changed)
+
+        changed = json.loads(source.read_text())
+        command = changed["adapters"][0]["command"]
+        command[command.index("{adapter_config}")] = (
+            "{project_root}/formal_v2/configs/sigmap_controlled_v1.json"
+        )
+        with self.assertRaisesRegex(ValueError, "exactly one --config"):
+            validate_external_manifest(changed)
+
+        adapter = manifest["adapters"][0]
+        _, resolved = _resolve_adapter_command(
+            adapter,
+            dataset_path=ROOT / "dataset.npz",
+            output_path=ROOT / "output",
+            run_root=ROOT / "run",
+        )
+        config_index = resolved.index("--config") + 1
+        self.assertEqual(
+            Path(resolved[config_index]),
+            (ROOT / adapter["adapter_config_path"]).resolve(),
+        )
+        self.assertTrue(Path(resolved[config_index]).is_absolute())
+        self.assertNotIn("{adapter_config}", resolved)
+
+        changed = json.loads(source.read_text())
+        changed["adapters"][0]["command"].extend(
+            ["--config", "{adapter_config}"]
+        )
+        with self.assertRaisesRegex(ValueError, "exactly one --config"):
+            validate_external_manifest(changed)
+
+    def test_g8_command_and_primary_registry_are_outer_authenticated(self):
+        manifest = json.loads(
+            (ROOT / "formal_v2/configs/sionna_external_validity_adapter_v2.json").read_text()
+        )
+        bound = dict(manifest)
+        bound["adapter_source_path"] = str(
+            ROOT / manifest["adapter_source_path"]
+        )
+        validate_external_validity_manifest(bound)
+        manifest["command"] = ["python3", "-c", "print('fabricated')"]
+        with self.assertRaisesRegex(ValueError, "authenticated adapter module"):
+            validate_external_validity_manifest(manifest)
+
+        evidence = {
+            "dataset_sha256": "d" * 64,
+            "config_sha256": "c" * 64,
+            "fixture": False,
+        }
+        expected = {
+            "unit-a": {
+                "unit_id": "unit-a",
+                "scene_index": 0,
+                "bank_id": "bank-a",
+                "route": "active",
+                "primary_direction": 1,
+                "primary_effect": 0.25,
+                "context_sha256": "a" * 64,
+                "base_map_cluster_id": "raw-a",
+                "canonical_base_map_digest": "foundation-a",
+                "canonical_bank_digest": "canonical-bank-a",
+                "canonical_unit_id": "canonical-unit-a",
+            },
+            "unit-b": {
+                "unit_id": "unit-b",
+                "scene_index": 1,
+                "bank_id": "bank-b",
+                "route": "null",
+                "primary_direction": -1,
+                "primary_effect": 0.01,
+                "context_sha256": "a" * 64,
+                "base_map_cluster_id": "raw-b",
+                "canonical_base_map_digest": "foundation-b",
+                "canonical_bank_digest": "canonical-bank-b",
+                "canonical_unit_id": "canonical-unit-b",
+            },
+        }
+        rows = [
+            {
+                "unit_id": unit,
+                "bank_id": values["bank_id"],
+                "route": values["route"],
+                "primary_direction": str(values["primary_direction"]),
+                "external_direction": str(values["primary_direction"]),
+                "primary_effect": str(values["primary_effect"]),
+                "external_effect": str(values["primary_effect"]),
+                "context_sha256": "a" * 64,
+                "dataset_sha256": evidence["dataset_sha256"],
+                "config_sha256": evidence["config_sha256"],
+                "fixture": "False",
+            }
+            for unit, values in expected.items()
+        ]
+        validate_external_validity_rows(rows, evidence, expected)
+        forged = [dict(row) for row in rows]
+        forged[0]["primary_effect"] = "99.0"
+        with self.assertRaisesRegex(RuntimeError, "outer recomputation"):
+            validate_external_validity_rows(forged, evidence, expected)
+        negative = [dict(row) for row in rows]
+        negative[0]["external_effect"] = "-1.0"
+        with self.assertRaisesRegex(RuntimeError, "nonnegative"):
+            validate_external_validity_rows(negative, evidence, expected)
+        with self.assertRaisesRegex(RuntimeError, "omitted"):
+            validate_external_validity_rows(rows[:1], evidence, expected)
+
+    def test_g8_direction_interval_ignores_copied_canonical_unit(self):
+        rows = []
+        for index, agreement in enumerate((True, False)):
+            rows.append(
+                {
+                    "canonical_unit_id": f"unit-{index}",
+                    "canonical_base_map_digest": f"foundation-{index}",
+                    "canonical_bank_digest": f"bank-{index}",
+                    "route": "active",
+                    "primary_direction": 1,
+                    "external_direction": 1 if agreement else -1,
+                    "primary_effect": 0.2,
+                    "external_effect": 0.2,
+                }
+            )
+        original = _cluster_direction_interval(rows, 40)
+        duplicated = _cluster_direction_interval(rows + [dict(rows[0])], 40)
+        self.assertEqual(original, duplicated)
 
     def test_six_equal_conditions_cannot_pass_c1(self):
         rows = self._rows()
@@ -166,6 +338,52 @@ class EvidenceIntegrityTests(unittest.TestCase):
         )
         self.assertEqual(REPORT_ONLY_CONTROL_IDS, ("generous_2x_concat",))
 
+    def test_control_sign_flip_null_is_centered_on_superiority_margin(self):
+        main_rows = []
+        control_rows = []
+        effects = (0.08, 0.12) * 6
+        for index, effect in enumerate(effects):
+            common = {
+                "city_id": "city-a",
+                "base_map_cluster_id": f"cluster-{index:02d}",
+                "canonical_base_map_digest": f"cluster-{index:02d}",
+                "canonical_bank_digest": f"bank-{index:02d}",
+                "bank_id": f"bank-{index:02d}",
+                "seed": 1,
+                "budget": 8,
+                "draw": 0,
+            }
+            main_rows.append(
+                {**common, "arm": "full", "utility_neg_log_median": effect}
+            )
+            control_rows.append(
+                {
+                    **common,
+                    "arm": "equal_flop_alignment",
+                    "utility_neg_log_median": 0.0,
+                }
+            )
+
+        clusters = np.asarray([row["base_map_cluster_id"] for row in main_rows])
+        full = np.asarray(effects)
+        control = np.zeros_like(full)
+        zero_null = paired_sign_flip_test(clusters, full, control, seed=31)
+        result = _control_superiority_interval(
+            main_rows,
+            control_rows,
+            resamples=1000,
+            seed=30,
+            superiority_margin=0.1,
+        )
+
+        self.assertLess(zero_null["p_value_two_sided"], 0.05)
+        self.assertGreater(result["p_value_two_sided"], 0.05)
+        self.assertEqual(result["superiority_margin"], 0.1)
+        self.assertFalse(
+            interval_decision(result, threshold=0.1, relation="superiority")
+            and result["p_value_two_sided"] < 0.05
+        )
+
     def test_legacy_resource_manifest_without_source_and_replay_is_rejected(self):
         legacy = {
             "schema_version": "csi-pairs-v6-resource-controls-v1",
@@ -179,6 +397,129 @@ class EvidenceIntegrityTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "schema mismatch|fields must be exact"):
             validate_resource_manifest(legacy)
+
+    def test_claim_control_must_execute_the_hashed_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "adapter.py"
+            source.write_text("raise SystemExit(0)\n", encoding="utf-8")
+            digest = sha256_file(source)
+            manifest = root / "manifest.json"
+            write_json(
+                manifest,
+                {
+                    "schema_version": "csi-pairs-v6-shuffled-pair-adapter-v2",
+                    "command": ["true"],
+                    "implementation_revision": digest,
+                    "control_seed": 1,
+                    "adapter_source_path": source.name,
+                    "adapter_source_sha256": digest,
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "execute the authenticated"):
+                run_claim_control_adapter(
+                    {}, object(), manifest, root / "out", "csi-pairs-v6-shuffled-pair-adapter-v2", "results.json"
+                )
+
+    def test_claim_control_statistics_use_canonical_hierarchy(self):
+        registry = {}
+        shuffled_rows = []
+        retention_rows = []
+        pair_index = 0
+        for cluster_index, cluster in enumerate(("a" * 64, "b" * 64)):
+            for bank_index in range(2):
+                pair_id = f"pair-{pair_index}"
+                key = (7, pair_id)
+                registry[key] = {
+                    "seed": 7,
+                    "pair_id": pair_id,
+                    "base_map_cluster_id": f"raw-cluster-{cluster_index}",
+                    "canonical_base_map_digest": cluster,
+                    "canonical_bank_digest": f"{cluster_index + 1}{bank_index}" * 32,
+                    "source_world": 0,
+                    "target_world": 1,
+                    "position_index": pair_index,
+                }
+                gains = {
+                    "matched_model": 1.0,
+                    "shuffled_model": 0.05,
+                    **{system: 0.1 for system in SHUFFLED_SYSTEMS[2:]},
+                }
+                for system, gain in gains.items():
+                    for label, score in (("positive", gain), ("negative", 0.0)):
+                        shuffled_rows.append(
+                            {
+                                "seed": "7",
+                                "pair_id": pair_id,
+                                "system": system,
+                                "pair_label": label,
+                                "alignment_score": str(score),
+                            }
+                        )
+                for condition, cgs, response in (
+                    ("correct", 1.0, 1.0),
+                    ("map_swap", 0.3, 0.4),
+                    ("map_removed", 0.2, 0.2),
+                ):
+                    retention_rows.append(
+                        {
+                            "seed": "7",
+                            "pair_id": pair_id,
+                            "condition": condition,
+                            "cgs_score": str(cgs),
+                            "response_score": str(response),
+                        }
+                    )
+                pair_index += 1
+
+        config = {
+            "evaluation": {
+                "bootstrap_resamples": 200,
+                "familywise_alpha": 0.05,
+                "shuffled_gain_fraction_max": 0.2,
+                "retention_minimum_effect": 0.1,
+            }
+        }
+        shuffled = _shuffled_assessment(config, shuffled_rows, registry)
+        retention = _retention_assessment(config, retention_rows, registry)
+
+        raw_split = {key: dict(row) for key, row in registry.items()}
+        for index, row in enumerate(raw_split.values()):
+            row["base_map_cluster_id"] = f"adversarial-raw-split-{index}"
+        self.assertEqual(
+            shuffled,
+            _shuffled_assessment(config, shuffled_rows, raw_split),
+        )
+        self.assertEqual(
+            retention,
+            _retention_assessment(config, retention_rows, raw_split),
+        )
+        self.assertEqual(shuffled["base_map_cluster_count"], 2)
+        self.assertEqual(retention["base_map_cluster_count"], 2)
+
+        copied = {key: dict(row) for key, row in registry.items()}
+        copied[(7, "copied-pair")] = dict(next(iter(registry.values())))
+        with self.assertRaisesRegex(RuntimeError, "duplicates a canonical evaluation unit"):
+            _shuffled_assessment(config, shuffled_rows, copied)
+
+    def test_resource_control_commands_must_execute_bound_source_and_spec(self):
+        manifest = {
+            "schema_version": "csi-pairs-v6-resource-controls-v2",
+            "controls": [
+                {
+                    "control_id": control_id,
+                    "command": ["true"],
+                    "replay_command": ["true"],
+                    "adapter_source_path": "adapter.py",
+                    "adapter_source_sha256": "a" * 64,
+                    "architecture_spec_path": "spec.json",
+                    "architecture_spec_sha256": "b" * 64,
+                }
+                for control_id in CONTROL_IDS
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "execute the authenticated"):
+            validate_resource_manifest(manifest)
 
     def test_single_tensor_checkpoint_cannot_authenticate_as_control_architecture(self):
         try:

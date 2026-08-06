@@ -24,7 +24,7 @@ CLI stages are visible with:
 python3 -m formal_v2.formal_cli --help
 ```
 
-`all` is the complete evidence chain. It authenticates every local `waibu/` resource and runs the five representation baselines in addition to the verifier, risk archive, external-baseline, resource-control, scene-ID, external-validity, literature, RT-calibration, shuffled-pair, and retention stages. Missing inputs fail at argument parsing; no independent stage is silently skipped. Fixtures remain `FORBIDDEN` at every artifact layer. Code and tests do not constitute scientific evidence.
+`all` is the complete evidence-chain orchestrator. It authenticates every local `waibu/` resource and runs the five representation baselines in addition to the verifier, first-party risk replay, external-baseline, resource-control, scene-ID, external-validity, literature, RT-calibration, shuffled-pair, and retention stages. Missing inputs fail at argument parsing; no independent stage is silently skipped. Fixtures remain `FORBIDDEN` at every artifact layer. Code and tests do not constitute scientific evidence.
 The full-run root must be new, except that a single pre-staged `inputs/` directory is allowed for
 authenticated Sionna scenes and other immutable run inputs; any existing result/stage file is rejected.
 
@@ -38,6 +38,13 @@ Only Wi-GATr is currently C1-eligible, so C1 remains `BLOCKED` until a second au
 faithful official-code or paper-spec adapter is supplied. The shipped
 `configs/sionna_external_validity_adapter_v2.json` is the standard G8 adapter manifest.
 See `WAIBU_INTEGRATION.md` and `external_adapters/README.md` for provenance and execution limits.
+
+The repository does not ship the shuffled-pair adapter, retention adapter, or the five trained
+resource-control adapters/architecture manifests. Those contracts are fail-closed extension points,
+not executable evidence already present in `waibu/`. Consequently, a reviewer-grade `all` run is
+currently `BLOCKED` until reviewed implementations and their authenticated manifests are supplied.
+Their commands must execute the exact hashed source directly; aggregate or self-reported substitutes
+are rejected.
 
 External evidence contracts are fail-closed. Scene-ID adapters must bind their implementation source
 and trained checkpoint, cover each held-out position with one exact four-condition unit, and pass

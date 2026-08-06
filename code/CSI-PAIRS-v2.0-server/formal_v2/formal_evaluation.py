@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ctypes
+import gc
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +17,7 @@ from .formal_evidence import (
     require_stage_manifested_gate,
 )
 from .formal_factorial import (
+    _canonical_bank_digest,
     _normalized_action,
     _normalized_map,
     _normalized_radio,
@@ -29,7 +33,13 @@ from .formal_probes import (
     predict_binary_probe,
     predict_response_probe,
 )
-from .formal_protocol import patchify_csi, typed_signed_edit, unpatchify_csi, zero_typed_edit
+from .formal_protocol import (
+    headline_alignment_edge,
+    patchify_csi,
+    typed_signed_edit,
+    unpatchify_csi,
+    zero_typed_edit,
+)
 from .formal_routing import ROUTE_NAMES, fit_route_normalization, route_dataset
 from .formal_statistics import (
     holm_adjust,
@@ -162,6 +172,12 @@ def run_formal_evaluation(
                     "base_map_cluster_id": str(
                         dataset.base_map_cluster_ids[int(evaluated["scene_indices"][mask][0])]
                     ),
+                    "canonical_base_map_digest": dataset.canonical_base_map_digest(
+                        int(evaluated["scene_indices"][mask][0])
+                    ),
+                    "canonical_bank_digest": _canonical_bank_digest(
+                        dataset, int(evaluated["scene_indices"][mask][0])
+                    ),
                     "city_id": str(evaluated["city_ids"][mask][0]),
                     "route": "active",
                     "probe_family": selection_record["selected_family"],
@@ -182,7 +198,16 @@ def run_formal_evaluation(
                 }
             )
             shortcut_rows.extend(
-                _alignment_shortcut_rows(seed, arm, bank, evaluated, mask)
+                _alignment_shortcut_rows(
+                    seed,
+                    arm,
+                    bank,
+                    probe_train,
+                    probe_selection,
+                    evaluated,
+                    mask,
+                    config,
+                )
             )
             effect_bin_rows.extend(
                 _active_effect_bin_rows(
@@ -208,6 +233,12 @@ def run_formal_evaluation(
                                 dataset.base_map_cluster_ids[
                                     int(evaluated["scene_indices"][bank_mask][0])
                                 ]
+                            ),
+                            "canonical_base_map_digest": dataset.canonical_base_map_digest(
+                                int(evaluated["scene_indices"][bank_mask][0])
+                            ),
+                            "canonical_bank_digest": _canonical_bank_digest(
+                                dataset, int(evaluated["scene_indices"][bank_mask][0])
                             ),
                             "city_id": str(evaluated["city_ids"][bank_mask][0]),
                             "route": route,
@@ -235,6 +266,12 @@ def run_formal_evaluation(
                             dataset.base_map_cluster_ids[
                                 int(evaluated["scene_indices"][route_mask][0])
                             ]
+                        ),
+                        "canonical_base_map_digest": dataset.canonical_base_map_digest(
+                            int(evaluated["scene_indices"][route_mask][0])
+                        ),
+                        "canonical_bank_digest": _canonical_bank_digest(
+                            dataset, int(evaluated["scene_indices"][route_mask][0])
                         ),
                         "city_id": str(evaluated["city_ids"][route_mask][0]),
                         "route": route,
@@ -334,7 +371,24 @@ def run_formal_evaluation(
                 (response_eval["source_targets"][mask] - response_eval["targets"][mask]) ** 2
             )
             swap_numerator = np.sum(
-                (action_swap_prediction[mask] - response_eval["targets"][mask]) ** 2
+                (
+                    action_swap_prediction[
+                        mask
+                        & (response_eval["wrong_action_match_status"] == "exact")
+                    ]
+                    - response_eval["targets"][
+                        mask
+                        & (response_eval["wrong_action_match_status"] == "exact")
+                    ]
+                )
+                ** 2
+            )
+            exact_swap_mask = mask & (
+                response_eval["wrong_action_match_status"] == "exact"
+            )
+            exact_swap_denominator = max(
+                float(np.sum(response_eval["targets"][exact_swap_mask] ** 2)),
+                1e-12,
             )
             variant_nmse = {
                 f"probe_{name}_active_patch_nmse": float(
@@ -364,15 +418,78 @@ def run_formal_evaluation(
                             int(response_eval["scene_indices"][mask][0])
                         ]
                     ),
+                    "canonical_base_map_digest": dataset.canonical_base_map_digest(
+                        int(response_eval["scene_indices"][mask][0])
+                    ),
+                    "canonical_bank_digest": _canonical_bank_digest(
+                        dataset, int(response_eval["scene_indices"][mask][0])
+                    ),
                     "city_id": str(response_eval["city_ids"][mask][0]),
                     "unified_response_probe_active_patch_nmse": float(numerator / denominator),
                     "probe_copy_active_patch_nmse": float(copy_numerator / denominator),
-                    "probe_action_swap_active_patch_nmse": float(swap_numerator / denominator),
+                    "unified_response_probe_action_swap_exact_patch_nmse": (
+                        float(
+                            np.sum(
+                                (
+                                    probe_prediction[exact_swap_mask]
+                                    - response_eval["targets"][exact_swap_mask]
+                                )
+                                ** 2
+                            )
+                            / exact_swap_denominator
+                        )
+                        if np.any(exact_swap_mask)
+                        else None
+                    ),
+                    "probe_action_swap_active_patch_nmse": (
+                        float(swap_numerator / exact_swap_denominator)
+                        if np.any(exact_swap_mask)
+                        else None
+                    ),
+                    "probe_action_swap_exact_count": int(np.sum(exact_swap_mask)),
+                    "probe_action_swap_fallback_count": int(
+                        np.sum(
+                            mask
+                            & (response_eval["wrong_action_match_status"] == "fallback")
+                        )
+                    ),
+                    "probe_action_swap_failed_count": int(
+                        np.sum(
+                            mask
+                            & (response_eval["wrong_action_match_status"] == "failed")
+                        )
+                    ),
+                    "probe_action_swap_exact_fraction": float(
+                        np.mean(
+                            response_eval["wrong_action_match_status"][mask] == "exact"
+                        )
+                    ),
                     **variant_nmse,
                     **native,
                     "n_active_patches": int(np.sum(mask)),
                 }
             )
+        del (
+            model,
+            probe,
+            probe_train,
+            probe_selection,
+            evaluated,
+            probabilities,
+            response_train,
+            response_probe,
+            variant_probes,
+            response_eval,
+            probe_prediction,
+            action_swap_prediction,
+            no_action_prediction,
+            variant_predictions,
+        )
+        gc.collect()
+        try:
+            ctypes.CDLL(None).malloc_trim(0)
+        except (AttributeError, OSError):
+            pass
     write_csv(output_dir / "compatibility_probe_contract.csv", bind_rows(probe_contract_rows, evidence))
     write_csv(
         output_dir / "response_probe_contract.csv",
@@ -491,6 +608,8 @@ def _compatibility_dataset(
     bank_ids = []
     city_ids = []
     base_map_cluster_ids = []
+    canonical_base_map_digests = []
+    canonical_bank_digests = []
     routes = []
     pair_ids = []
     physical_distances = []
@@ -502,15 +621,20 @@ def _compatibility_dataset(
     supplied_worlds = []
     csi_only_shortcut_scores = []
     map_only_shortcut_scores = []
-    scene_id_shortcut_scores = []
-    edit_status_xor_scores = []
-    variant_id_match_scores = []
+    constant_shortcut_features = []
+    csi_only_shortcut_features = []
+    map_only_shortcut_features = []
+    scene_id_only_shortcut_features = []
+    edit_status_xor_shortcut_features = []
+    variant_id_match_shortcut_features = []
     zero = zero_typed_edit((1,), dataset.maps.shape[-1], int(dataset.metadata["assets"]["material_category_count"]))
     zero_tensor = torch.as_tensor(_normalized_action(normalization, zero), dtype=torch.float32)
     for scene_value in scenes:
         scene = int(scene_value)
         for edge in dataset.directed_edges(scene):
             if edge.source_world >= edge.target_world:
+                continue
+            if not headline_alignment_edge(dataset, scene, edge):
                 continue
             for position in _eligible_evaluation_positions(dataset, scene):
                 key = (scene, edge.source_world, edge.target_world, position)
@@ -570,6 +694,12 @@ def _compatibility_dataset(
                         bank_ids.append(str(dataset.bank_ids[scene]))
                         city_ids.append(str(dataset.city_ids[scene]))
                         base_map_cluster_ids.append(str(dataset.base_map_cluster_ids[scene]))
+                        canonical_base_map_digests.append(
+                            dataset.canonical_base_map_digest(scene)
+                        )
+                        canonical_bank_digests.append(
+                            _canonical_bank_digest(dataset, scene)
+                        )
                         routes.append(str(ROUTE_NAMES[route_code]))
                         pair_ids.append(
                             f"{dataset.bank_ids[scene]}:{edge.source_world}:{edge.target_world}:"
@@ -586,14 +716,30 @@ def _compatibility_dataset(
                         map_only_shortcut_scores.append(
                             float(np.linalg.norm(dataset.maps[scene, supplied_world]))
                         )
-                        scene_id_shortcut_scores.append(float(scene))
-                        edit_status_xor_scores.append(
-                            float(
-                                int(np.sum(dataset.world_bits[csi_world]) % 2)
-                                == int(np.sum(dataset.world_bits[supplied_world]) % 2)
+                        scene_features, edit_features, variant_features = (
+                            _shortcut_metadata_features(
+                                dataset,
+                                scene,
+                                csi_world,
+                                supplied_world,
                             )
                         )
-                        variant_id_match_scores.append(float(csi_world == supplied_world))
+                        constant_shortcut_features.append(np.zeros(1, dtype=np.float64))
+                        csi_only_shortcut_features.append(
+                            np.concatenate((patches.reshape(-1), radio.reshape(-1)))
+                        )
+                        map_only_shortcut_features.append(
+                            np.concatenate((maps.reshape(-1), radio.reshape(-1)))
+                        )
+                        scene_id_only_shortcut_features.append(
+                            scene_features
+                        )
+                        edit_status_xor_shortcut_features.append(
+                            edit_features
+                        )
+                        variant_id_match_shortcut_features.append(
+                            variant_features
+                        )
     if not features:
         raise RuntimeError("compatibility probe dataset has no active quartets")
     return {
@@ -604,6 +750,8 @@ def _compatibility_dataset(
         "bank_ids": np.asarray(bank_ids),
         "city_ids": np.asarray(city_ids),
         "base_map_cluster_ids": np.asarray(base_map_cluster_ids),
+        "canonical_base_map_digests": np.asarray(canonical_base_map_digests),
+        "canonical_bank_digests": np.asarray(canonical_bank_digests),
         "routes": np.asarray(routes),
         "pair_ids": np.asarray(pair_ids),
         "physical_distances": np.asarray(physical_distances, dtype=np.float64),
@@ -616,10 +764,55 @@ def _compatibility_dataset(
         "constant_shortcut_scores": np.zeros(len(labels), dtype=np.float64),
         "csi_only_shortcut_scores": np.asarray(csi_only_shortcut_scores, dtype=np.float64),
         "map_only_shortcut_scores": np.asarray(map_only_shortcut_scores, dtype=np.float64),
-        "scene_id_only_shortcut_scores": np.asarray(scene_id_shortcut_scores, dtype=np.float64),
-        "edit_status_xor_shortcut_scores": np.asarray(edit_status_xor_scores, dtype=np.float64),
-        "variant_id_match_shortcut_scores": np.asarray(variant_id_match_scores, dtype=np.float64),
+        "constant_shortcut_features": np.asarray(constant_shortcut_features),
+        "csi_only_shortcut_features": np.asarray(csi_only_shortcut_features),
+        "map_only_shortcut_features": np.asarray(map_only_shortcut_features),
+        "scene_id_only_shortcut_features": np.asarray(scene_id_only_shortcut_features),
+        "edit_status_xor_shortcut_features": np.asarray(
+            edit_status_xor_shortcut_features
+        ),
+        "variant_id_match_shortcut_features": np.asarray(
+            variant_id_match_shortcut_features
+        ),
+        "edge_scope": "non-natural-incident direct edits only",
     }
+
+
+def _shortcut_metadata_features(dataset, scene, csi_world, supplied_world):
+    """Return separate metadata tokens; never construct the match label itself."""
+    bank = str(dataset.bank_ids[int(scene)])
+    source_bits = np.asarray(dataset.world_bits[int(csi_world)], dtype=np.float64).ravel()
+    supplied_bits = np.asarray(
+        dataset.world_bits[int(supplied_world)], dtype=np.float64
+    ).ravel()
+    natural = int(dataset.natural_world_index[int(scene)])
+    scene_features = _stable_token_features(f"bank:{bank}")
+    edit_features = np.concatenate(
+        (
+            source_bits,
+            supplied_bits,
+            np.asarray(
+                [
+                    float(int(csi_world) == natural),
+                    float(int(supplied_world) == natural),
+                ],
+                dtype=np.float64,
+            ),
+        )
+    )
+    variant_features = np.concatenate(
+        (
+            _stable_token_features(f"bank:{bank}:world:{int(csi_world)}"),
+            _stable_token_features(f"bank:{bank}:world:{int(supplied_world)}"),
+        )
+    )
+    return scene_features, edit_features, variant_features
+
+
+def _stable_token_features(value, width=16):
+    digest = hashlib.sha256(str(value).encode("utf-8")).digest()
+    values = np.frombuffer(digest, dtype=np.uint8)[: int(width)].astype(np.float64)
+    return values / 127.5 - 1.0
 
 
 def _masked_alignment_state_and_score(
@@ -719,29 +912,84 @@ def _active_effect_bin_rows(seed, arm, bank, city, scores, labels, pair_ids, dis
     return rows
 
 
-def _alignment_shortcut_rows(seed, arm, bank, evaluated, mask):
+def _alignment_shortcut_rows(
+    seed,
+    arm,
+    bank,
+    source_train,
+    source_selection,
+    evaluated,
+    mask,
+    config,
+):
     definitions = {
-        "constant": ("constant_shortcut_scores", "legal_no_input_control"),
-        "csi_only": ("csi_only_shortcut_scores", "legal_single_modality_control"),
-        "map_only": ("map_only_shortcut_scores", "legal_single_modality_control"),
-        "scene_id_only": ("scene_id_only_shortcut_scores", "forbidden_identity_canary"),
-        "edit_status_xor": ("edit_status_xor_shortcut_scores", "map_derived_shortcut_canary"),
-        "variant_id_matcher": ("variant_id_match_shortcut_scores", "forbidden_identity_canary"),
+        "constant": ("constant_shortcut_features", "legal_no_input_control"),
+        "csi_only": ("csi_only_shortcut_features", "legal_single_modality_control"),
+        "map_only": ("map_only_shortcut_features", "legal_single_modality_control"),
+        "scene_id_only": (
+            "scene_id_only_shortcut_features",
+            "forbidden_bank_identity_probe",
+        ),
+        "edit_status_xor": (
+            "edit_status_xor_shortcut_features",
+            "forbidden_separate_edit_metadata_probe",
+        ),
+        "variant_id_matcher": (
+            "variant_id_match_shortcut_features",
+            "forbidden_separate_variant_token_probe",
+        ),
     }
     rows = []
-    for name, (field, input_class) in definitions.items():
+    for offset, (name, (field, input_class)) in enumerate(definitions.items()):
+        if name == "constant":
+            source_scores = np.zeros(len(source_train["labels"]), dtype=np.float64)
+            unseen_scores = np.zeros(int(np.sum(mask)), dtype=np.float64)
+            selected_family = "constant"
+        else:
+            probe, selection = fit_select_compatibility_probe(
+                source_train[field],
+                source_train["labels"],
+                source_selection[field],
+                source_selection["labels"],
+                config,
+                seed=int(seed) + 33001 + offset,
+            )
+            source_scores = predict_binary_probe(probe, source_train[field])
+            unseen_features = evaluated[field][mask]
+            unseen_scores = predict_binary_probe(probe, unseen_features)
+            selected_family = selection["selected_family"]
+        source_auroc = binary_auroc(source_train["labels"], source_scores)
         rows.append(
             {
                 "seed": int(seed),
                 "arm": str(arm),
                 "bank_id": str(bank),
                 "base_map_cluster_id": str(evaluated["base_map_cluster_ids"][mask][0]),
+                "canonical_base_map_digest": str(
+                    evaluated["canonical_base_map_digests"][mask][0]
+                ),
+                "canonical_bank_digest": str(
+                    evaluated["canonical_bank_digests"][mask][0]
+                ),
                 "city_id": str(evaluated["city_ids"][mask][0]),
                 "baseline": name,
                 "input_class": input_class,
-                "auroc": binary_auroc(
-                    evaluated["labels"][mask], evaluated[field][mask]
+                "source_train_auroc": source_auroc,
+                "unseen_bank_auroc": binary_auroc(
+                    evaluated["labels"][mask], unseen_scores
                 ),
+                "auroc": binary_auroc(evaluated["labels"][mask], unseen_scores),
+                "identity_token_contract": (
+                    {
+                        "scene_id_only": "stable_hashed_bank_token_no_label_feature",
+                        "edit_status_xor": "separate_world_bits_and_natural_flags_no_xor",
+                        "variant_id_matcher": "separate_stable_hashed_variant_tokens_no_match_or_unk_override",
+                    }.get(name, "not_applicable")
+                ),
+                "probe_family": selected_family,
+                "fit_role": "source_probe_train",
+                "selection_role": "source_probe_selection",
+                "evaluation_scope": "source_final_unseen_bank_and_target",
                 "n": int(np.sum(mask)),
             }
         )
@@ -767,6 +1015,12 @@ def _compatibility_effect_rows(seed, arm, evaluated, probabilities):
                 "base_map_cluster_id": str(
                     evaluated.get("base_map_cluster_ids", evaluated["bank_ids"])[first]
                 ),
+                "canonical_base_map_digest": str(
+                    evaluated["canonical_base_map_digests"][first]
+                ),
+                "canonical_bank_digest": str(
+                    evaluated["canonical_bank_digests"][first]
+                ),
                 "city_id": str(evaluated["city_ids"][first]),
                 "source_world": int(evaluated["csi_worlds"][first]),
                 "target_world": int(
@@ -784,6 +1038,8 @@ def _compatibility_effect_rows(seed, arm, evaluated, probabilities):
 
 
 def _response_probe_dataset(model, dataset, teacher, config, normalization, scenes, active_only):
+    from .formal_qualification import _select_wrong_action
+
     route_norm = fit_route_normalization(dataset, teacher)
     routed = route_dataset(dataset, teacher, config, scenes, normalization=route_norm)
     features = []
@@ -805,8 +1061,11 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
     positions = []
     queries = []
     cluster_ids = []
+    canonical_cluster_ids = []
+    canonical_bank_ids = []
+    wrong_action_match_statuses = []
+    wrong_action_worlds = []
     material_categories = int(dataset.metadata["assets"]["material_category_count"])
-    world_lookup = {tuple(row): index for index, row in enumerate(dataset.world_bits.tolist())}
     for scene_value in scenes:
         scene = int(scene_value)
         for edge in dataset.directed_edges(scene):
@@ -819,21 +1078,20 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
             action_features = multichannel_spatial_features(
                 _normalized_action(normalization, action)
             )
-            other_bit = (edge.bit_index + 1) % dataset.bit_count
-            swap_bits = dataset.world_bits[edge.source_world].copy()
-            swap_bits[other_bit] = 1 - swap_bits[other_bit]
-            swap_world = world_lookup[tuple(int(value) for value in swap_bits)]
-            swap_action = typed_signed_edit(
-                dataset.maps[scene, edge.source_world],
-                dataset.maps[scene, swap_world],
-                dataset.map_channel_names,
-                material_categories,
-            )
-            swap_action_features = multichannel_spatial_features(
-                _normalized_action(normalization, swap_action)
-            )
             no_action_vector = np.zeros_like(action_features)
             for position in _eligible_evaluation_positions(dataset, scene):
+                swap_action, swap_status, swap_world = _select_wrong_action(
+                    dataset,
+                    scene,
+                    edge.source_world,
+                    edge.bit_index,
+                    action,
+                    material_categories,
+                    receiver_position=dataset.positions[scene, position],
+                )
+                swap_action_features = multichannel_spatial_features(
+                    _normalized_action(normalization, swap_action)
+                )
                 source_patches = _normalized_scene_patches(
                     dataset,
                     normalization,
@@ -870,6 +1128,14 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
                             torch.as_tensor(radio, dtype=torch.float32),
                             torch.as_tensor(entry.mask[None, :], dtype=torch.bool),
                         )[0, query].numpy()
+                        map_only_state = model.state(
+                            torch.zeros_like(
+                                torch.as_tensor(visible[None, ...], dtype=torch.float32)
+                            ),
+                            torch.as_tensor(maps, dtype=torch.float32),
+                            torch.as_tensor(radio, dtype=torch.float32),
+                            torch.as_tensor(entry.mask[None, :], dtype=torch.bool),
+                        )[0, query].numpy()
                     features.append(np.concatenate((state, action_features, query_onehot)))
                     action_swap_features.append(
                         np.concatenate((state, swap_action_features, query_onehot))
@@ -881,17 +1147,18 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
                         np.concatenate((no_map_state, action_features, query_onehot))
                     )
                     edit_only_features.append(
-                        np.concatenate((np.zeros_like(state), action_features, query_onehot))
+                        np.concatenate((map_only_state, action_features, query_onehot))
                     )
                     csi_only_features.append(
                         np.concatenate((no_map_state, no_action_vector, query_onehot))
                     )
-                    oracle_state = np.zeros_like(state)
-                    oracle_state[:2] = (
+                    normalized_position = (
                         dataset.positions[scene, position] - normalization.position_mean
                     ) / normalization.position_scale
                     oracle_x_features.append(
-                        np.concatenate((oracle_state, action_features, query_onehot))
+                        np.concatenate(
+                            (state, action_features, query_onehot, normalized_position)
+                        )
                     )
                     targets.append(
                         _normalized_scene_patches(
@@ -925,6 +1192,10 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
                     positions.append(position)
                     queries.append(query)
                     cluster_ids.append(str(dataset.base_map_cluster_ids[scene]))
+                    canonical_cluster_ids.append(dataset.canonical_base_map_digest(scene))
+                    canonical_bank_ids.append(_canonical_bank_digest(dataset, scene))
+                    wrong_action_match_statuses.append(swap_status)
+                    wrong_action_worlds.append(-1 if swap_world is None else int(swap_world))
     if not features:
         raise RuntimeError("response probe dataset has no eligible patches")
     return {
@@ -947,6 +1218,10 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
         "positions": np.asarray(positions, dtype=np.int64),
         "queries": np.asarray(queries, dtype=np.int64),
         "base_map_cluster_ids": np.asarray(cluster_ids),
+        "canonical_base_map_digests": np.asarray(canonical_cluster_ids),
+        "canonical_bank_digests": np.asarray(canonical_bank_ids),
+        "wrong_action_match_status": np.asarray(wrong_action_match_statuses),
+        "wrong_action_world": np.asarray(wrong_action_worlds, dtype=np.int64),
         "input_contract": "masked_F_query_state_plus_typed_action_plus_query; target patch is supervision-only",
     }
 
@@ -957,17 +1232,24 @@ def _response_effect_rows(
     rows = []
     for pair_id in np.unique(evaluated["pair_ids"]):
         mask = evaluated["pair_ids"] == pair_id
+        first = int(np.flatnonzero(mask)[0])
         prediction_error = float(np.mean((prediction[mask] - evaluated["targets"][mask]) ** 2))
         copy_error = float(
             np.mean((evaluated["source_targets"][mask] - evaluated["targets"][mask]) ** 2)
         )
-        action_swap_error = float(
-            np.mean((action_swap_prediction[mask] - evaluated["targets"][mask]) ** 2)
+        swap_status = str(evaluated["wrong_action_match_status"][first])
+        action_swap_error = (
+            float(
+                np.mean(
+                    (action_swap_prediction[mask] - evaluated["targets"][mask]) ** 2
+                )
+            )
+            if swap_status == "exact"
+            else None
         )
         no_action_error = float(
             np.mean((no_action_prediction[mask] - evaluated["targets"][mask]) ** 2)
         )
-        first = int(np.flatnonzero(mask)[0])
         rows.append(
             {
                 "seed": int(seed),
@@ -976,18 +1258,30 @@ def _response_effect_rows(
                 "scene_index": int(evaluated["scene_indices"][first]),
                 "bank_id": str(evaluated["bank_ids"][first]),
                 "base_map_cluster_id": str(evaluated["base_map_cluster_ids"][first]),
+                "canonical_base_map_digest": str(
+                    evaluated["canonical_base_map_digests"][first]
+                ),
+                "canonical_bank_digest": str(
+                    evaluated["canonical_bank_digests"][first]
+                ),
                 "city_id": str(evaluated["city_ids"][first]),
                 "source_world": int(evaluated["source_worlds"][first]),
                 "target_world": int(evaluated["target_worlds"][first]),
                 "position_index": int(evaluated["positions"][first]),
                 "query_index": int(evaluated["queries"][first]),
                 "route": str(evaluated["routes"][first]),
+                "wrong_action_match_status": swap_status,
+                "wrong_action_world": int(evaluated["wrong_action_world"][first]),
                 "prediction_mse": prediction_error,
                 "copy_mse": copy_error,
                 "action_swap_mse": action_swap_error,
                 "no_action_mse": no_action_error,
                 "response_advantage": copy_error - prediction_error,
-                "response_advantage_vs_action_swap": action_swap_error - prediction_error,
+                "response_advantage_vs_action_swap": (
+                    action_swap_error - prediction_error
+                    if action_swap_error is not None
+                    else None
+                ),
                 "response_advantage_vs_no_action": no_action_error - prediction_error,
             }
         )
@@ -1035,15 +1329,17 @@ def _transition_metrics(prediction, source, target, normalization, spec):
     predicted = _complex_csi_from_patches(prediction, normalization, spec)
     source_csi = _complex_csi_from_patches(source, normalization, spec)
     target_csi = _complex_csi_from_patches(target, normalization, spec)
-    flat_prediction = predicted.reshape(predicted.shape[0], -1)
-    flat_target = target_csi.reshape(target_csi.shape[0], -1)
-    numerator = np.abs(np.sum(np.conj(flat_prediction) * flat_target, axis=1)) ** 2
-    denominator = np.sum(np.abs(flat_prediction) ** 2, axis=1) * np.sum(
-        np.abs(flat_target) ** 2, axis=1
-    )
-    sgcs = numerator / np.maximum(denominator, 1e-12)
     true_delta = target_csi - source_csi
     predicted_delta = predicted - source_csi
+    flat_predicted_delta = predicted_delta.reshape(predicted_delta.shape[0], -1)
+    flat_true_delta = true_delta.reshape(true_delta.shape[0], -1)
+    numerator = np.abs(
+        np.sum(np.conj(flat_predicted_delta) * flat_true_delta, axis=1)
+    ) ** 2
+    denominator = np.sum(np.abs(flat_predicted_delta) ** 2, axis=1) * np.sum(
+        np.abs(flat_true_delta) ** 2, axis=1
+    )
+    sgcs = numerator / np.maximum(denominator, 1e-12)
     transition_skill = 1.0 - np.sum(np.abs(predicted_delta - true_delta) ** 2, axis=(1, 2)) / np.maximum(
         np.sum(np.abs(true_delta) ** 2, axis=(1, 2)), 1e-12
     )
@@ -1077,6 +1373,8 @@ def _transition_metrics(prediction, source, target, normalization, spec):
 
 
 def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, scenes, bank_id):
+    from .formal_qualification import _select_wrong_action
+
     scene_matches = [int(scene) for scene in scenes if str(dataset.bank_ids[int(scene)]) == bank_id]
     if len(scene_matches) != 1:
         raise RuntimeError("native response bank join is not unique")
@@ -1094,6 +1392,7 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
     latent_sources = []
     targets = []
     latent_targets = []
+    wrong_action_statuses = []
     direction_cosines = []
     magnitude_errors = []
     null_delta_norms = []
@@ -1101,7 +1400,6 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
     audit_entries = [
         entry for entry in teacher.audit_mask_bank if entry.mode == "random_75"
     ]
-    world_lookup = {tuple(row): index for index, row in enumerate(dataset.world_bits.tolist())}
     for edge in dataset.directed_edges(scene):
         action = typed_signed_edit(
             dataset.maps[scene, edge.source_world],
@@ -1112,24 +1410,24 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
         action_tensor = torch.as_tensor(
             _normalized_action(normalization, action[None, ...]), dtype=torch.float32
         )
-        other_bit = (edge.bit_index + 1) % dataset.bit_count
-        swap_bits = dataset.world_bits[edge.source_world].copy()
-        swap_bits[other_bit] = 1 - swap_bits[other_bit]
-        swap_world = world_lookup[tuple(int(value) for value in swap_bits)]
-        swap_action = typed_signed_edit(
-            dataset.maps[scene, edge.source_world],
-            dataset.maps[scene, swap_world],
-            dataset.map_channel_names,
-            material_categories,
-        )
-        swap_action_tensor = torch.as_tensor(
-            _normalized_action(normalization, swap_action[None, ...]), dtype=torch.float32
-        )
         zero_action_tensor = torch.zeros_like(action_tensor)
         for position in _eligible_evaluation_positions(dataset, scene):
             akey = (scene, edge.source_world, edge.target_world, position)
             if routed.alignment_route[akey] != 2:
                 continue
+            swap_action, swap_status, _ = _select_wrong_action(
+                dataset,
+                scene,
+                edge.source_world,
+                edge.bit_index,
+                action,
+                material_categories,
+                receiver_position=dataset.positions[scene, position],
+            )
+            swap_action_tensor = torch.as_tensor(
+                _normalized_action(normalization, swap_action[None, ...]),
+                dtype=torch.float32,
+            )
             source = _normalized_scene_patches(
                 dataset, normalization, teacher.patch_spec, scene, edge.source_world, position
             )
@@ -1211,6 +1509,7 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
             latent_sources.append(latent_source)
             targets.append(target)
             latent_targets.append(latent_target)
+            wrong_action_statuses.append(swap_status)
             true_delta = (target - source).reshape(-1)
             predicted_delta = (predicted - source).reshape(-1)
             denominator = float(np.linalg.norm(true_delta) * np.linalg.norm(predicted_delta))
@@ -1235,8 +1534,20 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
     latent_source = np.asarray(latent_sources)
     target = np.asarray(targets)
     latent_target = np.asarray(latent_targets)
+    wrong_action_status = np.asarray(wrong_action_statuses)
+    exact_swap = wrong_action_status == "exact"
     target_energy = max(float(np.sum(target**2)), 1e-12)
     latent_target_energy = max(float(np.sum(latent_target**2)), 1e-12)
+    exact_target_energy = (
+        max(float(np.sum(target[exact_swap] ** 2)), 1e-12)
+        if np.any(exact_swap)
+        else None
+    )
+    exact_latent_target_energy = (
+        max(float(np.sum(latent_target[exact_swap] ** 2)), 1e-12)
+        if np.any(exact_swap)
+        else None
+    )
     null_threshold = float(config["qualification"]["response_physical_null_rms_max"])
     transition_metrics = _transition_metrics(
         prediction,
@@ -1253,8 +1564,23 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
         "native_no_action_full_channel_nmse": float(
             np.sum((no_action_prediction - target) ** 2) / target_energy
         ),
-        "native_action_swap_full_channel_nmse": float(
-            np.sum((action_swap_prediction - target) ** 2) / target_energy
+        "native_target_free_action_swap_exact_full_channel_nmse": (
+            float(
+                np.sum((prediction[exact_swap] - target[exact_swap]) ** 2)
+                / exact_target_energy
+            )
+            if np.any(exact_swap)
+            else None
+        ),
+        "native_action_swap_full_channel_nmse": (
+            float(
+                np.sum(
+                    (action_swap_prediction[exact_swap] - target[exact_swap]) ** 2
+                )
+                / exact_target_energy
+            )
+            if np.any(exact_swap)
+            else None
         ),
         "native_latent_nmse": float(
             np.sum((latent_prediction - latent_target) ** 2) / latent_target_energy
@@ -1266,10 +1592,38 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
             np.sum((latent_no_action_prediction - latent_target) ** 2)
             / latent_target_energy
         ),
-        "native_latent_action_swap_nmse": float(
-            np.sum((latent_action_swap_prediction - latent_target) ** 2)
-            / latent_target_energy
+        "native_latent_action_swap_exact_target_nmse": (
+            float(
+                np.sum(
+                    (latent_prediction[exact_swap] - latent_target[exact_swap]) ** 2
+                )
+                / exact_latent_target_energy
+            )
+            if np.any(exact_swap)
+            else None
         ),
+        "native_latent_action_swap_nmse": (
+            float(
+                np.sum(
+                    (
+                        latent_action_swap_prediction[exact_swap]
+                        - latent_target[exact_swap]
+                    )
+                    ** 2
+                )
+                / exact_latent_target_energy
+            )
+            if np.any(exact_swap)
+            else None
+        ),
+        "native_action_swap_exact_count": int(np.sum(exact_swap)),
+        "native_action_swap_fallback_count": int(
+            np.sum(wrong_action_status == "fallback")
+        ),
+        "native_action_swap_failed_count": int(
+            np.sum(wrong_action_status == "failed")
+        ),
+        "native_action_swap_exact_fraction": float(np.mean(exact_swap)),
         "native_delta_direction_cosine": float(np.mean(direction_cosines)),
         "native_delta_relative_magnitude_error": float(np.mean(magnitude_errors)),
         **transition_metrics,
@@ -1316,10 +1670,6 @@ def _evaluation_gate(
     factorial_gate,
     evidence,
 ):
-    def arm_metric(rows, arm, key):
-        values = [row[key] for row in rows if row["arm"] == arm and row[key] is not None]
-        return float(np.mean(values)) if values else float("nan")
-
     null_safety = _null_safety_by_arm(config, route_rows)
     null_safe = all(null_safety[arm]["passed"] for arm in ("alignment", "full"))
     response_null_safe = all(
@@ -1363,7 +1713,7 @@ def _evaluation_gate(
         response_rows,
         "response",
         "native_action_swap_full_channel_nmse",
-        "native_target_free_full_channel_nmse",
+        "native_target_free_action_swap_exact_full_channel_nmse",
         resamples,
         81104,
     )
@@ -1395,9 +1745,17 @@ def _evaluation_gate(
         response_rows,
         "response",
         "native_latent_action_swap_nmse",
-        "native_latent_nmse",
+        "native_latent_action_swap_exact_target_nmse",
         resamples,
         81109,
+    )
+    probe_response_swap = _within_arm_advantage_interval(
+        response_rows,
+        "response",
+        "probe_action_swap_active_patch_nmse",
+        "unified_response_probe_action_swap_exact_patch_nmse",
+        resamples,
+        81110,
     )
     shortcut_intervals = {
         name: _within_arm_advantage_interval(
@@ -1422,6 +1780,7 @@ def _evaluation_gate(
         latent_copy,
         latent_no_action,
         latent_swap,
+        probe_response_swap,
         *shortcut_intervals.values(),
         direction,
     ]
@@ -1430,19 +1789,30 @@ def _evaluation_gate(
         row["holm_adjusted_p"] = float(value)
     alpha = float(config["evaluation"]["familywise_alpha"])
     effect_bins_complete = _effect_bins_complete(cgs_rows, effect_bin_rows)
-    gray_complete = all(
-        any(
-            row["arm"] == arm
-            and row["route"] == "gray"
-            and row["condition_status"] == "ASSESSED"
-            for row in route_rows
+    evaluation_scenes = np.concatenate(
+        (
+            dataset.indices_for_role("source_final_unseen_bank"),
+            dataset.indices_for_role("target"),
         )
-        for arm in ("endpoint", "alignment", "response", "full")
     )
-    correlation_complete = all(
-        arm_metric(cgs_rows, arm, "native_probe_spearman")
-        >= float(config["evaluation"]["minimum_native_probe_correlation"])
+    canonical_banks = {
+        _canonical_bank_digest(dataset, int(scene)) for scene in evaluation_scenes
+    }
+    expected_cells = {
+        (int(seed), str(arm), str(bank))
+        for seed in config["seeds"]
+        for arm in config["factorial"]["arms"]
+        for bank in canonical_banks
+    }
+    gray_complete = _gray_cells_complete(route_rows, expected_cells)
+    correlation_macros = {
+        arm: _native_probe_correlation_macro(cgs_rows, arm, expected_cells)
         for arm in ("alignment", "full")
+    }
+    correlation_complete = all(
+        np.isfinite(value)
+        and value >= float(config["evaluation"]["minimum_native_probe_correlation"])
+        for value in correlation_macros.values()
     )
     expected_shortcuts = {
         "constant",
@@ -1453,23 +1823,68 @@ def _evaluation_gate(
         "variant_id_matcher",
     }
     shortcut_groups = {}
+    shortcut_duplicate = False
     for row in shortcut_rows:
-        key = (row["seed"], row["arm"], row["bank_id"])
-        shortcut_groups.setdefault(key, {})[row["baseline"]] = row
+        key = (
+            int(row["seed"]),
+            str(row["arm"]),
+            str(row["canonical_bank_digest"]),
+        )
+        group = shortcut_groups.setdefault(key, {})
+        if row["baseline"] in group:
+            shortcut_duplicate = True
+        group[row["baseline"]] = row
     shortcut_complete = bool(
         shortcut_groups
+        and not shortcut_duplicate
+        and set(shortcut_groups) == expected_cells
         and all(set(rows) == expected_shortcuts for rows in shortcut_groups.values())
     )
     legal_shortcut_rows = [
         row
         for row in shortcut_rows
-        if row["baseline"] in {"constant", "csi_only", "map_only", "scene_id_only"}
+        if row["baseline"] in {"constant", "csi_only", "map_only"}
     ]
+    metadata_probe_rows = [
+        row
+        for row in shortcut_rows
+        if row["baseline"]
+        in {"scene_id_only", "edit_status_xor", "variant_id_matcher"}
+    ]
+    metadata_contracts = {
+        "scene_id_only": "stable_hashed_bank_token_no_label_feature",
+        "edit_status_xor": "separate_world_bits_and_natural_flags_no_xor",
+        "variant_id_matcher": "separate_stable_hashed_variant_tokens_no_match_or_unk_override",
+    }
     shortcut_margin = float(config["evaluation"]["null_score_equivalence_margin"])
     shortcut_passed = bool(
         shortcut_complete
         and legal_shortcut_rows
-        and all(abs(float(row["auroc"]) - 0.5) <= shortcut_margin for row in legal_shortcut_rows)
+        and metadata_probe_rows
+        and all(
+            abs(float(row["unseen_bank_auroc"]) - 0.5) <= shortcut_margin
+            for row in legal_shortcut_rows + metadata_probe_rows
+        )
+        and all(
+            row["identity_token_contract"] == metadata_contracts[row["baseline"]]
+            for row in metadata_probe_rows
+        )
+    )
+    minimum_swap_fraction = float(
+        config["qualification"]["minimum_geometry_matched_wrong_action_fraction"]
+    )
+    action_swap_coverage_passed = bool(
+        response_rows
+        and all(
+            int(row.get("native_action_swap_exact_count", 0)) > 0
+            and float(row.get("native_action_swap_exact_fraction", 0.0))
+            >= minimum_swap_fraction
+            and int(row.get("probe_action_swap_exact_count", 0)) > 0
+            and float(row.get("probe_action_swap_exact_fraction", 0.0))
+            >= minimum_swap_fraction
+            for row in response_rows
+            if row["arm"] in {"response", "full"}
+        )
     )
     g3_subgates = {
         "1_alignment_active_cgs_superiority_ci": "PASS"
@@ -1512,6 +1927,12 @@ def _evaluation_gate(
             )
             for value in (latent_copy, latent_no_action, latent_swap)
         )
+        and interval_decision(
+            probe_response_swap,
+            threshold=float(config["evaluation"]["minimum_response_superiority"]),
+            relation="superiority",
+        )
+        and probe_response_swap["holm_adjusted_p"] < alpha
         and all(
             interval_decision(
                 value,
@@ -1533,6 +1954,7 @@ def _evaluation_gate(
             for row in response_rows
             if row["arm"] == "response"
         )
+        and action_swap_coverage_passed
         else "FAIL",
         "4_response_direction_and_magnitude": "PASS"
         if float(direction["ci95_low"]) > 0
@@ -1565,7 +1987,9 @@ def _evaluation_gate(
         "7_null_equivalence_and_overclassification": "PASS"
         if null_safe and response_null_safe
         else "FAIL",
-        "8_native_probe_correlation": "PASS" if correlation_complete else "FAIL",
+        "8_native_probe_correlation": "PASS"
+        if correlation_complete and shortcut_passed
+        else "FAIL",
     }
     c3_keys = (
         "1_alignment_active_cgs_superiority_ci",
@@ -1580,8 +2004,14 @@ def _evaluation_gate(
         "4_response_direction_and_magnitude",
         "7_null_equivalence_and_overclassification",
     )
-    c3_complete = all(g3_subgates[key] == "PASS" for key in c3_keys)
-    c5_complete = all(g3_subgates[key] == "PASS" for key in c5_keys)
+    c3_complete = bool(
+        not dataset.is_fixture
+        and all(g3_subgates[key] == "PASS" for key in c3_keys)
+    )
+    c5_complete = bool(
+        not dataset.is_fixture
+        and all(g3_subgates[key] == "PASS" for key in c5_keys)
+    )
     g3_pass = bool(c3_complete and c5_complete)
     g4 = dict(factorial_gate["g4_subgates"])
     cgs_noninferiority_margin = abs(
@@ -1630,10 +2060,12 @@ def _evaluation_gate(
     g4_status = "PASS" if all(value == "PASS" for value in g4.values()) else (
         "FAIL" if any(value == "FAIL" for value in g4.values()) else "NOT_ASSESSED"
     )
+    if dataset.is_fixture:
+        g4_status = "FAIL"
     vector = complete_gate_vector(
         {
-            "G1": "PASS",
-            "G2": "PASS",
+            "G1": "FAIL" if dataset.is_fixture else "PASS",
+            "G2": "FAIL" if dataset.is_fixture else "PASS",
             "G3": "PASS" if g3_pass else "FAIL",
             "G4": g4_status,
             "G5": factorial_gate.get("gate_vector", {}).get("G5", "NOT_ASSESSED"),
@@ -1656,6 +2088,7 @@ def _evaluation_gate(
             "latent_vs_copy": latent_copy,
             "latent_vs_no_action": latent_no_action,
             "latent_vs_action_swap": latent_swap,
+            "unified_probe_vs_action_swap": probe_response_swap,
             "shortcut_probe_intervals": shortcut_intervals,
             "response_direction": direction,
         },
@@ -1664,15 +2097,106 @@ def _evaluation_gate(
         "g4_subgates": g4,
         "g4_intervals": {"full_cgs": full_cgs, "full_response": full_response},
         "null_compatibility_safety": null_safety,
+        "native_probe_correlation_macro": {
+            "hierarchy": "canonical_unit_then_seed_to_bank_to_foundation_equal_macro",
+            "values": correlation_macros,
+        },
         "alignment_shortcut_audit": {
             "passed": shortcut_passed,
             "complete": shortcut_complete,
             "required_baselines": sorted(expected_shortcuts),
             "legal_control_chance_margin": shortcut_margin,
-            "forbidden_identity_canaries_are_report_only": True,
+            "source_trained_frozen_probes": True,
+            "label_derived_match_features_forbidden": True,
+            "forced_unk_override": False,
+            "metadata_leakage_probes_must_be_chance": True,
+            "headline_edge_scope": "non-natural-incident direct edits only",
+        },
+        "geometry_matched_action_swap_audit": {
+            "passed": action_swap_coverage_passed,
+            "minimum_exact_fraction": minimum_swap_fraction,
+            "denominator": (
+                "exact_same_typed_planes_per_plane_geometry_and_receiver_relative_distance_only"
+            ),
         },
         "claim_boundary": "G4 remains NOT_ASSESSED until equal-FLOP and both matched-concat controls are present.",
     }
+
+
+def _gray_cells_complete(route_rows, expected_cells):
+    rows = [row for row in route_rows if row.get("route") == "gray"]
+    cells = [
+        (
+            int(row["seed"]),
+            str(row["arm"]),
+            str(row["canonical_bank_digest"]),
+        )
+        for row in rows
+        if row.get("condition_status") == "ASSESSED"
+    ]
+    return bool(
+        expected_cells
+        and len(rows) == len(expected_cells)
+        and len(cells) == len(expected_cells)
+        and len(cells) == len(set(cells))
+        and set(cells) == set(expected_cells)
+    )
+
+
+def _native_probe_correlation_macro(cgs_rows, arm, expected_cells=None):
+    units = {}
+    for row in cgs_rows:
+        if str(row.get("arm")) != str(arm):
+            continue
+        required = (
+            "seed",
+            "canonical_base_map_digest",
+            "canonical_bank_digest",
+            "native_probe_spearman",
+        )
+        if any(row.get(field) is None for field in required):
+            return float("nan")
+        key = (int(row["seed"]), str(row["canonical_bank_digest"]))
+        foundation = str(row["canonical_base_map_digest"])
+        value = float(row["native_probe_spearman"])
+        if not np.isfinite(value):
+            return float("nan")
+        if key in units:
+            previous_foundation, previous_value = units[key]
+            if previous_foundation != foundation or not np.isclose(
+                previous_value, value, rtol=0.0, atol=1e-12
+            ):
+                raise RuntimeError(
+                    "native-probe correlation has conflicting duplicate canonical units"
+                )
+            continue
+        units[key] = (foundation, value)
+    if expected_cells is not None:
+        expected = {
+            (int(seed), str(bank))
+            for seed, expected_arm, bank in expected_cells
+            if str(expected_arm) == str(arm)
+        }
+        if set(units) != expected:
+            return float("nan")
+    if not units:
+        return float("nan")
+    bank_values = {}
+    for (seed, bank), (foundation, value) in units.items():
+        bank_values.setdefault((foundation, bank), {})[seed] = value
+    foundation_values = {}
+    for (foundation, _), seed_values in bank_values.items():
+        foundation_values.setdefault(foundation, []).append(
+            float(np.mean(list(seed_values.values())))
+        )
+    return float(
+        np.mean(
+            [
+                np.mean(foundation_values[foundation])
+                for foundation in sorted(foundation_values)
+            ]
+        )
+    )
 
 
 def _paired_arm_comparison(
@@ -1689,16 +2213,35 @@ def _paired_arm_comparison(
     for row in rows:
         if row["arm"] not in {first_arm, second_arm} or row.get(metric) is None:
             continue
-        key = (str(row["base_map_cluster_id"]), int(row["seed"]))
-        grouped.setdefault((key, row["arm"]), []).append(float(row[metric]))
+        key = (
+            str(
+                row.get("canonical_base_map_digest")
+                or row["base_map_cluster_id"]
+            ),
+            int(row["seed"]),
+        )
+        bank = str(row.get("canonical_bank_digest") or row["bank_id"])
+        grouped.setdefault((key, row["arm"]), {}).setdefault(bank, []).append(
+            float(row[metric])
+        )
     cells = sorted(
         key for key in {item[0] for item in grouped}
         if (key, first_arm) in grouped and (key, second_arm) in grouped
     )
     if not cells:
         raise RuntimeError(f"paired comparison has no complete cells for {metric}")
-    first = np.asarray([np.mean(grouped[(key, first_arm)]) for key in cells])
-    second = np.asarray([np.mean(grouped[(key, second_arm)]) for key in cells])
+    first = np.asarray(
+        [
+            np.mean([np.mean(values) for values in grouped[(key, first_arm)].values()])
+            for key in cells
+        ]
+    )
+    second = np.asarray(
+        [
+            np.mean([np.mean(values) for values in grouped[(key, second_arm)].values()])
+            for key in cells
+        ]
+    )
     advantage = first - second if higher_is_better else second - first
     clusters = np.asarray([key[0] for key in cells])
     result = paired_cluster_interval(clusters, advantage, np.zeros_like(advantage), resamples, seed)
@@ -1714,10 +2257,38 @@ def _paired_arm_comparison(
 def _within_arm_advantage_interval(
     rows, arm, baseline_metric, method_metric, resamples, seed
 ):
-    selected = [row for row in rows if row["arm"] == arm]
-    clusters = np.asarray([row["base_map_cluster_id"] for row in selected])
-    baseline = np.asarray([row[baseline_metric] for row in selected], dtype=np.float64)
-    method = np.asarray([row[method_metric] for row in selected], dtype=np.float64)
+    selected = [
+        row
+        for row in rows
+        if row["arm"] == arm
+        and row.get(baseline_metric) is not None
+        and row.get(method_metric) is not None
+    ]
+    grouped = {}
+    for row in selected:
+        key = (
+            str(
+                row.get("canonical_base_map_digest")
+                or row["base_map_cluster_id"]
+            ),
+            int(row["seed"]),
+            str(row.get("canonical_bank_digest") or row["bank_id"]),
+        )
+        grouped.setdefault(key, [[], []])
+        grouped[key][0].append(float(row[baseline_metric]))
+        grouped[key][1].append(float(row[method_metric]))
+    keys = sorted(grouped)
+    if len({key[0] for key in keys}) < 2:
+        return _unassessed_comparison(
+            f"{baseline_metric} vs {method_metric} lacks two independent clusters"
+        )
+    clusters = np.asarray([key[0] for key in keys])
+    baseline = np.asarray(
+        [np.mean(grouped[key][0]) for key in keys], dtype=np.float64
+    )
+    method = np.asarray(
+        [np.mean(grouped[key][1]) for key in keys], dtype=np.float64
+    )
     result = paired_cluster_interval(clusters, baseline, method, resamples, seed)
     test = paired_sign_flip_test(clusters, baseline, method, seed + 1)
     return {**result, "p_value_two_sided": test["p_value_two_sided"]}
@@ -1725,12 +2296,42 @@ def _within_arm_advantage_interval(
 
 def _within_arm_level_interval(rows, arm, metric, resamples, seed):
     selected = [row for row in rows if row["arm"] == arm and row.get(metric) is not None]
-    clusters = np.asarray([row["base_map_cluster_id"] for row in selected])
-    values = np.asarray([row[metric] for row in selected], dtype=np.float64)
+    grouped = {}
+    for row in selected:
+        key = (
+            str(
+                row.get("canonical_base_map_digest")
+                or row["base_map_cluster_id"]
+            ),
+            int(row["seed"]),
+            str(row.get("canonical_bank_digest") or row["bank_id"]),
+        )
+        grouped.setdefault(key, []).append(float(row[metric]))
+    keys = sorted(grouped)
+    if len({key[0] for key in keys}) < 2:
+        return _unassessed_comparison(
+            f"{metric} lacks two independent clusters"
+        )
+    clusters = np.asarray([key[0] for key in keys])
+    values = np.asarray([np.mean(grouped[key]) for key in keys], dtype=np.float64)
     zeros = np.zeros_like(values)
     result = paired_cluster_interval(clusters, values, zeros, resamples, seed)
     test = paired_sign_flip_test(clusters, values, zeros, seed + 1)
     return {**result, "p_value_two_sided": test["p_value_two_sided"]}
+
+
+def _unassessed_comparison(reason):
+    floor = -float(np.finfo(np.float64).max)
+    return {
+        "assessed": False,
+        "cluster_count": 0,
+        "paired_mean_difference": floor,
+        "ci95_low": floor,
+        "ci95_high": floor,
+        "confidence_level": 0.95,
+        "p_value_two_sided": 1.0,
+        "reason": str(reason),
+    }
 
 
 def _effect_bins_complete(cgs_rows, effect_bin_rows):
@@ -1763,11 +2364,16 @@ def _null_safety_by_arm(config, route_rows):
             and row["arm"] == arm
             and row.get("condition_status") == "ASSESSED"
         ]
-        if len({row["base_map_cluster_id"] for row in rows}) < 2:
+        cluster_ids = {
+            str(
+                row.get("canonical_base_map_digest")
+                or row["base_map_cluster_id"]
+            )
+            for row in rows
+        }
+        if len(cluster_ids) < 2:
             result[arm] = {
-                "base_map_cluster_count": len(
-                    {row["base_map_cluster_id"] for row in rows}
-                ),
+                "base_map_cluster_count": len(cluster_ids),
                 "passed": False,
                 "reason": "fewer than two assessed independent null clusters",
             }
@@ -1775,28 +2381,67 @@ def _null_safety_by_arm(config, route_rows):
         bank_values = {}
         bank_rates = {}
         for row in rows:
-            cluster = row["base_map_cluster_id"]
-            bank_values.setdefault(cluster, []).append(row["matched_minus_alternative_mean"])
-            bank_rates.setdefault(cluster, []).append(row["overclassification_rate"])
-        banks = sorted(bank_values)
-        values = np.asarray([np.mean(bank_values[bank]) for bank in banks], dtype=np.float64)
-        rates = np.asarray([np.mean(bank_rates[bank]) for bank in banks], dtype=np.float64)
+            cluster = str(
+                row.get("canonical_base_map_digest")
+                or row["base_map_cluster_id"]
+            )
+            bank = str(row.get("canonical_bank_digest") or row["bank_id"])
+            cell = (cluster, bank, int(row["seed"]))
+            bank_values.setdefault(cell, []).append(
+                row["matched_minus_alternative_mean"]
+            )
+            bank_rates.setdefault(cell, []).append(row["overclassification_rate"])
+        clusters = sorted(cluster_ids)
+        values = np.asarray(
+            [
+                np.mean(
+                    [
+                        np.mean(cell_values)
+                        for (cluster, _, _), cell_values in bank_values.items()
+                        if cluster == cluster_id
+                    ]
+                )
+                for cluster_id in clusters
+            ],
+            dtype=np.float64,
+        )
+        rates = np.asarray(
+            [
+                np.mean(
+                    [
+                        np.mean(cell_values)
+                        for (cluster, _, _), cell_values in bank_rates.items()
+                        if cluster == cluster_id
+                    ]
+                )
+                for cluster_id in clusters
+            ],
+            dtype=np.float64,
+        )
         rng = np.random.default_rng(91001 + arm_index)
         samples = np.empty(resamples, dtype=np.float64)
+        rate_samples = np.empty(resamples, dtype=np.float64)
         for index in range(resamples):
-            selected = rng.integers(0, len(banks), size=len(banks))
+            selected = rng.integers(0, len(clusters), size=len(clusters))
             samples[index] = float(np.mean(values[selected]))
+            rate_samples[index] = float(np.mean(rates[selected]))
         low = float(np.percentile(samples, 2.5))
         high = float(np.percentile(samples, 97.5))
         rate = float(np.mean(rates))
+        rate_high = float(np.percentile(rate_samples, 97.5))
         result[arm] = {
-            "base_map_cluster_count": len(banks),
+            "base_map_cluster_count": len(clusters),
             "mean_score_difference": float(np.mean(values)),
             "ci95_low": low,
             "ci95_high": high,
             "equivalence_margin": margin,
             "overclassification_rate": rate,
+            "overclassification_rate_ci95_high": rate_high,
             "overclassification_rate_max": maximum_rate,
-            "passed": bool(low >= -margin and high <= margin and rate <= maximum_rate),
+            "passed": bool(
+                low >= -margin
+                and high <= margin
+                and rate_high <= maximum_rate
+            ),
         }
     return result

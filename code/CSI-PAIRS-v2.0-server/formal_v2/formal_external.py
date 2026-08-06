@@ -3,7 +3,9 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -121,24 +123,12 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
     for adapter in manifest["adapters"]:
         adapter_output = output_dir / "adapters" / adapter["adapter_id"]
         adapter_output.mkdir(parents=True, exist_ok=True)
-        command_digest = hashlib.sha256(
-            json.dumps(
-                adapter["command"], separators=(",", ":"), ensure_ascii=True
-            ).encode("utf-8")
-        ).hexdigest()
-        command = [
-            value.format(
-                dataset=str(dataset.source_path),
-                output=str(adapter_output),
-                run_root=str(Path(output_root).resolve()),
-                project_root=str(Path(__file__).resolve().parents[1]),
-                adapter_command_sha256=command_digest,
-                adapter_id=adapter["adapter_id"],
-                model_name=adapter["model_name"],
-                source_revision=adapter["source_revision"],
-            )
-            for value in adapter["command"]
-        ]
+        _, command = _resolve_adapter_command(
+            adapter,
+            dataset_path=dataset.source_path,
+            output_path=adapter_output,
+            run_root=output_root,
+        )
         try:
             completed = subprocess.run(
                 command,
@@ -146,6 +136,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
                 capture_output=True,
                 text=True,
                 cwd=Path(__file__).resolve().parents[1],
+                env=_adapter_environment(Path(__file__).resolve().parents[1]),
             )
         except OSError as error:
             completed = subprocess.CompletedProcess(command, 127, "", f"{type(error).__name__}: {error}")
@@ -286,6 +277,8 @@ def _validate_manifest(manifest):
             "source_revision",
             "adapter_source_path",
             "adapter_source_sha256",
+            "adapter_config_path",
+            "adapter_config_sha256",
             "map_conditioned",
             "c1_eligible",
             "command",
@@ -309,19 +302,36 @@ def _validate_manifest(manifest):
             if adapter["model_name"] in eligible_models:
                 raise ValueError("C1-eligible model identities must be unique")
             eligible_models.add(adapter["model_name"])
-        if not isinstance(adapter["command"], list) or not adapter["command"]:
+        if (
+            not isinstance(adapter["command"], list)
+            or not adapter["command"]
+            or not all(
+                isinstance(value, str) and value for value in adapter["command"]
+            )
+        ):
             raise ValueError("external adapter command must be a nonempty argv list")
+        if not _command_executes_adapter_source(
+            adapter["command"], adapter["adapter_source_path"]
+        ):
+            raise ValueError(
+                "external adapter command must execute the authenticated source directly"
+            )
+        if not _command_binds_adapter_config(adapter["command"]):
+            raise ValueError(
+                "external adapter command must contain exactly one --config {adapter_config} binding"
+            )
         if not all(isinstance(adapter[key], str) and adapter[key].strip() for key in ("citation_key", "source_revision", "license_id")):
             raise ValueError("external adapter provenance fields must be nonempty")
-        source = (Path(__file__).resolve().parents[1] / adapter["adapter_source_path"]).resolve()
-        project_root = Path(__file__).resolve().parents[1]
-        if (
-            project_root not in source.parents
-            or not source.is_file()
-            or not _lower_sha256(adapter["adapter_source_sha256"])
-            or sha256_file(source) != adapter["adapter_source_sha256"]
-        ):
-            raise ValueError("external adapter source path/hash is missing or mismatched")
+        _verified_project_file(
+            adapter["adapter_source_path"],
+            adapter["adapter_source_sha256"],
+            "source",
+        )
+        _verified_project_file(
+            adapter["adapter_config_path"],
+            adapter["adapter_config_sha256"],
+            "config",
+        )
     registry = manifest["literature_registry"]
     if not isinstance(registry, list) or {row.get("baseline_name") for row in registry} != REQUIRED_BASELINE_NAMES:
         raise ValueError("literature registry must contain every frozen V6 baseline name")
@@ -334,6 +344,112 @@ def _validate_manifest(manifest):
             raise ValueError("executed literature baseline must reference an adapter")
         if row["status"] != "executed" and row["adapter_id"] != "":
             raise ValueError("unexecuted literature baseline may not claim an adapter")
+
+
+def _command_executes_adapter_source(command, adapter_source_path):
+    source = Path(adapter_source_path)
+    if source.suffix != ".py":
+        return False
+    allowed_interpreters = {
+        "{python}",
+        "{project_root}/formal_v2/external_adapters/.venv-wigatr/bin/python",
+    }
+    return bool(
+        len(command) >= 2
+        and command[0] in allowed_interpreters
+        and command[1] == "{adapter_source}"
+    )
+
+
+def _command_binds_adapter_config(command):
+    config_options = [
+        index
+        for index, value in enumerate(command)
+        if value == "--config" or value.startswith("--config=")
+    ]
+    return bool(
+        len(config_options) == 1
+        and command[config_options[0]] == "--config"
+        and config_options[0] + 1 < len(command)
+        and command[config_options[0] + 1] == "{adapter_config}"
+        and command.count("{adapter_config}") == 1
+    )
+
+
+def _verified_project_file(relative_path, expected_sha256, label):
+    if (
+        not isinstance(relative_path, str)
+        or not relative_path.strip()
+        or Path(relative_path).is_absolute()
+        or ".." in Path(relative_path).parts
+        or not _lower_sha256(expected_sha256)
+    ):
+        raise ValueError(
+            f"external adapter {label} path/hash is missing or mismatched"
+        )
+    project_root = Path(__file__).resolve().parents[1]
+    candidate = project_root / relative_path
+    cursor = project_root
+    for part in Path(relative_path).parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError(
+                f"external adapter {label} path/hash is missing or mismatched"
+            )
+    resolved = candidate.resolve()
+    if (
+        project_root not in resolved.parents
+        or not candidate.is_file()
+        or sha256_file(candidate) != expected_sha256
+    ):
+        raise ValueError(
+            f"external adapter {label} path/hash is missing or mismatched"
+        )
+    return resolved
+
+
+def _adapter_environment(project_root):
+    root = str(Path(project_root).resolve())
+    existing = os.environ.get("PYTHONPATH", "")
+    return {
+        **os.environ,
+        "PYTHONPATH": root if not existing else root + os.pathsep + existing,
+    }
+
+
+def _resolve_adapter_command(adapter, *, dataset_path, output_path, run_root):
+    adapter_source = _verified_project_file(
+        adapter["adapter_source_path"],
+        adapter["adapter_source_sha256"],
+        "source",
+    )
+    adapter_config = _verified_project_file(
+        adapter["adapter_config_path"],
+        adapter["adapter_config_sha256"],
+        "config",
+    )
+    command_digest = hashlib.sha256(
+        json.dumps(
+            adapter["command"], separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+    ).hexdigest()
+    command = [
+        value.format(
+            dataset=str(Path(dataset_path).resolve()),
+            output=str(Path(output_path).resolve()),
+            run_root=str(Path(run_root).resolve()),
+            project_root=str(Path(__file__).resolve().parents[1]),
+            adapter_command_sha256=command_digest,
+            adapter_id=adapter["adapter_id"],
+            model_name=adapter["model_name"],
+            source_revision=adapter["source_revision"],
+            adapter_source=str(adapter_source),
+            adapter_config=str(adapter_config),
+            python=sys.executable,
+        )
+        for value in adapter["command"]
+    ]
+    return command_digest, command
 
 
 def _validate_six_condition_rows(
@@ -494,20 +610,52 @@ def _condition_action_sha256(dataset, unit, condition):
 
 
 def _c1_model_assessment(config, adapter, rows, dataset, *, expected_unit_contract):
+    from .formal_factorial import _canonical_bank_digest
+
     lookup = {(row["unit_id"], row["condition"]): row for row in rows}
     units = sorted(expected_unit_contract)
-    clusters = np.asarray(
-        [str(dataset.base_map_cluster_ids[expected_unit_contract[unit].scene]) for unit in units]
-    )
-    correct = np.asarray(
-        [float(lookup[(unit, "correct")]["localization_error_m"]) for unit in units]
-    )
-    active = np.asarray(
-        [float(lookup[(unit, "paired_active_alternative")]["localization_error_m"]) for unit in units]
-    )
-    null = np.asarray(
-        [float(lookup[(unit, "paired_null_alternative")]["localization_error_m"]) for unit in units]
-    )
+    grouped_units = {}
+    for unit in units:
+        scene = int(expected_unit_contract[unit].scene)
+        foundation_method = getattr(dataset, "canonical_base_map_digest", None)
+        foundation = (
+            foundation_method(scene)
+            if callable(foundation_method)
+            else str(dataset.base_map_cluster_ids[scene])
+        )
+        bank = (
+            _canonical_bank_digest(dataset, scene)
+            if all(
+                hasattr(dataset, field)
+                for field in ("maps", "csi", "positions", "radio_config", "bs_pose")
+            )
+            else str(dataset.bank_ids[scene])
+        )
+        key = (
+            foundation,
+            bank,
+        )
+        grouped_units.setdefault(key, []).append(unit)
+    cells = sorted(grouped_units)
+    clusters = np.asarray([key[0] for key in cells])
+
+    def collapsed(condition):
+        return np.asarray(
+            [
+                np.mean(
+                    [
+                        float(lookup[(unit, condition)]["localization_error_m"])
+                        for unit in grouped_units[key]
+                    ]
+                )
+                for key in cells
+            ],
+            dtype=np.float64,
+        )
+
+    correct = collapsed("correct")
+    active = collapsed("paired_active_alternative")
+    null = collapsed("paired_null_alternative")
     cluster_count = int(np.unique(clusters).size)
     if cluster_count < 2:
         return {
@@ -524,10 +672,7 @@ def _c1_model_assessment(config, adapter, rows, dataset, *, expected_unit_contra
     stress_intervals = {
         condition: paired_cluster_interval(
             clusters,
-            np.asarray([
-                float(lookup[(unit, condition)]["localization_error_m"])
-                for unit in units
-            ]),
+            collapsed(condition),
             correct,
             resamples,
             86110 + index,
@@ -542,12 +687,25 @@ def _c1_model_assessment(config, adapter, rows, dataset, *, expected_unit_contra
         selected = clusters == cluster
         cluster_rates.append(float(np.mean((null[selected] - correct[selected]) > margin)))
     overclassification_rate = float(np.mean(cluster_rates))
+    rate_rng = np.random.default_rng(86103)
+    rate_samples = np.asarray(
+        [
+            np.mean(
+                np.asarray(cluster_rates)[
+                    rate_rng.integers(0, len(cluster_rates), size=len(cluster_rates))
+                ]
+            )
+            for _ in range(resamples)
+        ],
+        dtype=np.float64,
+    )
+    overclassification_rate_high = float(np.percentile(rate_samples, 97.5))
     active_passed = interval_decision(
         active_interval, threshold=active_minimum, relation="superiority"
     )
     null_passed = bool(
         interval_decision(null_interval, threshold=margin, relation="equivalence")
-        and overclassification_rate <= maximum_rate
+        and overclassification_rate_high <= maximum_rate
     )
     return {
         "adapter_id": adapter["adapter_id"],
@@ -560,6 +718,7 @@ def _c1_model_assessment(config, adapter, rows, dataset, *, expected_unit_contra
         "null_error_minus_correct": null_interval,
         "null_equivalence_margin_m": margin,
         "null_overclassification_rate": overclassification_rate,
+        "null_overclassification_rate_ci95_high": overclassification_rate_high,
         "null_overclassification_rate_max": maximum_rate,
         "null_safety_passed": null_passed,
         "stress_condition_error_minus_correct": stress_intervals,
@@ -607,6 +766,10 @@ def _validate_execution_manifest(adapter, output_dir, result_path, dataset):
     ).hexdigest()
     if payload["command_sha256"] != command_digest:
         raise RuntimeError("external execution command hash mismatch")
+    if payload["adapter_config_sha256"] != adapter["adapter_config_sha256"]:
+        raise RuntimeError(
+            "external execution adapter config differs from the outer frozen hash"
+        )
     for prefix in ("adapter_config", "training_record", "checkpoint"):
         artifact = (output_dir / payload[f"{prefix}_path"]).resolve()
         if output_dir.resolve() not in artifact.parents or not artifact.is_file():

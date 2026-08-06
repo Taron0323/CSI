@@ -19,6 +19,12 @@ or scientific support.
 SigMap is required by frozen V6 but has no paper/source file in `waibu/`. Its implementation is
 therefore named only `style-controlled-implementation`; it cannot be upgraded by documentation.
 
+`waibu/` also contains no executable shuffled-pair, retention, equal-FLOP, parameter-matched, or
+FLOP-matched control implementation. The corresponding V6 runners validate external manifests and
+artifacts but are not themselves the missing experiments. G4, C4, and C6 therefore remain blocked
+until reviewed source implementations are added and executed; resource authentication alone cannot
+promote them.
+
 ## Commands
 
 Authenticate resources:

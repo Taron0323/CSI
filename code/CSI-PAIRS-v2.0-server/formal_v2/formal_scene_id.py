@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import csv
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -49,10 +51,18 @@ def run_scene_id_audit(config, dataset, manifest_path, output_root):
                 output=str(target),
                 checkpoint=str(checkpoint),
                 adapter_source=str(adapter_source),
+                python=sys.executable,
             )
             for value in adapter["command"]
         ]
-        completed = subprocess.run(command, check=False, capture_output=True, text=True)
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[1],
+            env=_adapter_environment(Path(__file__).resolve().parents[1]),
+        )
         (target / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
         (target / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
         result = target / "scene_id_results.csv"
@@ -109,6 +119,16 @@ def _validate_manifest(manifest):
             raise ValueError("scene-ID adapter fields must be exact")
         if not isinstance(adapter["command"], list) or not adapter["command"]:
             raise ValueError("scene-ID adapter command must be a nonempty argv list")
+        if adapter["implementation_revision"] != adapter["adapter_source_sha256"]:
+            raise ValueError(
+                "scene-ID implementation revision must equal the authenticated source hash"
+            )
+        if not _command_executes_adapter_source(
+            adapter["command"], adapter["adapter_source_path"]
+        ):
+            raise ValueError(
+                "scene-ID command must execute the authenticated adapter module"
+            )
         for key in ("adapter_id", "model_name", "implementation_revision", "adapter_source_path", "model_checkpoint_path"):
             if not isinstance(adapter[key], str) or not adapter[key].strip():
                 raise ValueError(f"scene-ID adapter {key} must be nonempty")
@@ -116,6 +136,23 @@ def _validate_manifest(manifest):
             digest = adapter[key]
             if not isinstance(digest, str) or len(digest) != 64 or any(value not in "0123456789abcdef" for value in digest):
                 raise ValueError(f"scene-ID adapter {key} must be lowercase SHA-256")
+
+
+def _command_executes_adapter_source(command, adapter_source_path):
+    return bool(
+        Path(adapter_source_path).suffix == ".py"
+        and len(command) >= 2
+        and command[:2] == ["{python}", "{adapter_source}"]
+    )
+
+
+def _adapter_environment(project_root):
+    root = str(Path(project_root).resolve())
+    existing = os.environ.get("PYTHONPATH", "")
+    return {
+        **os.environ,
+        "PYTHONPATH": root if not existing else root + os.pathsep + existing,
+    }
 
 
 def _verify_adapter_files(adapter, manifest_root):
@@ -132,6 +169,8 @@ def _verify_adapter_files(adapter, manifest_root):
 
 
 def _validate_rows(adapter, rows, dataset, evidence):
+    from .formal_factorial import _canonical_bank_digest
+
     required = {
         "unit_id", "model_name", "condition", "bank_id", "position_id",
         "localization_error_m", "response_score", "source_role",
@@ -144,7 +183,17 @@ def _validate_rows(adapter, rows, dataset, evidence):
     bank_to_scene = {str(dataset.bank_ids[int(scene)]): int(scene) for scene in final_scenes}
     if len(bank_to_scene) != len(final_scenes):
         raise RuntimeError("scene-ID held-out bank join is not unique")
+    expected_identities = {
+        (str(dataset.bank_ids[int(scene)]), str(dataset.position_ids[int(scene), int(position)]))
+        for scene in final_scenes
+        for position in np.flatnonzero(
+            dataset.position_roles[int(scene)] == "standard"
+        )
+    }
+    if not expected_identities:
+        raise RuntimeError("scene-ID held-out registry has no standard positions")
     observed_pairs = set()
+    identity_to_unit = {}
     for row in rows:
         if row["model_name"] != adapter["model_name"]:
             raise RuntimeError("scene-ID result model name mismatch")
@@ -152,8 +201,15 @@ def _validate_rows(adapter, rows, dataset, evidence):
             raise RuntimeError("scene-ID audit may only use held-out source banks")
         if row["dataset_sha256"] != str(evidence["dataset_sha256"]) or row["config_sha256"] != str(evidence["config_sha256"]):
             raise RuntimeError("scene-ID result evidence hash mismatch")
-        if not np.isfinite(float(row["localization_error_m"])) or not np.isfinite(float(row["response_score"])):
-            raise RuntimeError("scene-ID metrics must be finite")
+        if (
+            not np.isfinite(float(row["localization_error_m"]))
+            or float(row["localization_error_m"]) < 0.0
+            or not np.isfinite(float(row["response_score"]))
+        ):
+            raise RuntimeError(
+                "scene-ID localization error must be finite and nonnegative; "
+                "response score must be finite"
+            )
         if row["condition"] not in CONDITIONS:
             raise RuntimeError("scene-ID result contains an unknown condition")
         scene = bank_to_scene[row["bank_id"]]
@@ -165,31 +221,62 @@ def _validate_rows(adapter, rows, dataset, evidence):
             raise RuntimeError("scene-ID result duplicates a unit/condition cell")
         observed_pairs.add(pair)
         identity = (row["model_name"], row["bank_id"], row["position_id"])
+        registry_identity = (row["bank_id"], row["position_id"])
+        if registry_identity not in expected_identities:
+            raise RuntimeError("scene-ID row is outside the held-out position registry")
+        prior_unit = identity_to_unit.setdefault(registry_identity, row["unit_id"])
+        if prior_unit != row["unit_id"]:
+            raise RuntimeError("scene-ID registry identity is duplicated under another unit ID")
         unit = by_unit.setdefault(row["unit_id"], {"conditions": set(), "identity": identity})
         if unit["identity"] != identity:
             raise RuntimeError("scene-ID four-condition unit changes bank or position")
         unit["conditions"].add(row["condition"])
         row["base_map_cluster_id"] = str(dataset.base_map_cluster_ids[scene])
+        row["canonical_base_map_digest"] = str(
+            dataset.canonical_base_map_digest(scene)
+        )
+        row["canonical_bank_digest"] = str(_canonical_bank_digest(dataset, scene))
+        row["canonical_unit_id"] = (
+            f"{row['canonical_bank_digest']}:{row['position_id']}"
+        )
+        row["scene_index"] = scene
         for key in ("dataset_sha256", "config_sha256"):
             row.pop(key)
     if any(value["conditions"] != set(CONDITIONS) for value in by_unit.values()):
         raise RuntimeError("each scene-ID unit must contain the exact four conditions")
+    if set(identity_to_unit) != expected_identities:
+        raise RuntimeError("scene-ID adapter omitted held-out bank/position units")
+    _canonical_units(rows)
 
 
 def _model_assessment(config, adapter, rows):
-    units = sorted({row["unit_id"] for row in rows})
-    lookup = {(row["unit_id"], row["condition"]): row for row in rows}
-    clusters = np.asarray([lookup[(unit, "map")]["base_map_cluster_id"] for unit in units])
-    map_values = np.asarray([float(lookup[(unit, "map")]["localization_error_m"]) for unit in units])
-    id_values = np.asarray([float(lookup[(unit, "scene_id")]["localization_error_m"]) for unit in units])
+    units = _canonical_units(rows)
+    clusters, map_values = _canonical_cluster_metric(
+        units, "map", "localization_error_m"
+    )
+    id_clusters, id_values = _canonical_cluster_metric(
+        units, "scene_id", "localization_error_m"
+    )
+    swap_clusters, map_swap_values = _canonical_cluster_metric(
+        units, "map_swap", "response_score"
+    )
+    id_swap_clusters, id_swap_values = _canonical_cluster_metric(
+        units, "id_swap", "response_score"
+    )
+    if not (
+        np.array_equal(clusters, id_clusters)
+        and np.array_equal(clusters, swap_clusters)
+        and np.array_equal(clusters, id_swap_clusters)
+    ):
+        raise RuntimeError("scene-ID conditions do not share canonical support")
     resamples = int(config["evaluation"]["bootstrap_resamples"])
     noninferiority = paired_cluster_interval(
         clusters, id_values, map_values, resamples, 86001
     )
     swap = _cluster_spearman_interval(
         clusters,
-        np.asarray([float(lookup[(unit, "map_swap")]["response_score"]) for unit in units]),
-        np.asarray([float(lookup[(unit, "id_swap")]["response_score"]) for unit in units]),
+        map_swap_values,
+        id_swap_values,
         resamples,
         86002,
     )
@@ -204,8 +291,8 @@ def _model_assessment(config, adapter, rows):
         "model_name": adapter["model_name"],
         "unit_count": len(units),
         "base_map_cluster_count": int(noninferiority["cluster_count"]),
-        "map_mean_error_m": _cluster_macro_mean(clusters, map_values),
-        "scene_id_mean_error_m": _cluster_macro_mean(clusters, id_values),
+        "map_mean_error_m": float(np.mean(map_values)),
+        "scene_id_mean_error_m": float(np.mean(id_values)),
         "scene_id_minus_map_error_m": noninferiority["paired_mean_difference"],
         "scene_id_minus_map_ci95_low": noninferiority["ci95_low"],
         "scene_id_minus_map_ci95_high": noninferiority["ci95_high"],
@@ -218,10 +305,77 @@ def _model_assessment(config, adapter, rows):
     }
 
 
-def _cluster_macro_mean(clusters, values):
-    identifiers = np.asarray(clusters).astype(str)
-    array = np.asarray(values, dtype=np.float64)
-    return float(np.mean([np.mean(array[identifiers == cluster]) for cluster in np.unique(identifiers)]))
+def _canonical_units(rows):
+    by_raw_unit = {}
+    for row in rows:
+        required = {
+            "unit_id",
+            "condition",
+            "canonical_unit_id",
+            "canonical_base_map_digest",
+            "canonical_bank_digest",
+            "localization_error_m",
+            "response_score",
+        }
+        if not required.issubset(row):
+            raise RuntimeError("scene-ID assessment lacks canonical unit fields")
+        by_raw_unit.setdefault(str(row["unit_id"]), {})[str(row["condition"])] = row
+    canonical = {}
+    for conditions in by_raw_unit.values():
+        if set(conditions) != set(CONDITIONS):
+            raise RuntimeError("scene-ID canonical unit is condition-incomplete")
+        reference = conditions["map"]
+        key = str(reference["canonical_unit_id"])
+        signature = {
+            condition: (
+                float(row["localization_error_m"]),
+                float(row["response_score"]),
+            )
+            for condition, row in conditions.items()
+        }
+        if key in canonical:
+            prior_conditions, prior_signature = canonical[key]
+            if (
+                str(reference["canonical_base_map_digest"])
+                != str(prior_conditions["map"]["canonical_base_map_digest"])
+                or str(reference["canonical_bank_digest"])
+                != str(prior_conditions["map"]["canonical_bank_digest"])
+                or any(
+                    not np.allclose(signature[name], prior_signature[name])
+                    for name in CONDITIONS
+                )
+            ):
+                raise RuntimeError(
+                    "copied canonical scene-ID unit has inconsistent results"
+                )
+            continue
+        canonical[key] = (conditions, signature)
+    return [canonical[key][0] for key in sorted(canonical)]
+
+
+def _canonical_cluster_metric(units, condition, metric):
+    bank_values = {}
+    for conditions in units:
+        row = conditions[condition]
+        key = (
+            str(row["canonical_base_map_digest"]),
+            str(row["canonical_bank_digest"]),
+        )
+        value = float(row[metric])
+        if not np.isfinite(value):
+            raise RuntimeError("scene-ID canonical metric must be finite")
+        bank_values.setdefault(key, []).append(value)
+    cluster_values = {}
+    for (cluster, _), values in bank_values.items():
+        cluster_values.setdefault(cluster, []).append(float(np.mean(values)))
+    clusters = np.asarray(sorted(cluster_values))
+    if clusters.size < 2:
+        raise RuntimeError("scene-ID inference requires two canonical foundations")
+    values = np.asarray(
+        [np.mean(cluster_values[cluster]) for cluster in clusters],
+        dtype=np.float64,
+    )
+    return clusters, values
 
 
 def _cluster_spearman_interval(clusters, first, second, resamples, seed):

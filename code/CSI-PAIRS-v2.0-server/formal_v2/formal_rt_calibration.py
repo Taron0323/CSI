@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -60,10 +61,19 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
             fit_dataset=str(fit_dataset_path),
             validation_dataset=str(validation_dataset_path),
             protocol=str(protocol_path),
+            adapter_source=str(adapter_source_path),
         )
         for value in manifest["command"]
     ]
-    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    project_root = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        env=_adapter_environment(project_root),
+    )
     (output_dir / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
     (output_dir / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
     result_path = output_dir / "statistics.json"
@@ -162,6 +172,24 @@ def _validate_manifest(manifest):
         raise ValueError("RT calibration fit and validation datasets must be independent")
     if not isinstance(manifest["command"], list) or not manifest["command"]:
         raise ValueError("RT calibration command must be nonempty argv")
+    command = manifest["command"]
+    if (
+        Path(manifest["adapter_source_path"]).suffix != ".py"
+        or command[:2] != ["{python}", "{adapter_source}"]
+        or any(
+            command.count(placeholder) != 1
+            for placeholder in (
+                "{fit_dataset}",
+                "{validation_dataset}",
+                "{protocol}",
+                "{output}",
+            )
+        )
+    ):
+        raise ValueError(
+            "RT calibration command must directly execute the authenticated adapter "
+            "and bind fit, validation, protocol, and output exactly once"
+        )
     for key in ("protocol_path", "fit_dataset_path", "validation_dataset_path", "adapter_source_path"):
         if not isinstance(manifest[key], str) or not manifest[key].strip():
             raise ValueError(f"RT calibration {key} must be nonempty")
@@ -175,6 +203,15 @@ def _bound_input(path_value, digest, manifest_root, label):
     if not path.is_file() or sha256_file(path) != digest:
         raise RuntimeError(f"RT calibration {label} is missing or hash-mismatched")
     return path
+
+
+def _adapter_environment(project_root):
+    root = str(Path(project_root).resolve())
+    existing = os.environ.get("PYTHONPATH", "")
+    return {
+        **os.environ,
+        "PYTHONPATH": root if not existing else root + os.pathsep + existing,
+    }
 
 
 def _validate_protocol(protocol):

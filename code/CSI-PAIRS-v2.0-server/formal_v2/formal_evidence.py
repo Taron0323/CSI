@@ -80,7 +80,12 @@ def require_formal_qualification(
     for key in ("dataset_sha256", "config_sha256", "fixture"):
         if gate[key] != expected[key]:
             raise RuntimeError(f"qualification gate {key} does not match the current run")
-    if not bool(gate["passed"]):
+    software_fixture_execution = bool(
+        dataset.is_fixture
+        and allow_nonscientific_fixture
+        and gate["scientific_use"] == "FORBIDDEN"
+    )
+    if not bool(gate["passed"]) and not software_fixture_execution:
         raise RuntimeError("formal factorial is blocked because the upstream qualification gate failed")
     if dataset.is_fixture:
         if not allow_nonscientific_fixture:
@@ -92,7 +97,11 @@ def require_formal_qualification(
     for gate_id, status in gate["upstream_gates"].items():
         if status not in ASSESSMENT_STATES:
             raise RuntimeError(f"invalid upstream assessment state for {gate_id}")
-        if gate_id in {"G1", "G2"} and status != "PASS":
+        if (
+            gate_id in {"G1", "G2"}
+            and status != "PASS"
+            and not software_fixture_execution
+        ):
             raise RuntimeError(f"required upstream gate {gate_id} is not PASS")
     teacher_checkpoint = Path(str(gate["teacher_checkpoint"]))
     if not teacher_checkpoint.is_file():

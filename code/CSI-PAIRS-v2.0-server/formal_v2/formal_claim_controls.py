@@ -68,7 +68,7 @@ def run_shuffled_pair_control(config, dataset, manifest_path, output_root):
         config, dataset, output_root, evidence
     )
     checkpoints = _verify_checkpoint_index_binding(config, dataset, output_root, result)
-    registry = _read_active_pair_registry(output_root, result, evidence)
+    registry = _read_active_pair_registry(output_root, result, evidence, dataset)
     rows = _read_bound_rows(output_dir, result, "per_unit_results", _shuffled_columns())
     _validate_shuffled_rows(rows, registry, checkpoints, dataset)
     assessment = _shuffled_assessment(config, rows, registry)
@@ -124,7 +124,7 @@ def run_retention_audit(config, dataset, manifest_path, output_root):
     if result["adapter_source_sha256"] != source_hash:
         raise RuntimeError("retention result is not bound to the authenticated adapter source")
     checkpoints = _verify_checkpoint_index_binding(config, dataset, output_root, result)
-    registry = _read_active_pair_registry(output_root, result, evidence)
+    registry = _read_active_pair_registry(output_root, result, evidence, dataset)
     rows = _read_bound_rows(output_dir, result, "per_unit_results", _retention_columns())
     _validate_retention_rows(rows, registry, checkpoints)
     assessment = _retention_assessment(config, rows, registry)
@@ -172,6 +172,14 @@ def _run_adapter(config, dataset, manifest_path, output_dir, schema, result_name
     source_hash = sha256_file(source)
     if source_hash != manifest["adapter_source_sha256"]:
         raise ValueError("claim-control adapter source hash mismatch")
+    if manifest["implementation_revision"] != source_hash:
+        raise ValueError(
+            "claim-control implementation revision must equal the authenticated source hash"
+        )
+    if manifest["command"][:2] != ["{python}", "{adapter_source}"]:
+        raise ValueError(
+            "claim-control command must execute the authenticated adapter source directly"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
     source_copy = output_dir / f"adapter_source{source.suffix or '.bin'}"
     shutil.copyfile(source, source_copy)
@@ -273,7 +281,9 @@ def _validate_formal_checkpoint(path, row, evidence):
     return payload
 
 
-def _read_active_pair_registry(output_root, result, evidence):
+def _read_active_pair_registry(output_root, result, evidence, dataset):
+    from .formal_factorial import _canonical_bank_digest
+
     path = Path(output_root) / "evaluation" / "compatibility_pair_effects.csv"
     if not path.is_file() or result["pair_registry_sha256"] != sha256_file(path):
         raise RuntimeError("claim-control result does not bind the evaluation pair registry")
@@ -283,6 +293,14 @@ def _read_active_pair_registry(output_root, result, evidence):
     rows = [row for row in raw if row.get("arm") == "full" and row.get("route") == "active"]
     if not rows:
         raise RuntimeError("claim-control pair registry has no full-arm active rows")
+    required = {
+        "seed", "pair_id", "scene_index", "bank_id", "base_map_cluster_id",
+        "canonical_base_map_digest", "canonical_bank_digest", "source_world",
+        "target_world", "position_index", "route", "arm", "dataset_sha256",
+        "config_sha256",
+    }
+    if any(not required.issubset(row) for row in rows):
+        raise RuntimeError("claim-control pair registry lacks canonical hierarchy fields")
     registry = {}
     for row in rows:
         for key in ("dataset_sha256", "config_sha256"):
@@ -291,8 +309,26 @@ def _read_active_pair_registry(output_root, result, evidence):
         key = (int(row["seed"]), row["pair_id"])
         if key in registry:
             raise RuntimeError("claim-control pair registry duplicates a seed/pair")
-        registry[key] = row
-    if len({row["base_map_cluster_id"] for row in registry.values()}) < 2:
+        scene = int(row["scene_index"])
+        if scene < 0 or scene >= int(dataset.scene_count):
+            raise RuntimeError("claim-control pair registry has an invalid scene index")
+        expected_foundation = str(dataset.canonical_base_map_digest(scene))
+        expected_bank = str(_canonical_bank_digest(dataset, scene))
+        if (
+            row["canonical_base_map_digest"] != expected_foundation
+            or row["canonical_bank_digest"] != expected_bank
+        ):
+            raise RuntimeError(
+                "claim-control pair registry canonical hierarchy differs from outer recomputation"
+            )
+        normalized = dict(row)
+        for field in (
+            "seed", "scene_index", "source_world", "target_world", "position_index"
+        ):
+            normalized[field] = int(row[field])
+        registry[key] = normalized
+    _require_unique_canonical_units(registry)
+    if len({row["canonical_base_map_digest"] for row in registry.values()}) < 2:
         raise RuntimeError("claim-control pair registry has fewer than two independent clusters")
     return registry
 
@@ -456,25 +492,47 @@ def _registry_action_sha256(dataset, row):
 
 
 def _shuffled_assessment(config, rows, registry):
+    _require_unique_canonical_units(registry)
     lookup = {
         (int(row["seed"]), row["pair_id"], row["system"], row["pair_label"]): float(row["alignment_score"])
         for row in rows
     }
     keys = sorted(registry)
-    clusters = np.asarray([registry[key]["base_map_cluster_id"] for key in keys])
-    gains = {
-        system: np.asarray([
+    unit_gains = {
+        system: {
+            key:
             lookup[(*key, system, "positive")] - lookup[(*key, system, "negative")]
             for key in keys
-        ])
+        }
         for system in SHUFFLED_SYSTEMS
     }
+    clusters = None
+    gains = {}
+    for system in SHUFFLED_SYSTEMS:
+        system_clusters, system_values = _canonical_cluster_macro(
+            registry, unit_gains[system]
+        )
+        if clusters is None:
+            clusters = system_clusters
+        elif not np.array_equal(clusters, system_clusters):
+            raise RuntimeError("shuffled-pair systems do not share canonical support")
+        gains[system] = system_values
+    if clusters is None:
+        raise RuntimeError("shuffled-pair assessment has no canonical support")
     resamples = int(config["evaluation"]["bootstrap_resamples"])
     matched_interval = paired_cluster_interval(
-        clusters, gains["matched_model"], np.zeros(len(keys)), resamples, 86201
+        clusters,
+        gains["matched_model"],
+        np.zeros_like(gains["matched_model"]),
+        resamples,
+        86201,
     )
     retained_interval = paired_cluster_interval(
-        clusters, gains["shuffled_model"], np.zeros(len(keys)), resamples, 86202
+        clusters,
+        gains["shuffled_model"],
+        np.zeros_like(gains["shuffled_model"]),
+        resamples,
+        86202,
     )
     shortcut_intervals = {
         system: {
@@ -533,12 +591,12 @@ def _shuffled_assessment(config, rows, registry):
 
 
 def _retention_assessment(config, rows, registry):
+    _require_unique_canonical_units(registry)
     lookup = {
         (int(row["seed"]), row["pair_id"], row["condition"]): row
         for row in rows
     }
     keys = sorted(registry)
-    clusters = np.asarray([registry[key]["base_map_cluster_id"] for key in keys])
     metric_conditions = {
         "cgs_map_swap_effect": ("cgs_score", "map_swap"),
         "cgs_map_removal_effect": ("cgs_score", "map_removed"),
@@ -547,10 +605,14 @@ def _retention_assessment(config, rows, registry):
     resamples = int(config["evaluation"]["bootstrap_resamples"])
     intervals = {}
     for index, (name, (metric, condition)) in enumerate(metric_conditions.items()):
-        correct = np.asarray([float(lookup[(*key, "correct")][metric]) for key in keys])
-        alternative = np.asarray([float(lookup[(*key, condition)][metric]) for key in keys])
+        unit_effects = {
+            key: float(lookup[(*key, "correct")][metric])
+            - float(lookup[(*key, condition)][metric])
+            for key in keys
+        }
+        clusters, effects = _canonical_cluster_macro(registry, unit_effects)
         intervals[name] = paired_cluster_interval(
-            clusters, correct, alternative, resamples, 86301 + index
+            clusters, effects, np.zeros_like(effects), resamples, 86301 + index
         )
     minimum = float(config["evaluation"]["retention_minimum_effect"])
     effects = {name: float(value["paired_mean_difference"]) for name, value in intervals.items()}
@@ -565,6 +627,56 @@ def _retention_assessment(config, rows, registry):
         "minimum_effect": minimum,
         "passed": bool(passed),
     }
+
+
+def _require_unique_canonical_units(registry):
+    seen = {}
+    for key, row in registry.items():
+        unit = (
+            int(row["seed"]),
+            str(row["canonical_base_map_digest"]),
+            str(row["canonical_bank_digest"]),
+            int(row["source_world"]),
+            int(row["target_world"]),
+            int(row["position_index"]),
+        )
+        if unit in seen:
+            raise RuntimeError(
+                "claim-control pair registry duplicates a canonical evaluation unit"
+            )
+        seen[unit] = key
+
+
+def _canonical_cluster_macro(registry, unit_values):
+    if set(unit_values) != set(registry):
+        raise RuntimeError("claim-control statistic does not cover the canonical registry")
+    _require_unique_canonical_units(registry)
+    bank_seed_values = {}
+    for key, row in registry.items():
+        value = float(unit_values[key])
+        if not np.isfinite(value):
+            raise RuntimeError("claim-control canonical unit statistic must be finite")
+        cell = (
+            str(row["canonical_base_map_digest"]),
+            str(row["canonical_bank_digest"]),
+            int(row["seed"]),
+        )
+        bank_seed_values.setdefault(cell, []).append(value)
+
+    bank_values = {}
+    for (cluster, bank, _), values in bank_seed_values.items():
+        bank_values.setdefault((cluster, bank), []).append(float(np.mean(values)))
+    cluster_values = {}
+    for (cluster, _), seed_values in bank_values.items():
+        cluster_values.setdefault(cluster, []).append(float(np.mean(seed_values)))
+    clusters = np.asarray(sorted(cluster_values))
+    if clusters.size < 2:
+        raise RuntimeError("claim-control statistic has fewer than two canonical clusters")
+    values = np.asarray(
+        [np.mean(cluster_values[cluster]) for cluster in clusters],
+        dtype=np.float64,
+    )
+    return clusters, values
 
 
 def _write_manifest(output_dir, evidence):

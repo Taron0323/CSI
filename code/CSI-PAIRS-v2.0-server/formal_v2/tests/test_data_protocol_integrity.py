@@ -11,11 +11,16 @@ import numpy as np
 from formal_v2.formal_config import load_formal_config, validate_formal_config
 from formal_v2.formal_dataset import FormalDataset, FormalDatasetError
 from formal_v2.formal_fixture import write_nonscientific_fixture
-from formal_v2.formal_protocol import PatchSpec, frozen_mask_query_bank
+from formal_v2.formal_protocol import (
+    PatchSpec,
+    frozen_mask_query_bank,
+    typed_signed_edit,
+)
 from formal_v2.formal_qualification import (
     _action_geometry_profile,
     _response_gate_rows,
     _route_coverage_passed,
+    _select_wrong_action,
     _wrong_action_distance,
 )
 
@@ -159,6 +164,73 @@ class QualificationCoverageTests(unittest.TestCase):
         self.assertNotEqual(
             _action_geometry_profile(reference)["family"],
             _action_geometry_profile(failed)["family"],
+        )
+
+    def test_material_from_to_planes_are_part_of_wrong_action_semantics(self) -> None:
+        reference = np.zeros((10, 4, 4), dtype=np.float64)
+        candidate = np.zeros_like(reference)
+        reference[4, 1:3, 1:3] = 1.0
+        reference[8, 1:3, 1:3] = 1.0
+        candidate[5, 1:3, 1:3] = 1.0
+        candidate[9, 1:3, 1:3] = 1.0
+        self.assertEqual(reference.shape[0], 4 + 2 * 3)
+        self.assertEqual(_wrong_action_distance(reference, candidate)[0], 1)
+        self.assertNotEqual(
+            _action_geometry_profile(reference)["family"],
+            _action_geometry_profile(candidate)["family"],
+        )
+
+    def test_wrong_action_selection_is_receiver_position_specific(self) -> None:
+        world_bits = (
+            (np.arange(8, dtype=np.int64)[:, None] >> np.arange(3)) & 1
+        )
+        maps = np.zeros((1, 8, 3, 5, 5), dtype=np.float64)
+        primitive_cells = ((1, 1), (1, 3), (3, 1))
+        for world, bits in enumerate(world_bits):
+            for bit, (row, column) in enumerate(primitive_cells):
+                maps[0, world, 0, row, column] = float(bits[bit])
+        dataset = SimpleNamespace(
+            world_bits=world_bits,
+            bit_count=3,
+            maps=maps,
+            map_channel_names=np.asarray(["occupancy", "height", "material"]),
+            metadata={
+                "representation": {
+                    "map_origin_xy_m": [0.0, 0.0],
+                    "map_resolution_m": 1.0,
+                }
+            },
+        )
+        correct = typed_signed_edit(
+            maps[0, 0],
+            maps[0, 1],
+            dataset.map_channel_names,
+            1,
+        )
+        _, first_status, first_world = _select_wrong_action(
+            dataset,
+            0,
+            0,
+            0,
+            correct,
+            1,
+            receiver_position=np.asarray([2.5, 0.5, 0.0]),
+        )
+        _, second_status, second_world = _select_wrong_action(
+            dataset,
+            0,
+            0,
+            0,
+            correct,
+            1,
+            receiver_position=np.asarray([0.5, 2.5, 0.0]),
+        )
+        self.assertEqual((first_status, first_world), ("exact", 2))
+        self.assertEqual((second_status, second_world), ("exact", 4))
+        self.assertNotEqual(first_world, second_world)
+        self.assertEqual(
+            _select_wrong_action(dataset, 0, 0, 0, correct, 1)[1],
+            "fallback",
         )
 
     def test_failed_wrong_actions_cannot_enter_the_swap_comparison_denominator(self) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import shutil
 import sys
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from formal_v2.formal_io import read_strict_json, sha256_file, write_csv, write_
 from formal_v2.formal_routing import fit_route_normalization, route_dataset
 from formal_v2.formal_teacher import load_teacher_bundle
 
-from .wigatr_protocol import (
+from formal_v2.external_adapters.wigatr_protocol import (
     SIX_CONDITIONS,
     WIGATR_SOURCE_REVISION,
     build_six_condition_units,
@@ -89,7 +90,7 @@ def run_adapter(args) -> dict:
     _require_official_cuda(runtime)
     _seed_runtime(runtime, int(config["training"]["seed"]))
     adapter_config_path = output / "adapter_config.json"
-    write_json(adapter_config_path, config)
+    shutil.copyfile(Path(args.config).resolve(), adapter_config_path)
     target_mean, target_std = _source_power_normalization(dataset, config)
     num_materials = int(dataset.metadata["assets"]["material_category_count"])
     model = _build_official_model(runtime, config, num_materials, target_mean, target_std)

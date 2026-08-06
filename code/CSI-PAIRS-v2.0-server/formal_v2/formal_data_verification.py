@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from .formal_io import (
     artifact_manifest,
     parse_strict_json,
     read_strict_json,
+    sha256_file,
     write_csv,
     write_json,
 )
@@ -38,23 +40,46 @@ REGENERATED_FIELDS = {
 
 
 def run_data_verification(config, dataset, manifest_path, output_root):
-    from .formal_io import read_strict_json
-
-    manifest = read_strict_json(manifest_path)
+    manifest_file = _require_regular_file(manifest_path, "data verifier manifest")
+    manifest = read_strict_json(manifest_file)
     _validate_manifest(manifest, dataset)
+    verifier_source = _resolve_verifier_source(manifest, manifest_file.parent)
     output_dir = Path(output_root) / "data_verification"
     output_dir.mkdir(parents=True, exist_ok=True)
+    bound_manifest = output_dir / "verifier_manifest.json"
+    write_json(
+        bound_manifest,
+        {**manifest, "verifier_source_path": str(verifier_source)},
+    )
     command = [
-        value.format(dataset=str(dataset.source_path), output=str(output_dir), python=sys.executable)
+        value.format(
+            dataset=str(Path(dataset.source_path).resolve()),
+            output=str(output_dir.resolve()),
+            python=sys.executable,
+            verifier_source=str(verifier_source),
+        )
         for value in manifest["command"]
     ]
-    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    project_root = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        env=_verifier_environment(project_root),
+    )
     (output_dir / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
     (output_dir / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
     if completed.returncode != 0:
         raise RuntimeError(f"independent data verifier failed with code {completed.returncode}")
+    _require_file_sha256(
+        verifier_source,
+        manifest["verifier_source_sha256"],
+        "data verifier source",
+    )
     regenerated_path = output_dir / "regenerated.npz"
-    if not regenerated_path.is_file():
+    if regenerated_path.is_symlink() or not regenerated_path.is_file():
         raise RuntimeError("independent data verifier did not emit regenerated.npz")
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
@@ -97,6 +122,10 @@ def run_data_verification(config, dataset, manifest_path, output_root):
         "engine_source_revision": manifest["engine_source_revision"],
         "engine_license_id": manifest["engine_license_id"],
         "asset_license_ids": manifest["asset_license_ids"],
+        "verifier_manifest_path": str(bound_manifest.resolve()),
+        "verifier_manifest_sha256": sha256_file(bound_manifest),
+        "verifier_source_path": str(verifier_source),
+        "verifier_source_sha256": manifest["verifier_source_sha256"],
         "rtol": float(manifest["rtol"]),
         "atol": float(manifest["atol"]),
         "nonblocking_scene_failures": nonblocking_failures,
@@ -125,7 +154,7 @@ def run_data_verification(config, dataset, manifest_path, output_root):
     return gate
 
 
-def require_data_verification(gate, config, dataset):
+def require_data_verification(gate, config, dataset, gate_path=None):
     if not isinstance(gate, dict) or gate.get("schema_version") != SCHEMA:
         raise RuntimeError("qualification requires a V6 independent data-verification gate")
     expected = evidence_context(config, dataset, str(gate.get("scientific_use", "")))
@@ -138,7 +167,15 @@ def require_data_verification(gate, config, dataset):
         raise RuntimeError("data-verification gate lets target data control qualification")
     if gate.get("blocking_passed") is not True or gate.get("passed") is not True:
         raise RuntimeError("independent data-verification blocking partition failed")
-    require_verified_roles(gate, config, dataset, BLOCKING_ROLES)
+    _require_verifier_binding(gate, config, dataset, gate_path=gate_path)
+    require_verified_roles(
+        gate,
+        config,
+        dataset,
+        BLOCKING_ROLES,
+        gate_path=gate_path,
+        _binding_checked=True,
+    )
     return gate
 
 
@@ -147,6 +184,9 @@ def require_verified_roles(
     config: dict,
     dataset,
     roles: Iterable[str],
+    *,
+    gate_path: str | Path | None = None,
+    _binding_checked: bool = False,
 ) -> dict:
     """Require regeneration PASS for every role a downstream stage will read."""
     if not isinstance(gate, dict) or gate.get("schema_version") != SCHEMA:
@@ -155,6 +195,8 @@ def require_verified_roles(
     for key in ("dataset_sha256", "config_sha256", "fixture"):
         if gate.get(key) != expected[key]:
             raise RuntimeError(f"data-verification gate {key} mismatch")
+    if not _binding_checked:
+        _require_verifier_binding(gate, config, dataset, gate_path=gate_path)
     statuses = gate.get("role_status")
     if not isinstance(statuses, dict):
         raise RuntimeError("data-verification gate is missing per-role status")
@@ -176,13 +218,21 @@ def require_verified_roles_from_root(
     path = Path(output_root) / "data_verification" / "gate.json"
     if not path.is_file():
         raise RuntimeError(f"missing data-verification gate: {path}")
-    return require_verified_roles(read_strict_json(path), config, dataset, roles)
+    return require_verified_roles(
+        read_strict_json(path),
+        config,
+        dataset,
+        roles,
+        gate_path=path,
+    )
 
 
 def _validate_manifest(manifest, dataset):
     required = {
         "schema_version",
         "command",
+        "verifier_source_path",
+        "verifier_source_sha256",
         "engine_source_revision",
         "engine_license_id",
         "asset_license_ids",
@@ -195,6 +245,19 @@ def _validate_manifest(manifest, dataset):
         raise ValueError("data verifier manifest schema mismatch")
     if not isinstance(manifest["command"], list) or not manifest["command"]:
         raise ValueError("data verifier command must be a nonempty argv list")
+    if not _command_executes_verifier_source(manifest["command"]):
+        raise ValueError(
+            "data verifier command must directly execute the authenticated source "
+            "and bind dataset/output exactly once"
+        )
+    source_path = manifest["verifier_source_path"]
+    if (
+        not isinstance(source_path, str)
+        or not source_path.strip()
+        or Path(source_path).suffix != ".py"
+        or not _lower_sha256(manifest["verifier_source_sha256"])
+    ):
+        raise ValueError("data verifier source path/hash is invalid")
     if manifest["engine_source_revision"] != dataset.metadata["engine"]["source_revision"]:
         raise ValueError("data verifier engine revision does not match the dataset")
     if manifest["engine_license_id"] != dataset.metadata["engine"]["license_id"]:
@@ -204,6 +267,165 @@ def _validate_manifest(manifest, dataset):
     for name in ("rtol", "atol"):
         if not np.isfinite(manifest[name]) or float(manifest[name]) < 0:
             raise ValueError(f"data verifier {name} must be finite and nonnegative")
+
+
+def _command_executes_verifier_source(command) -> bool:
+    if not isinstance(command, list) or any(
+        not isinstance(value, str) or not value for value in command
+    ):
+        return False
+    placeholders = ("{python}", "{verifier_source}", "{dataset}", "{output}")
+    if command[:2] != ["{python}", "{verifier_source}"]:
+        return False
+    if any(command.count(value) != 1 for value in placeholders):
+        return False
+    if any(
+        ("{" in value or "}" in value) and value not in placeholders
+        for value in command
+    ):
+        return False
+    return bool(
+        _command_binds_option(command, "--dataset", "{dataset}")
+        and _command_binds_option(command, "--output", "{output}")
+    )
+
+
+def _command_binds_option(command, option, placeholder) -> bool:
+    indices = [index for index, value in enumerate(command) if value == option]
+    return bool(
+        len(indices) == 1
+        and indices[0] + 1 < len(command)
+        and command[indices[0] + 1] == placeholder
+    )
+
+
+def _resolve_verifier_source(manifest, manifest_root: Path) -> Path:
+    source = Path(manifest["verifier_source_path"])
+    candidate = source if source.is_absolute() else Path(manifest_root) / source
+    resolved = _require_regular_file(candidate, "data verifier source")
+    _require_file_sha256(
+        resolved,
+        manifest["verifier_source_sha256"],
+        "data verifier source",
+    )
+    return resolved
+
+
+def _require_regular_file(path, label: str) -> Path:
+    candidate = Path(path).expanduser()
+    if candidate.is_symlink() or not candidate.is_file():
+        raise RuntimeError(f"{label} must be a regular non-symlink file: {candidate}")
+    resolved = candidate.resolve()
+    if not resolved.is_file():
+        raise RuntimeError(f"{label} must be a regular file: {candidate}")
+    return resolved
+
+
+def _require_file_sha256(path, expected, label: str) -> None:
+    if not _lower_sha256(expected) or sha256_file(path) != expected:
+        raise RuntimeError(f"{label} hash mismatch")
+
+
+def _lower_sha256(value) -> bool:
+    return bool(
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _require_verifier_binding(gate, config, dataset, *, gate_path=None) -> None:
+    required = {
+        "verifier_manifest_path",
+        "verifier_manifest_sha256",
+        "verifier_source_path",
+        "verifier_source_sha256",
+        "engine_source_revision",
+        "engine_license_id",
+        "asset_license_ids",
+        "rtol",
+        "atol",
+    }
+    missing = required.difference(gate)
+    if missing:
+        raise RuntimeError(
+            "data-verification gate is missing authenticated verifier fields: "
+            f"{sorted(missing)}"
+        )
+    manifest_path = _require_regular_file(
+        gate["verifier_manifest_path"], "bound data verifier manifest"
+    )
+    _require_file_sha256(
+        manifest_path,
+        gate["verifier_manifest_sha256"],
+        "bound data verifier manifest",
+    )
+    manifest = read_strict_json(manifest_path)
+    _validate_manifest(manifest, dataset)
+    source = _resolve_verifier_source(manifest, manifest_path.parent)
+    gate_source = _require_regular_file(
+        gate["verifier_source_path"], "data verifier source"
+    )
+    if source != gate_source:
+        raise RuntimeError("data-verification gate verifier source path mismatch")
+    _require_file_sha256(
+        gate_source,
+        gate["verifier_source_sha256"],
+        "data verifier source",
+    )
+    if gate["verifier_source_sha256"] != manifest["verifier_source_sha256"]:
+        raise RuntimeError("data-verification gate verifier source hash mismatch")
+    for key in (
+        "engine_source_revision",
+        "engine_license_id",
+        "asset_license_ids",
+        "rtol",
+        "atol",
+    ):
+        if gate[key] != manifest[key]:
+            raise RuntimeError(f"data-verification gate {key} differs from verifier manifest")
+    if gate_path is not None:
+        from .formal_evidence import require_stage_manifested_gate
+
+        resolved_gate = _require_regular_file(gate_path, "data-verification gate")
+        require_stage_manifested_gate(
+            resolved_gate,
+            gate,
+            config,
+            dataset,
+            schema_version=SCHEMA,
+        )
+        expected_manifest = (resolved_gate.parent / "verifier_manifest.json").resolve()
+        if manifest_path != expected_manifest:
+            raise RuntimeError(
+                "data-verification gate does not bind its colocated verifier manifest"
+            )
+        _require_stage_file(resolved_gate.parent, manifest_path)
+
+
+def _require_stage_file(stage_dir: Path, path: Path) -> None:
+    manifest_path = stage_dir / "manifest.json"
+    manifest = read_strict_json(manifest_path)
+    entries = manifest.get("files") if isinstance(manifest, dict) else None
+    relative = str(path.relative_to(stage_dir))
+    matches = [
+        row
+        for row in entries
+        if isinstance(row, dict) and row.get("path") == relative
+    ] if isinstance(entries, list) else []
+    if len(matches) != 1 or matches[0].get("sha256") != sha256_file(path):
+        raise RuntimeError(
+            "bound data verifier manifest is absent from or mismatched with its stage manifest"
+        )
+
+
+def _verifier_environment(project_root: Path) -> dict[str, str]:
+    root = str(project_root.resolve())
+    existing = os.environ.get("PYTHONPATH", "")
+    return {
+        **os.environ,
+        "PYTHONPATH": root if not existing else root + os.pathsep + existing,
+    }
 
 
 def _scene_comparison(dataset, archive, scene, rtol, atol):

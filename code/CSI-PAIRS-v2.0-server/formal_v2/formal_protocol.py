@@ -215,6 +215,14 @@ def typed_signed_edit(
     return np.stack(planes, axis=-3).astype(np.float64)
 
 
+def headline_alignment_edge(dataset, scene, edge):
+    """Exclude edits incident to the privileged natural-map branch."""
+    natural = int(dataset.natural_world_index[int(scene)])
+    return bool(
+        int(edge.source_world) != natural and int(edge.target_world) != natural
+    )
+
+
 def zero_typed_edit(shape_prefix: tuple[int, ...], map_size: int, material_categories: int) -> np.ndarray:
     channels = 4 + 2 * int(material_categories)
     return np.zeros((*shape_prefix, channels, map_size, map_size), dtype=np.float64)

@@ -184,7 +184,11 @@ def main(argv: list[str] | None = None) -> int:
 
             verification_path = Path(args.data_verification_gate) if args.data_verification_gate else output / "data_verification" / "gate.json"
             result = run_formal_qualification(
-                config, dataset, output, read_strict_json(verification_path)
+                config,
+                dataset,
+                output,
+                read_strict_json(verification_path),
+                data_verification_gate_path=verification_path,
             )
         elif args.command == "verify-data":
             _require_absent(output / "data_verification")
@@ -223,14 +227,9 @@ def main(argv: list[str] | None = None) -> int:
                 read_strict_json(factorial_path),
             )
         elif args.command == "run-risk":
-            from .formal_risk import build_first_party_risk_features, run_risk_contract
+            from .formal_risk import run_risk_contract
 
-            result = run_risk_contract(
-                config,
-                dataset,
-                output,
-                build_first_party_risk_features(config, dataset, output),
-            )
+            result = run_risk_contract(config, dataset, output)
         elif args.command == "run-path":
             from .formal_path import run_path_audit
 
@@ -300,7 +299,13 @@ def main(argv: list[str] | None = None) -> int:
             verification = run_data_verification(config, dataset, args.verifier_manifest, output)
             from .formal_qualification import run_formal_qualification
 
-            qualification = run_formal_qualification(config, dataset, output, verification)
+            qualification = run_formal_qualification(
+                config,
+                dataset,
+                output,
+                verification,
+                data_verification_gate_path=output / "data_verification" / "gate.json",
+            )
             from .formal_wrong_map import run_formal_wrong_map
 
             run_formal_wrong_map(config, dataset, output, qualification)
@@ -316,14 +321,9 @@ def main(argv: list[str] | None = None) -> int:
             from .formal_evaluation import run_formal_evaluation
 
             run_formal_evaluation(config, dataset, output, qualification, result)
-            from .formal_risk import build_first_party_risk_features, run_risk_contract
+            from .formal_risk import run_risk_contract
 
-            run_risk_contract(
-                config,
-                dataset,
-                output,
-                build_first_party_risk_features(config, dataset, output),
-            )
+            run_risk_contract(config, dataset, output)
             from .formal_path import run_path_audit
 
             run_path_audit(config, dataset, output / "factorial", output)

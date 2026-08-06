@@ -124,7 +124,6 @@ CSI_PAIRS_PYTHON="$PWD/.venv/bin/python" \
 CSI_PAIRS_FORMAL_DATASET=/absolute/path/csi_pairs_formal_v2_1_v6.npz \
 CSI_PAIRS_FORMAL_OUTPUT="$PWD/runs/formal-all-001" \
 CSI_PAIRS_VERIFIER_MANIFEST=/absolute/path/independent_rt_verifier.json \
-CSI_PAIRS_RISK_FEATURE_MANIFEST=/absolute/path/risk_feature_adapter.json \
 CSI_PAIRS_EXTERNAL_ADAPTER_MANIFEST=/absolute/path/external_adapters.json \
 CSI_PAIRS_RESOURCE_CONTROL_MANIFEST=/absolute/path/resource_controls.json \
 CSI_PAIRS_SCENE_ID_MANIFEST=/absolute/path/scene_id.json \

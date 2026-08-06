@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import shutil
 import sys
 from pathlib import Path
 
@@ -104,7 +105,7 @@ def run_adapter(args) -> dict:
     write_csv(result_path, rows)
     adapter_config_copy = output / "adapter_config.json"
     training_record_path = output / "training_record.json"
-    write_json(adapter_config_copy, config)
+    shutil.copyfile(config_path, adapter_config_copy)
     write_json(training_record_path, training_record)
     manifest = {
         "schema_version": EXECUTION_SCHEMA,
@@ -150,7 +151,7 @@ def load_controlled_map_config(path: str | Path) -> dict:
         raise ValueError("controlled map adapter profile is invalid")
     identities = {
         "sigmap": ("SigMap", "sigmap-controlled-csi-pairs-v1", "style-controlled-implementation"),
-        "wiser": ("WiSER", "wiser-controlled-csi-pairs-v1", "paper-spec-controlled-implementation"),
+        "wiser": ("WiSER", "wiser-controlled-csi-pairs-v1", "style-controlled-implementation"),
         "rfir": ("RFIR", "rfir-controlled-csi-pairs-v1", "style-controlled-implementation"),
     }
     if (payload["model_name"], payload["adapter_id"], payload["implementation_status"]) != identities[payload["method"]]:

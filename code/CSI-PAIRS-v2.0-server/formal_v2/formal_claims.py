@@ -141,11 +141,13 @@ def _assess_stage(path, schema, name, config, dataset):
         )
         if name == "external_baselines":
             _validate_external_manifest_binding(path, payload)
+        if name == "G6":
+            _validate_risk_mixture_binding(path, payload, config, dataset)
         if name in {
             "G0", "G4", "G8", "scene_id_mechanism", "rt_calibration",
             "shuffled_pair", "retention",
         }:
-            _validate_stage_bound_input(path, payload, config, name)
+            _validate_stage_bound_input(path, payload, config, name, dataset)
         if name == "shuffled_pair":
             _validate_shuffled_evaluation_binding(path, payload, config, dataset)
         return _semantic_status(name, payload), None
@@ -207,6 +209,14 @@ def _semantic_status(name, payload):
             not _require_pass_subgates(payload, "c9_subgates", 4)
             or payload.get("feature_generation")
             != "first-party checkpoint/data/proposal replay"
+            or payload.get("risk_score_source")
+            != "source-trained frozen unified compatibility probe"
+            or payload.get("native_energy_role") != "diagnostic_only"
+            or payload.get("proposal_count_contract_verified") is not True
+            or payload.get("mixture_freeze_path") != "mixture_freeze.json"
+            or not _lower_sha256(payload.get("mixture_freeze_sha256"))
+            or payload.get("replay_binding_path") != "replay_binding.json"
+            or not _lower_sha256(payload.get("replay_binding_sha256"))
             or not isinstance(payload.get("common_support_interval"), dict)
             or not isinstance(payload.get("outside_support_noninferiority"), dict)
         ):
@@ -235,6 +245,8 @@ def _semantic_status(name, payload):
             or float(payload.get("active_direction_agreement_ci95_low", -1.0))
             < float(payload.get("minimum_active_direction_agreement", 1.0))
             or not _lower_sha256(payload.get("adapter_source_sha256"))
+            or payload.get("rt_scene_manifest_path") != "rt_scene_manifest.json"
+            or not _lower_sha256(payload.get("rt_scene_manifest_sha256"))
         ):
             return "FAIL"
     elif name == "external_baselines":
@@ -269,6 +281,10 @@ def _semantic_status(name, payload):
                 or row.get("active_effect_passed") is not True
                 or row.get("null_safety_passed") is not True
                 or int(row.get("base_map_cluster_count", 0)) < 2
+                or float(
+                    row.get("null_overclassification_rate_ci95_high", float("inf"))
+                )
+                > float(row.get("null_overclassification_rate_max", -1.0))
             ):
                 return "FAIL"
         if len(eligible) < 2:
@@ -408,6 +424,73 @@ def _validate_external_manifest_binding(gate_path, payload):
         raise RuntimeError("external condition registry is absent from or mismatched with the stage manifest")
 
 
+def _validate_risk_mixture_binding(gate_path, payload, config, dataset):
+    if payload.get("passed") is not True:
+        return
+    relative = payload.get("mixture_freeze_path")
+    digest = payload.get("mixture_freeze_sha256")
+    if relative != "mixture_freeze.json" or not _lower_sha256(digest):
+        raise RuntimeError("risk gate has no authenticated mixture freeze")
+    path = gate_path.parent / relative
+    if not path.is_file() or sha256_file(path) != digest:
+        raise RuntimeError("risk mixture freeze is missing or hash-mismatched")
+    freeze = read_strict_json(path)
+    if (
+        freeze.get("schema_version") != "csi-pairs-v6-risk-mixture-freeze-v1"
+        or freeze.get("frozen_role") != "source_method_selection"
+        or not freeze.get("bank_ids")
+    ):
+        raise RuntimeError("risk mixture freeze contract is invalid")
+    replay_relative = payload.get("replay_binding_path")
+    replay_digest = payload.get("replay_binding_sha256")
+    if replay_relative != "replay_binding.json" or not _lower_sha256(replay_digest):
+        raise RuntimeError("risk gate has no authenticated first-party replay binding")
+    replay_path = gate_path.parent / replay_relative
+    if not replay_path.is_file() or sha256_file(replay_path) != replay_digest:
+        raise RuntimeError("risk replay binding is missing or hash-mismatched")
+    stage_manifest = read_strict_json(gate_path.parent / "manifest.json")
+    entries = stage_manifest.get("files") if isinstance(stage_manifest, dict) else None
+    for relative_path, expected_digest in (
+        (relative, digest),
+        (replay_relative, replay_digest),
+    ):
+        matches = [
+            row
+            for row in entries
+            if isinstance(row, dict) and row.get("path") == relative_path
+        ] if isinstance(entries, list) else []
+        if len(matches) != 1 or matches[0].get("sha256") != expected_digest:
+            raise RuntimeError(
+                "risk binding artifact is absent from or mismatched with the stage manifest"
+            )
+    binding = read_strict_json(replay_path)
+    from .formal_evidence import config_sha256
+    from . import formal_risk
+
+    root = gate_path.parent.parent
+    checkpoint_index = root / "factorial" / "checkpoint_index.json"
+    if set(binding) != {
+        "schema_version",
+        "dataset_sha256",
+        "config_sha256",
+        "checkpoint_index_sha256",
+        "implementation_source_sha256",
+        "payload_sha256",
+    }:
+        raise RuntimeError("risk replay binding fields are not exact")
+    if (
+        binding["schema_version"] != "csi-pairs-v6-risk-replay-binding-v1"
+        or binding["dataset_sha256"] != sha256_file(dataset.source_path)
+        or binding["config_sha256"] != config_sha256(config)
+        or not checkpoint_index.is_file()
+        or binding["checkpoint_index_sha256"] != sha256_file(checkpoint_index)
+        or binding["implementation_source_sha256"]
+        != sha256_file(Path(formal_risk.__file__).resolve())
+        or not _lower_sha256(binding["payload_sha256"])
+    ):
+        raise RuntimeError("risk replay binding does not match executed first-party inputs")
+
+
 def _validate_shuffled_evaluation_binding(gate_path, payload, config, dataset):
     root = gate_path.parent.parent.parent
     evaluation_gate_path = root / "evaluation" / "gate.json"
@@ -432,7 +515,9 @@ def _validate_shuffled_evaluation_binding(gate_path, payload, config, dataset):
         raise RuntimeError("bound evaluation shortcut audit did not pass")
 
 
-def _validate_stage_bound_input(gate_path, payload, config=None, stage_name=None):
+def _validate_stage_bound_input(
+    gate_path, payload, config=None, stage_name=None, dataset=None
+):
     relative = payload.get("input_manifest_path")
     digest = payload.get("input_manifest_sha256")
     if not isinstance(relative, str) or Path(relative).name != relative or not _lower_sha256(digest):
@@ -461,9 +546,31 @@ def _validate_stage_bound_input(gate_path, payload, config=None, stage_name=None
         _validate_manifest(manifest, path.parent)
     elif stage_name == "G8":
         from .formal_external_validity import _validate_manifest, _verify_adapter_source
+        from .external_adapters.sionna_external_validity import load_scene_manifest
 
         _validate_manifest(manifest)
         _verify_adapter_source(manifest)
+        if dataset is None:
+            raise RuntimeError("G8 reauthentication requires the formal dataset")
+        scene_relative = payload.get("rt_scene_manifest_path")
+        scene_digest = payload.get("rt_scene_manifest_sha256")
+        if scene_relative != "rt_scene_manifest.json" or not _lower_sha256(
+            scene_digest
+        ):
+            raise RuntimeError("G8 gate has no authenticated RT scene manifest")
+        scene_path = gate_path.parent / scene_relative
+        if not scene_path.is_file() or sha256_file(scene_path) != scene_digest:
+            raise RuntimeError("G8 RT scene manifest is missing or hash-mismatched")
+        scene_matches = [
+            row
+            for row in files
+            if isinstance(row, dict) and row.get("path") == scene_relative
+        ] if isinstance(files, list) else []
+        if len(scene_matches) != 1 or scene_matches[0].get("sha256") != scene_digest:
+            raise RuntimeError(
+                "G8 RT scene manifest is absent from or mismatched with the stage manifest"
+            )
+        load_scene_manifest(scene_path, dataset)
     elif stage_name == "scene_id_mechanism":
         from .formal_scene_id import _validate_manifest, _verify_adapter_files
 
@@ -513,6 +620,9 @@ def _validate_stage_bound_input(gate_path, payload, config=None, stage_name=None
             Path(manifest["adapter_source_path"]).name != manifest["adapter_source_path"]
             or not source.is_file()
             or sha256_file(source) != manifest["adapter_source_sha256"]
+            or manifest["implementation_revision"]
+            != manifest["adapter_source_sha256"]
+            or manifest["command"][:2] != ["{python}", "{adapter_source}"]
         ):
             raise RuntimeError("claim-control bound adapter source is missing or hash-mismatched")
 

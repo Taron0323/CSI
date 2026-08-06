@@ -32,10 +32,16 @@ def run_formal_qualification(
     dataset: FormalDataset,
     output_root: str | Path,
     data_verification_gate: dict,
+    data_verification_gate_path: str | Path | None = None,
 ) -> dict:
     from .formal_data_verification import require_data_verification
 
-    data_verification_gate = require_data_verification(data_verification_gate, config, dataset)
+    data_verification_gate = require_data_verification(
+        data_verification_gate,
+        config,
+        dataset,
+        gate_path=data_verification_gate_path,
+    )
     output_dir = Path(output_root) / "qualification"
     output_dir.mkdir(parents=True, exist_ok=True)
     data_config = config["data"]
@@ -329,16 +335,17 @@ def _build_records(dataset, scenes, routed, mask_bank):
             source_map = dataset.maps[scene, edge.source_world]
             target_map = dataset.maps[scene, edge.target_world]
             action = typed_signed_edit(source_map, target_map, dataset.map_channel_names, material_categories)
-            swap_action, swap_status, swap_world = _select_wrong_action(
-                dataset,
-                scene,
-                edge.source_world,
-                edge.bit_index,
-                action,
-                material_categories,
-            )
             zero_action = zero_typed_edit((), source_map.shape[-1], material_categories)
             for position in range(dataset.position_count):
+                swap_action, swap_status, swap_world = _select_wrong_action(
+                    dataset,
+                    scene,
+                    edge.source_world,
+                    edge.bit_index,
+                    action,
+                    material_categories,
+                    receiver_position=dataset.positions[scene, position],
+                )
                 source_patches = routed.physical_patches[scene][edge.source_world, position]
                 target_patches = routed.physical_patches[scene][edge.target_world, position]
                 normalized_position = (dataset.positions[scene, position] - position_center) / position_scale
@@ -477,24 +484,6 @@ def _branch_coverage(dataset, routed, scenes):
         match_actions = {"exact": 0, "fallback": 0, "failed": 0}
         for source in range(dataset.world_count):
             edges = [edge for edge in dataset.directed_edges(scene) if edge.source_world == source]
-            edge_match_status = {}
-            for edge in edges:
-                correct = typed_signed_edit(
-                    dataset.maps[scene, source],
-                    dataset.maps[scene, edge.target_world],
-                    dataset.map_channel_names,
-                    material_categories,
-                )
-                _, status, _ = _select_wrong_action(
-                    dataset,
-                    scene,
-                    source,
-                    edge.bit_index,
-                    correct,
-                    material_categories,
-                )
-                edge_match_status[edge.bit_index] = status
-                match_actions[status] += 1
             for position in range(dataset.position_count):
                 for query in range(routed.physical_patches[scene].shape[-2]):
                     active_targets = [
@@ -506,7 +495,22 @@ def _branch_coverage(dataset, routed, scenes):
                         active_states += 1
                         active_branching += int(len(active_targets) >= 2)
                 for edge in edges:
-                    status = edge_match_status[edge.bit_index]
+                    correct = typed_signed_edit(
+                        dataset.maps[scene, source],
+                        dataset.maps[scene, edge.target_world],
+                        dataset.map_channel_names,
+                        material_categories,
+                    )
+                    _, status, _ = _select_wrong_action(
+                        dataset,
+                        scene,
+                        source,
+                        edge.bit_index,
+                        correct,
+                        material_categories,
+                        receiver_position=dataset.positions[scene, position],
+                    )
+                    match_actions[status] += 1
                     routes = [
                         routed.response_route[(scene, source, edge.target_world, position, query)]
                         for query in range(routed.physical_patches[scene].shape[-2])
@@ -548,9 +552,21 @@ def _select_wrong_action(
     correct_bit: int,
     correct_action: np.ndarray,
     material_categories: int,
+    *,
+    receiver_position: np.ndarray | None = None,
 ) -> tuple[np.ndarray, str, int | None]:
-    """Choose a different primitive and report exact/fallback/failed matching."""
+    """Choose a position-specific different primitive and report match quality."""
     lookup = {tuple(row): index for index, row in enumerate(dataset.world_bits.tolist())}
+    representation = dataset.metadata.get("representation", {})
+    origin = representation.get("map_origin_xy_m")
+    resolution = representation.get("map_resolution_m")
+    receiver_geometry_available = bool(
+        receiver_position is not None
+        and origin is not None
+        and resolution is not None
+        and np.isfinite(float(resolution))
+        and float(resolution) > 0.0
+    )
     candidates = []
     for bit_index in range(dataset.bit_count):
         if bit_index == int(correct_bit):
@@ -564,10 +580,28 @@ def _select_wrong_action(
             dataset.map_channel_names,
             material_categories,
         )
-        candidates.append((action, target_world, _wrong_action_distance(correct_action, action)))
+        candidates.append(
+            (
+                action,
+                target_world,
+                _wrong_action_distance(
+                    correct_action,
+                    action,
+                    receiver_position=(receiver_position if receiver_geometry_available else None),
+                    map_origin_xy_m=(origin if receiver_geometry_available else None),
+                    map_resolution_m=(resolution if receiver_geometry_available else None),
+                ),
+            )
+        )
     if not candidates:
         return np.zeros_like(correct_action), "failed", None
-    exact = [candidate for candidate in candidates if candidate[2][0] == 0 and candidate[2][1] == 0]
+    exact = [
+        candidate
+        for candidate in candidates
+        if receiver_geometry_available
+        and candidate[2][0] == 0
+        and candidate[2][1] == 0
+    ]
     if exact:
         action, target_world, _ = min(exact, key=lambda candidate: candidate[2])
         return action, "exact", target_world
@@ -579,36 +613,111 @@ def _select_wrong_action(
     return action, "failed", target_world
 
 
-def _wrong_action_distance(reference: np.ndarray, candidate: np.ndarray) -> tuple:
-    reference_profile = _action_geometry_profile(reference)
-    candidate_profile = _action_geometry_profile(candidate)
+def _wrong_action_distance(
+    reference: np.ndarray,
+    candidate: np.ndarray,
+    *,
+    receiver_position: np.ndarray | None = None,
+    map_origin_xy_m: np.ndarray | None = None,
+    map_resolution_m: float | None = None,
+) -> tuple:
+    reference_profile = _action_geometry_profile(
+        reference,
+        receiver_position=receiver_position,
+        map_origin_xy_m=map_origin_xy_m,
+        map_resolution_m=map_resolution_m,
+    )
+    candidate_profile = _action_geometry_profile(
+        candidate,
+        receiver_position=receiver_position,
+        map_origin_xy_m=map_origin_xy_m,
+        map_resolution_m=map_resolution_m,
+    )
     family_mismatch = int(reference_profile["family"] != candidate_profile["family"])
-    reference_area = max(int(reference_profile["area"]), 1)
-    reference_norm = max(float(reference_profile["norm"]), np.finfo(np.float64).eps)
-    area_relative = abs(int(candidate_profile["area"]) - int(reference_profile["area"])) / reference_area
-    norm_relative = abs(float(candidate_profile["norm"]) - float(reference_profile["norm"])) / reference_norm
-    bbox_distance = sum(
-        abs(int(left) - int(right))
-        for left, right in zip(reference_profile["bbox_shape"], candidate_profile["bbox_shape"])
-    )
+    area_relatives = []
+    norm_relatives = []
+    bbox_distance = 0
+    pattern_mismatch = 0
+    for reference_area, candidate_area, reference_norm, candidate_norm, reference_bbox, candidate_bbox, reference_pattern, candidate_pattern in zip(
+        reference_profile["plane_areas"],
+        candidate_profile["plane_areas"],
+        reference_profile["plane_norms"],
+        candidate_profile["plane_norms"],
+        reference_profile["plane_bbox_shapes"],
+        candidate_profile["plane_bbox_shapes"],
+        reference_profile["plane_canonical_patterns"],
+        candidate_profile["plane_canonical_patterns"],
+    ):
+        if reference_area == candidate_area == 0:
+            continue
+        area_relatives.append(
+            abs(int(candidate_area) - int(reference_area)) / max(int(reference_area), 1)
+        )
+        norm_relatives.append(
+            abs(float(candidate_norm) - float(reference_norm))
+            / max(float(reference_norm), np.finfo(np.float64).eps)
+        )
+        bbox_distance += sum(
+            abs(int(left) - int(right))
+            for left, right in zip(reference_bbox, candidate_bbox)
+        )
+        if reference_pattern.shape != candidate_pattern.shape or not np.allclose(
+            reference_pattern,
+            candidate_pattern,
+            rtol=0.05,
+            atol=1e-12,
+        ):
+            pattern_mismatch += 1
+    area_relative = max(area_relatives, default=0.0)
+    norm_relative = max(norm_relatives, default=0.0)
+    receiver_relative = 0.0
+    reference_distances = reference_profile["receiver_plane_distances_m"]
+    candidate_distances = candidate_profile["receiver_plane_distances_m"]
+    if reference_distances is not None and candidate_distances is not None:
+        receiver_relative = max(
+            (
+                abs(float(candidate_distance) - float(reference_distance))
+                / max(
+                    float(reference_distance),
+                    float(map_resolution_m),
+                    np.finfo(np.float64).eps,
+                )
+                for reference_distance, candidate_distance, active in zip(
+                    reference_distances,
+                    candidate_distances,
+                    reference_profile["family"],
+                )
+                if active
+            ),
+            default=0.0,
+        )
     geometry_mismatch = int(
-        area_relative > 0.05 or norm_relative > 0.05 or bbox_distance != 0
+        area_relative > 0.05
+        or norm_relative > 0.05
+        or bbox_distance != 0
+        or pattern_mismatch != 0
+        or receiver_relative > 0.05
     )
-    return family_mismatch, geometry_mismatch, area_relative + norm_relative, bbox_distance
+    return (
+        family_mismatch,
+        geometry_mismatch,
+        area_relative + norm_relative + receiver_relative,
+        bbox_distance,
+    )
 
 
-def _action_geometry_profile(action: np.ndarray) -> dict:
+def _action_geometry_profile(
+    action: np.ndarray,
+    *,
+    receiver_position: np.ndarray | None = None,
+    map_origin_xy_m: np.ndarray | None = None,
+    map_resolution_m: float | None = None,
+) -> dict:
     values = np.asarray(action, dtype=np.float64)
     if values.ndim != 3 or values.shape[0] < 5:
         raise ValueError("typed action must have shape [channel,row,column]")
     active_planes = np.any(np.abs(values) > 1e-12, axis=(1, 2))
-    family = (
-        bool(active_planes[0]),
-        bool(active_planes[1]),
-        bool(active_planes[2]),
-        bool(active_planes[3]),
-        bool(np.any(active_planes[4:])),
-    )
+    family = tuple(bool(value) for value in active_planes.tolist())
     support = np.any(np.abs(values) > 1e-12, axis=0)
     coordinates = np.argwhere(support)
     if coordinates.size:
@@ -616,11 +725,67 @@ def _action_geometry_profile(action: np.ndarray) -> dict:
         bbox_shape = tuple(int(value) for value in extent)
     else:
         bbox_shape = (0, 0)
+    plane_areas = []
+    plane_norms = []
+    plane_bbox_shapes = []
+    plane_canonical_patterns = []
+    receiver_plane_distances = []
+    geometry_available = bool(
+        receiver_position is not None
+        and map_origin_xy_m is not None
+        and map_resolution_m is not None
+    )
+    receiver_xy = (
+        np.asarray(receiver_position, dtype=np.float64).reshape(-1)[:2]
+        if geometry_available
+        else None
+    )
+    origin = (
+        np.asarray(map_origin_xy_m, dtype=np.float64).reshape(-1)[:2]
+        if geometry_available
+        else None
+    )
+    resolution = float(map_resolution_m) if geometry_available else None
+    for plane in values:
+        plane_support = np.abs(plane) > 1e-12
+        plane_coordinates = np.argwhere(plane_support)
+        plane_areas.append(int(np.sum(plane_support)))
+        plane_norms.append(float(np.linalg.norm(plane)))
+        if plane_coordinates.size:
+            lower = plane_coordinates.min(axis=0)
+            upper = plane_coordinates.max(axis=0) + 1
+            plane_extent = plane_coordinates.max(axis=0) - plane_coordinates.min(axis=0) + 1
+            plane_bbox_shapes.append(tuple(int(value) for value in plane_extent))
+            cropped = plane[lower[0] : upper[0], lower[1] : upper[1]]
+            plane_canonical_patterns.append(
+                cropped / max(float(np.max(np.abs(cropped))), np.finfo(np.float64).eps)
+            )
+            if geometry_available:
+                centroid_rc = plane_coordinates.mean(axis=0)
+                centroid_xy = origin + resolution * np.asarray(
+                    [centroid_rc[1] + 0.5, centroid_rc[0] + 0.5]
+                )
+                receiver_plane_distances.append(
+                    float(np.linalg.norm(receiver_xy - centroid_xy))
+                )
+            else:
+                receiver_plane_distances.append(0.0)
+        else:
+            plane_bbox_shapes.append((0, 0))
+            plane_canonical_patterns.append(np.zeros((0, 0), dtype=np.float64))
+            receiver_plane_distances.append(0.0)
     return {
         "family": family,
         "area": int(np.sum(support)),
         "norm": float(np.linalg.norm(values)),
         "bbox_shape": bbox_shape,
+        "plane_areas": tuple(plane_areas),
+        "plane_norms": tuple(plane_norms),
+        "plane_bbox_shapes": tuple(plane_bbox_shapes),
+        "plane_canonical_patterns": tuple(plane_canonical_patterns),
+        "receiver_plane_distances_m": (
+            tuple(receiver_plane_distances) if geometry_available else None
+        ),
     }
 
 

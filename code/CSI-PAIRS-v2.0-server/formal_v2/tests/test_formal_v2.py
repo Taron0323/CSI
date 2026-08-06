@@ -24,7 +24,6 @@ from formal_v2.formal_controls import CONTROL_IDS, _validate_manifest as validat
 from formal_v2.formal_config import load_formal_config, validate_formal_config
 from formal_v2.formal_data_verification import (
     BLOCKING_ROLES,
-    SCHEMA as DATA_GATE_SCHEMA,
     require_data_verification,
     require_verified_roles,
 )
@@ -174,6 +173,19 @@ class ConfigTests(unittest.TestCase):
         config = load_formal_config(SMOKE_CONFIG)
         config["data"]["require_clean_csi"] = False
         with self.assertRaisesRegex(ValueError, "requires data.require_clean_csi=true"):
+            validate_formal_config(config)
+
+    def test_rejects_zero_risk_audit_stratum(self):
+        config = load_formal_config(SMOKE_CONFIG)
+        config["risk"]["audit_mixture"]["gray"] = 0.0
+        config["risk"]["audit_mixture"]["correct"] += 0.2
+        with self.assertRaisesRegex(ValueError, "strictly positive"):
+            validate_formal_config(config)
+
+    def test_rejects_single_point_path_coverage_audit(self):
+        config = load_formal_config(SMOKE_CONFIG)
+        config["path"]["power_coverage"] = 1.0
+        with self.assertRaisesRegex(ValueError, "strictly between"):
             validate_formal_config(config)
 
 
@@ -593,6 +605,8 @@ class EvidenceAndPathTests(unittest.TestCase):
             "active_direction_agreement_ci95_low": 0.85,
             "minimum_active_direction_agreement": 0.8,
             "adapter_source_sha256": "a" * 64,
+            "rt_scene_manifest_path": "rt_scene_manifest.json",
+            "rt_scene_manifest_sha256": "b" * 64,
             "null_equivalence": {"passed": True, "base_map_cluster_count": 3},
         }
         self.assertEqual(_semantic_status("G8", g8), "PASS")
@@ -708,14 +722,14 @@ class EvidenceAndPathTests(unittest.TestCase):
     def test_frozen_map_proposal_is_deterministic_and_uses_typed_actions(self):
         scene = int(self.dataset.indices_for_role("source_calibration_fit")[0])
         world = int(self.dataset.natural_world_index[scene])
-        first_maps, first_actions = frozen_map_proposals(
+        first_maps, first_actions, first_audit = frozen_map_proposals(
             self.dataset.maps[scene, world],
             self.dataset.radio_config[scene],
             self.dataset.map_channel_names,
             int(self.dataset.metadata["assets"]["material_category_count"]),
             self.config,
         )
-        second_maps, second_actions = frozen_map_proposals(
+        second_maps, second_actions, second_audit = frozen_map_proposals(
             self.dataset.maps[scene, world],
             self.dataset.radio_config[scene],
             self.dataset.map_channel_names,
@@ -724,6 +738,10 @@ class EvidenceAndPathTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(first_maps, second_maps)
         np.testing.assert_array_equal(first_actions, second_actions)
+        self.assertEqual(first_audit, second_audit)
+        self.assertEqual(
+            first_audit["proposal_count"], self.config["risk"]["proposal_count"]
+        )
         self.assertEqual(first_actions.shape[1], 4 + 2 * 4)
 
     def test_risk_support_threshold_is_frozen_from_selection(self):
@@ -763,21 +781,16 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertFalse(_coverage_error_monotonic(retained, 0.0))
 
     def test_target_verification_failure_is_explicitly_nonblocking(self):
-        context = evidence_context(self.config, self.dataset, "FORBIDDEN")
-        gate = {
-            "schema_version": DATA_GATE_SCHEMA,
-            "passed": True,
-            "blocking_passed": True,
-            **context,
-            "blocking_roles": list(BLOCKING_ROLES),
-            "target_and_other_roles_are_nonblocking": True,
-            "nonblocking_scene_failures": ["target-scene"],
-            "role_status": {
-                **{role: "PASS" for role in SOURCE_ROLES},
-                "target": "FAIL",
-                "external_validation": "PASS",
-            },
-        }
+        from formal_v2.formal_data_verification import run_data_verification
+
+        gate = run_data_verification(
+            self.config,
+            self.dataset,
+            ROOT / "formal_v2/configs/fixture_verifier.json",
+            self.root / "verified-target-contract",
+        )
+        gate["role_status"]["target"] = "FAIL"
+        gate["nonblocking_scene_failures"] = ["target-scene"]
         self.assertIs(require_data_verification(gate, self.config, self.dataset), gate)
         with self.assertRaisesRegex(RuntimeError, "target"):
             require_verified_roles(gate, self.config, self.dataset, ("target",))
@@ -801,6 +814,26 @@ class EvidenceAndPathTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "hash mismatch"):
             require_formal_qualification(
                 gate, self.config, self.dataset, allow_nonscientific_fixture=True
+            )
+
+    def test_failed_fixture_qualification_only_allows_explicit_software_execution(self):
+        checkpoint = self.root / "software-teacher.pt"
+        checkpoint.write_bytes(b"software-only-teacher")
+        context = evidence_context(self.config, self.dataset, "FORBIDDEN")
+        gate = {
+            "schema_version": QUALIFICATION_SCHEMA,
+            "passed": False,
+            **context,
+            "upstream_gates": complete_gate_vector({"G1": "FAIL", "G2": "FAIL"}),
+            "teacher_checkpoint": str(checkpoint),
+            "teacher_checkpoint_sha256": sha256_file(checkpoint),
+        }
+        require_formal_qualification(
+            gate, self.config, self.dataset, allow_nonscientific_fixture=True
+        )
+        with self.assertRaisesRegex(RuntimeError, "upstream qualification"):
+            require_formal_qualification(
+                gate, self.config, self.dataset, allow_nonscientific_fixture=False
             )
 
     def test_manifested_gate_rejects_payload_or_file_mutation(self):
@@ -868,9 +901,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "schema_version": "csi-pairs-v6-resource-controls-v1",
             "controls": [{"control_id": name, "command": ["true"]} for name in CONTROL_IDS],
         }
-        validate_control_manifest(controls)
-        controls["controls"] = controls["controls"][:-1]
-        with self.assertRaisesRegex(ValueError, "exact five"):
+        with self.assertRaisesRegex(ValueError, "schema mismatch"):
             validate_control_manifest(controls)
         validate_scene_id_manifest(
             {
@@ -879,12 +910,12 @@ class EvidenceAndPathTests(unittest.TestCase):
                     {
                         "adapter_id": "m",
                         "model_name": "model",
-                        "implementation_revision": "revision",
+                        "implementation_revision": "a" * 64,
                         "adapter_source_path": "adapter.py",
                         "adapter_source_sha256": "a" * 64,
                         "model_checkpoint_path": "model.pt",
                         "model_checkpoint_sha256": "b" * 64,
-                        "command": ["true"],
+                        "command": ["{python}", "{adapter_source}"],
                     }
                 ],
             }
@@ -897,30 +928,51 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "license_id": "license",
                 "adapter_source_path": "adapter.py",
                 "adapter_source_sha256": "a" * 64,
-                "command": ["true"],
+                "command": [
+                    "{project_root}/formal_v2/external_adapters/"
+                    ".runtime-sionna/venv/bin/python",
+                    "{adapter_source}",
+                ],
             }
         )
 
     def test_scene_id_rows_are_exactly_paired_to_held_out_positions(self):
-        scene = int(self.dataset.indices_for_role("source_final_unseen_bank")[0])
         evidence = evidence_context(self.config, self.dataset, "FORBIDDEN")
         adapter = {"adapter_id": "test", "model_name": "model", "command": ["true"]}
-        rows = [
-            {
-                "unit_id": "u0",
-                "model_name": "model",
-                "condition": condition,
-                "bank_id": str(self.dataset.bank_ids[scene]),
-                "position_id": str(self.dataset.position_ids[scene, 0]),
-                "localization_error_m": "1.0",
-                "response_score": str(index),
-                "source_role": "source_final_unseen_bank",
-                "dataset_sha256": str(evidence["dataset_sha256"]),
-                "config_sha256": str(evidence["config_sha256"]),
-            }
-            for index, condition in enumerate(("map", "scene_id", "map_swap", "id_swap"))
-        ]
+        rows = []
+        for scene_value in self.dataset.indices_for_role("source_final_unseen_bank"):
+            scene = int(scene_value)
+            for position in np.flatnonzero(
+                self.dataset.position_roles[scene] == "standard"
+            ):
+                unit = (
+                    f"{self.dataset.bank_ids[scene]}:"
+                    f"{self.dataset.position_ids[scene, int(position)]}"
+                )
+                rows.extend(
+                    {
+                        "unit_id": unit,
+                        "model_name": "model",
+                        "condition": condition,
+                        "bank_id": str(self.dataset.bank_ids[scene]),
+                        "position_id": str(
+                            self.dataset.position_ids[scene, int(position)]
+                        ),
+                        "localization_error_m": "1.0",
+                        "response_score": str(index),
+                        "source_role": "source_final_unseen_bank",
+                        "dataset_sha256": str(evidence["dataset_sha256"]),
+                        "config_sha256": str(evidence["config_sha256"]),
+                    }
+                    for index, condition in enumerate(
+                        ("map", "scene_id", "map_swap", "id_swap")
+                    )
+                )
         validate_scene_id_rows(adapter, [dict(row) for row in rows], self.dataset, evidence)
+        negative = [dict(row) for row in rows]
+        negative[0]["localization_error_m"] = "-1.0"
+        with self.assertRaisesRegex(RuntimeError, "nonnegative"):
+            validate_scene_id_rows(adapter, negative, self.dataset, evidence)
         with self.assertRaisesRegex(RuntimeError, "duplicates"):
             validate_scene_id_rows(adapter, [dict(row) for row in rows] + [dict(rows[0])], self.dataset, evidence)
 
@@ -941,7 +993,9 @@ class EvidenceAndPathTests(unittest.TestCase):
                             "condition": condition,
                             "localization_error_m": error,
                             "response_score": score,
-                            "base_map_cluster_id": cluster,
+                            "canonical_unit_id": unit,
+                            "canonical_base_map_digest": cluster,
+                            "canonical_bank_digest": f"bank-{cluster}",
                         }
                     )
         result = scene_id_model_assessment(
@@ -964,11 +1018,16 @@ class EvidenceAndPathTests(unittest.TestCase):
         for cluster, matches, count in (("a", 1, 20), ("b", 0, 1)):
             rows.extend(
                 {
-                    "base_map_cluster_id": cluster,
+                    "canonical_unit_id": f"{cluster}-{index}",
+                    "canonical_base_map_digest": cluster,
+                    "canonical_bank_digest": f"bank-{cluster}",
+                    "route": "active",
                     "primary_direction": "1",
                     "external_direction": "1" if matches else "-1",
+                    "primary_effect": "0.1",
+                    "external_effect": "0.1",
                 }
-                for _ in range(count)
+                for index in range(count)
             )
         interval = _cluster_direction_interval(rows, 100)
         self.assertEqual(interval["base_map_cluster_count"], 2)
@@ -985,9 +1044,24 @@ class EvidenceAndPathTests(unittest.TestCase):
             "validation_dataset_sha256": "c" * 64,
             "adapter_source_path": "adapter.py",
             "adapter_source_sha256": "d" * 64,
-            "command": ["true"],
+            "command": [
+                "{python}",
+                "{adapter_source}",
+                "--fit",
+                "{fit_dataset}",
+                "--validation",
+                "{validation_dataset}",
+                "--protocol",
+                "{protocol}",
+                "--output",
+                "{output}",
+            ],
         }
         validate_rt_calibration_manifest(manifest)
+        forged = dict(manifest)
+        forged["command"] = ["python3", "-c", "print('fabricated')"]
+        with self.assertRaisesRegex(ValueError, "authenticated adapter"):
+            validate_rt_calibration_manifest(forged)
         del manifest["fit_dataset_path"]
         with self.assertRaisesRegex(ValueError, "fields"):
             validate_rt_calibration_manifest(manifest)
@@ -1016,7 +1090,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         adapter.write_text(
             "import argparse, hashlib, json\n"
             "from pathlib import Path\n"
-            "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation'); a=p.parse_args()\n"
+            "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation'); p.add_argument('--protocol'); a=p.parse_args()\n"
             "out=Path(a.output); fitted=out/'fitted.json'; fitted.write_text('{\"gain\":1.0}', encoding='utf-8')\n"
             "sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
             "stats={k:{'reference':1.0,'simulated':1.05} for k in ('path_loss','delay_spread','angular_spread','visible_path_count')}\n"
@@ -1038,14 +1112,16 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "adapter_source_path": str(adapter),
                 "adapter_source_sha256": sha256_file(adapter),
                 "command": [
-                    sys.executable,
-                    str(adapter),
+                    "{python}",
+                    "{adapter_source}",
                     "--output",
                     "{output}",
                     "--fit",
                     "{fit_dataset}",
                     "--validation",
                     "{validation_dataset}",
+                    "--protocol",
+                    "{protocol}",
                 ],
             },
         )
@@ -1266,8 +1342,12 @@ class WiGATrAdapterTests(unittest.TestCase):
         scene = int(self.dataset.indices_for_role("target")[0])
         position = int(np.flatnonzero(self.dataset.position_roles[scene] == "query")[0])
         unit_id = "registered-unit"
-        rows = [
-            {
+        rows = []
+        condition_contract = {}
+        for index, condition in enumerate(SIX_CONDITIONS):
+            map_sha256 = f"{index + 1:064x}"
+            action_sha256 = f"{index + 101:064x}"
+            row = {
                 "unit_id": unit_id,
                 "model_name": "Wi-GATr",
                 "condition": condition,
@@ -1276,10 +1356,17 @@ class WiGATrAdapterTests(unittest.TestCase):
                 "position_id": str(self.dataset.position_ids[scene, position]),
                 "localization_error_m": "1.0",
                 "csi_context_sha256": "a" * 64,
+                "base_map_cluster_id": str(self.dataset.base_map_cluster_ids[scene]),
+                "map_sha256": map_sha256,
+                "action_sha256": action_sha256,
                 "query_count": "1",
             }
-            for condition in SIX_CONDITIONS
-        ]
+            rows.append(row)
+            condition_contract[(unit_id, condition)] = {
+                "base_map_cluster_id": str(self.dataset.base_map_cluster_ids[scene]),
+                "map_sha256": map_sha256,
+                "action_sha256": action_sha256,
+            }
         _validate_six_condition_rows(
             {"model_name": "Wi-GATr"},
             rows,
@@ -1292,6 +1379,7 @@ class WiGATrAdapterTests(unittest.TestCase):
                     csi_context_sha256="a" * 64,
                 )
             },
+            expected_condition_contract=condition_contract,
         )
         with self.assertRaisesRegex(ValueError, "common unit registry"):
             _validate_six_condition_rows(
@@ -1350,6 +1438,7 @@ class WiGATrAdapterTests(unittest.TestCase):
             "implementation_status": "official-code-adaptation",
             "source_revision": "revision",
             "command": command,
+            "adapter_config_sha256": sha256_file(config_path),
         }
         execution = {
             "schema_version": "csi-pairs-v6-external-execution-v2",
@@ -1373,6 +1462,22 @@ class WiGATrAdapterTests(unittest.TestCase):
         validate_external_execution_manifest(
             adapter, output, result_path, self.dataset
         )
+        substituted = dict(execution)
+        substituted["adapter_config_sha256"] = "b" * 64
+        write_json(output / "execution_manifest.json", substituted)
+        with self.assertRaisesRegex(RuntimeError, "outer frozen hash"):
+            validate_external_execution_manifest(
+                adapter, output, result_path, self.dataset
+            )
+        write_json(config_path, {"schema_version": "substituted-adapter-config"})
+        substituted["adapter_config_sha256"] = sha256_file(config_path)
+        write_json(output / "execution_manifest.json", substituted)
+        with self.assertRaisesRegex(RuntimeError, "outer frozen hash"):
+            validate_external_execution_manifest(
+                adapter, output, result_path, self.dataset
+            )
+        write_json(config_path, {"schema_version": "adapter-config"})
+        write_json(output / "execution_manifest.json", execution)
         training = json.loads(training_path.read_text())
         training["target_roles_read"] = ["target"]
         write_json(training_path, training)
@@ -1680,7 +1785,7 @@ class WaibuIntegrationTests(unittest.TestCase):
             {"SigMap", "Wi-GATr", "WiSER", "RFIR"},
         )
         eligible = [row for row in manifest["adapters"] if row["c1_eligible"]]
-        self.assertEqual([row["model_name"] for row in eligible], ["Wi-GATr", "WiSER"])
+        self.assertEqual([row["model_name"] for row in eligible], ["Wi-GATr"])
         changed = json.loads(json.dumps(manifest))
         changed["adapters"][0]["c1_eligible"] = True
         with self.assertRaisesRegex(ValueError, "style-controlled"):
@@ -1688,17 +1793,47 @@ class WaibuIntegrationTests(unittest.TestCase):
 
     def test_c1_claim_requires_two_explicitly_eligible_external_models(self):
         base = {
-            "status": "PASS",
-            "passed": True,
+            "status": "BLOCKED",
+            "passed": False,
             "unique_passing_model_count": 4,
             "c1_eligible_model_count": 1,
             "c1_eligible_models": ["Wi-GATr"],
+            "c1_required_eligible_model_count": 2,
+            "model_assessments": [
+                {
+                    "model_name": "Wi-GATr",
+                    "c1_eligible": True,
+                    "passed": True,
+                    "active_effect_passed": True,
+                    "null_safety_passed": True,
+                    "base_map_cluster_count": 2,
+                    "null_overclassification_rate_ci95_high": 0.01,
+                    "null_overclassification_rate_max": 0.05,
+                }
+            ],
+            "condition_input_contract": "outer-recomputed-map-and-action-sha256-v1",
+            "condition_registry_path": "external_condition_registry.csv",
+            "condition_registry_sha256": "c" * 64,
             "adapter_manifest_sha256": "a" * 64,
             "adapter_manifest_path": "adapter_manifest.json",
         }
-        self.assertEqual(_semantic_status("external_baselines", base), "FAIL")
+        self.assertEqual(_semantic_status("external_baselines", base), "BLOCKED")
         base["c1_eligible_model_count"] = 2
-        base["c1_eligible_models"] = ["Wi-GATr", "WiSER"]
+        base["c1_eligible_models"] = ["Wi-GATr", "Faithful-2"]
+        base["model_assessments"].append(
+            {
+                "model_name": "Faithful-2",
+                "c1_eligible": True,
+                "passed": True,
+                "active_effect_passed": True,
+                "null_safety_passed": True,
+                "base_map_cluster_count": 2,
+                "null_overclassification_rate_ci95_high": 0.01,
+                "null_overclassification_rate_max": 0.05,
+            }
+        )
+        base["status"] = "PASS"
+        base["passed"] = True
         self.assertEqual(_semantic_status("external_baselines", base), "PASS")
 
     def test_c1_claim_reauthenticates_the_adapter_manifest_copy(self):
@@ -1709,18 +1844,45 @@ class WaibuIntegrationTests(unittest.TestCase):
         )
         manifest_path = stage / "adapter_manifest.json"
         write_json(manifest_path, manifest)
+        condition_path = stage / "external_condition_registry.csv"
+        write_csv(
+            condition_path,
+            [{"unit_id": "u0", "condition": "correct", "map_sha256": "a" * 64}],
+        )
         payload = {
             "adapter_manifest_path": manifest_path.name,
             "adapter_manifest_sha256": sha256_file(manifest_path),
+            "condition_registry_path": condition_path.name,
+            "condition_registry_sha256": sha256_file(condition_path),
         }
         write_json(
             stage / "manifest.json",
             {
                 "schema_version": "csi-pairs-formal-stage-manifest-v2.1-v6",
-                "files": [{"path": manifest_path.name, "sha256": sha256_file(manifest_path)}],
+                "files": [
+                    {"path": manifest_path.name, "sha256": sha256_file(manifest_path)},
+                    {"path": condition_path.name, "sha256": sha256_file(condition_path)},
+                ],
             },
         )
         _validate_external_manifest_binding(stage / "gate.json", payload)
+        forged = json.loads(json.dumps(manifest))
+        forged["adapters"][0]["adapter_config_path"] = forged["adapters"][1][
+            "adapter_config_path"
+        ]
+        write_json(manifest_path, forged)
+        forged_digest = sha256_file(manifest_path)
+        payload["adapter_manifest_sha256"] = forged_digest
+        stage_manifest = json.loads((stage / "manifest.json").read_text())
+        stage_manifest["files"][0]["sha256"] = forged_digest
+        write_json(stage / "manifest.json", stage_manifest)
+        with self.assertRaisesRegex(ValueError, "config path/hash"):
+            _validate_external_manifest_binding(stage / "gate.json", payload)
+
+        write_json(manifest_path, manifest)
+        payload["adapter_manifest_sha256"] = sha256_file(manifest_path)
+        stage_manifest["files"][0]["sha256"] = payload["adapter_manifest_sha256"]
+        write_json(stage / "manifest.json", stage_manifest)
         manifest["adapters"][0]["c1_eligible"] = True
         write_json(manifest_path, manifest)
         with self.assertRaisesRegex(RuntimeError, "hash mismatch"):
@@ -1731,7 +1893,7 @@ class WaibuIntegrationTests(unittest.TestCase):
             (ROOT / "formal_v2/configs/sionna_external_validity_adapter_v2.json").read_text()
         )
         validate_external_validity_manifest(manifest)
-        self.assertIn("formal_v2.external_adapters.sionna_external_validity", manifest["command"])
+        self.assertEqual(manifest["command"][1], "{adapter_source}")
 
     def test_sionna_scene_export_covers_and_authenticates_external_worlds(self):
         arrays = _archive_arrays(self.path)
@@ -1775,6 +1937,12 @@ class WaibuIntegrationTests(unittest.TestCase):
         expected = len(dataset.indices_for_role("external_validation")) * dataset.world_count
         self.assertEqual(len(manifest["worlds"]), expected)
         self.assertTrue(all(Path(row["scene_xml"]).is_file() for row in manifest["worlds"]))
+        duplicated = dict(manifest)
+        duplicated["worlds"] = [*manifest["worlds"], dict(manifest["worlds"][0])]
+        duplicated_path = Path(self.temporary.name) / "duplicated-sionna-manifest.json"
+        write_json(duplicated_path, duplicated)
+        with self.assertRaisesRegex(ValueError, "cover every"):
+            load_scene_manifest(duplicated_path, dataset)
         changed = dict(manifest)
         changed["sionna_revision"] = "not-the-frozen-revision"
         changed_path = Path(self.temporary.name) / "changed-sionna-manifest.json"

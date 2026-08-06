@@ -146,6 +146,17 @@ class ArmExecutionMutationTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
+    def test_alignment_corpus_excludes_natural_incident_edges(self):
+        for table in (self.corpus.alignment_active, self.corpus.alignment_null):
+            for scene, rows in table.items():
+                natural = int(self.dataset.natural_world_index[int(scene)])
+                self.assertTrue(
+                    all(
+                        int(source) != natural and int(target) != natural
+                        for source, target, _position in rows
+                    )
+                )
+
     def test_disabled_branches_are_not_forwarded_or_profiled_by_proxy(self):
         expected = {
             "endpoint": (2, 2),

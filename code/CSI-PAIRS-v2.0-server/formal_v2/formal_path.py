@@ -9,8 +9,15 @@ import numpy as np
 
 from .formal_dataset import FormalDataset
 from .formal_evidence import bind_rows, evidence_context
-from .formal_io import artifact_manifest, write_csv, write_json
-from .formal_protocol import typed_signed_edit
+from .formal_io import (
+    artifact_manifest,
+    read_strict_json,
+    sha256_file,
+    write_csv,
+    write_json,
+)
+from .formal_protocol import PatchSpec, typed_signed_edit
+from .formal_factorial import _canonical_bank_digest
 
 
 def _path_provenance(config, dataset, power_coverage):
@@ -67,9 +74,11 @@ def _path_provenance(config, dataset, power_coverage):
     for values in (
         dataset.path_ids,
         dataset.path_surface_ids,
+        dataset.path_power,
         dataset.primitive_surface_ids,
         dataset.noop_path_ids,
         dataset.noop_path_surface_ids,
+        dataset.noop_path_power,
     ):
         digest.update(np.ascontiguousarray(values).tobytes())
     payload["registry_sha256"] = digest.hexdigest()
@@ -85,10 +94,10 @@ def _power_coverage_convergence(config, dataset, power_coverage):
             1.0,
         }
     )
-    roles = {"source_method_selection", "source_final_unseen_bank", "target"}
+    frozen_role = "source_method_selection"
     values = []
     for scene in range(len(dataset.scene_roles)):
-        if str(dataset.scene_roles[scene]) not in roles:
+        if str(dataset.scene_roles[scene]) != frozen_role:
             continue
         for edge in dataset.directed_edges(scene):
             if edge.source_world >= edge.target_world:
@@ -117,6 +126,7 @@ def _power_coverage_convergence(config, dataset, power_coverage):
             "passed": False,
             "coverages": coverages,
             "unit_count": 0,
+            "frozen_role": frozen_role,
             "maximum_absolute_change": None,
             "tolerance": float(config["path"]["equivalence_margin"]),
         }
@@ -127,6 +137,7 @@ def _power_coverage_convergence(config, dataset, power_coverage):
         "passed": bool(maximum <= tolerance),
         "coverages": coverages,
         "unit_count": len(values),
+        "frozen_role": frozen_role,
         "maximum_absolute_change": maximum,
         "tolerance": tolerance,
     }
@@ -204,6 +215,48 @@ def localization_path_incidence(
     return float(np.mean(values))
 
 
+def _require_manifested_stage_artifact(path, evidence):
+    artifact_path = Path(path)
+    manifest_path = artifact_path.parent / "manifest.json"
+    if not artifact_path.is_file() or artifact_path.is_symlink():
+        raise RuntimeError(f"path input artifact is missing or symlinked: {artifact_path}")
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise RuntimeError(f"path input has no regular stage manifest: {artifact_path}")
+    manifest = read_strict_json(manifest_path)
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema_version")
+        != "csi-pairs-formal-stage-manifest-v2.1-v6"
+    ):
+        raise RuntimeError(f"path input stage manifest schema mismatch: {manifest_path}")
+    for key, value in evidence.items():
+        if manifest.get(key) != value:
+            raise RuntimeError(f"path input stage manifest {key} mismatch: {manifest_path}")
+    entries = manifest.get("files")
+    relative = str(artifact_path.relative_to(artifact_path.parent))
+    matches = [
+        row
+        for row in entries
+        if isinstance(row, dict) and row.get("path") == relative
+    ] if isinstance(entries, list) else []
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"path input artifact is absent from or duplicated in its stage manifest: {artifact_path}"
+        )
+    entry = matches[0]
+    for key, value in evidence.items():
+        if key in entry and entry[key] != value:
+            raise RuntimeError(
+                f"path input artifact manifest entry {key} mismatch: {artifact_path}"
+            )
+    observed_sha256 = sha256_file(artifact_path)
+    if entry.get("sha256") != observed_sha256:
+        raise RuntimeError(f"path input artifact sha256 mismatch: {artifact_path}")
+    if entry.get("bytes") != artifact_path.stat().st_size:
+        raise RuntimeError(f"path input artifact byte count mismatch: {artifact_path}")
+    return entry
+
+
 def run_path_audit(
     config: dict,
     dataset: FormalDataset,
@@ -219,17 +272,23 @@ def run_path_audit(
         ("source_method_selection", "source_final_unseen_bank", "target"),
     )
     root = Path(output_root)
-    output_dir = root / "path"
-    output_dir.mkdir(parents=True, exist_ok=True)
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
+    compatibility_path = root / "evaluation" / "compatibility_pair_effects.csv"
+    response_path = root / "evaluation" / "response_pair_effects.csv"
+    localization_path = Path(factorial_root) / "localization_per_sample.csv"
+    for path in (compatibility_path, response_path, localization_path):
+        _require_manifested_stage_artifact(path, evidence)
+
+    output_dir = root / "path"
+    output_dir.mkdir(parents=True, exist_ok=True)
     power_coverage = float(config["path"]["power_coverage"])
     epsilon = _noop_path_threshold(config, dataset, power_coverage)
     provenance = _path_provenance(config, dataset, power_coverage)
     write_json(output_dir / "path_provenance.json", provenance)
     compatibility = _join_effects(
-        root / "evaluation" / "compatibility_pair_effects.csv",
+        compatibility_path,
         dataset,
         "matched_minus_alternative",
         epsilon,
@@ -237,7 +296,7 @@ def run_path_audit(
         evidence,
     )
     response = _join_effects(
-        root / "evaluation" / "response_pair_effects.csv",
+        response_path,
         dataset,
         "response_advantage",
         epsilon,
@@ -247,7 +306,7 @@ def run_path_audit(
     matched_compatibility = _exact_path_match(compatibility)
     matched_response = _exact_path_match(response)
     localization = _localization_rows(
-        Path(factorial_root) / "localization_per_sample.csv",
+        localization_path,
         dataset,
         epsilon,
         power_coverage,
@@ -273,10 +332,14 @@ def run_path_audit(
         matched_compatibility,
         matched_response,
         balance,
-        len(compatibility),
+        compatibility,
+        response,
         localization,
         provenance,
     )
+    if dataset.is_fixture:
+        mechanism["passed"] = False
+        mechanism["software_only_qualification_bypass"] = True
     status = {
         "schema_version": "csi-pairs-v6-path-gate-v3",
         "status": "PASS" if mechanism["passed"] else "FAIL",
@@ -285,8 +348,8 @@ def run_path_audit(
         "gate": "G7",
         "epsilon_path": epsilon,
         "epsilon_source": "source_method_selection canonical no-edit path retraces",
-        "matching_rule": "exact arm/route/scene/edit-family/bit strata plus nearest standardized delta-map, BS-UE-distance, UE-edit-distance and LoS covariates",
-        "matching_strata": ["arm", "route", "bank_id", "bit_index", "edit_family"],
+        "matching_rule": "exact seed/arm/route/scene/edit-family/bit strata plus nearest standardized delta-map, BS-UE-distance, UE-edit-distance and LoS covariates",
+        "matching_strata": ["seed", "arm", "route", "bank_id", "bit_index", "edit_family"],
         "a_path_loc_aggregation": "unweighted mean over all registered adjacent edits from the natural world",
         "power_coverage": power_coverage,
         "path_provenance_sha256": provenance["registry_sha256"],
@@ -345,62 +408,189 @@ def _path_record_change(dataset, scene, world, position, power_coverage):
     return changed / max(denominator, 1e-12)
 
 
+def _effect_row_identity(row, dataset, path, metric, canonical_bank_cache):
+    required = {
+        "seed",
+        "arm",
+        "pair_id",
+        "scene_index",
+        "bank_id",
+        "base_map_cluster_id",
+        "canonical_base_map_digest",
+        "canonical_bank_digest",
+        "city_id",
+        "source_world",
+        "target_world",
+        "position_index",
+        "route",
+        metric,
+    }
+    if metric == "response_advantage":
+        required.update(("query_index", "wrong_action_match_status"))
+    missing = sorted(name for name in required if row.get(name) in (None, ""))
+    if missing:
+        raise RuntimeError(f"path effect row is missing identity fields {missing}: {path}")
+    try:
+        seed = int(row["seed"])
+        scene = int(row["scene_index"])
+        source = int(row["source_world"])
+        target = int(row["target_world"])
+        position = int(row["position_index"])
+    except (TypeError, ValueError) as error:
+        raise RuntimeError(f"path effect row has non-integer identity: {path}") from error
+    if not 0 <= scene < len(dataset.bank_ids):
+        raise RuntimeError(f"path effect row scene_index is out of range: {path}")
+    if not 0 <= source < len(dataset.world_bits) or not 0 <= target < len(dataset.world_bits):
+        raise RuntimeError(f"path effect row world index is out of range: {path}")
+    if not 0 <= position < dataset.position_ids.shape[1]:
+        raise RuntimeError(f"path effect row position_index is out of range: {path}")
+    if str(dataset.scene_roles[scene]) not in {"source_final_unseen_bank", "target"}:
+        raise RuntimeError(f"path effect row uses a non-evaluation scene role: {path}")
+    if (
+        str(dataset.scene_roles[scene]) == "target"
+        and str(dataset.position_roles[scene, position]) != "query"
+    ):
+        raise RuntimeError("target support_pool leaked into path denominator")
+    if scene not in canonical_bank_cache:
+        canonical_bank_cache[scene] = _canonical_bank_digest(dataset, scene)
+    expected = {
+        "bank_id": str(dataset.bank_ids[scene]),
+        "base_map_cluster_id": str(dataset.base_map_cluster_ids[scene]),
+        "canonical_base_map_digest": dataset.canonical_base_map_digest(scene),
+        "canonical_bank_digest": canonical_bank_cache[scene],
+        "city_id": str(dataset.city_ids[scene]),
+    }
+    for name, value in expected.items():
+        if str(row.get(name, "")) != str(value):
+            raise RuntimeError(
+                f"path effect row {name} does not match scene_index={scene}: {path}"
+            )
+    changed = np.flatnonzero(dataset.world_bits[source] != dataset.world_bits[target])
+    if changed.size != 1:
+        raise RuntimeError("path effect row is not a direct edit")
+    if str(row["arm"]) not in {"endpoint", "alignment", "response", "full"}:
+        raise RuntimeError(f"path effect row has an unknown arm: {path}")
+    if str(row["route"]) not in {"active", "gray", "null"}:
+        raise RuntimeError(f"path effect row has an unknown route: {path}")
+    if metric == "matched_minus_alternative":
+        left, right = sorted((source, target))
+        expected_pair_id = (
+            f"{expected['bank_id']}:{left}:{right}:{position}:{source}"
+        )
+        query = None
+    elif metric == "response_advantage":
+        try:
+            query = int(row["query_index"])
+        except (TypeError, ValueError) as error:
+            raise RuntimeError(f"path response row has non-integer query_index: {path}") from error
+        if not 0 <= query < PatchSpec.from_metadata(dataset.metadata).patch_count:
+            raise RuntimeError(f"path response row query_index is out of range: {path}")
+        expected_pair_id = (
+            f"{expected['bank_id']}:{source}:{target}:{position}:{query}"
+        )
+        status = str(row["wrong_action_match_status"])
+        if status not in {"exact", "fallback", "failed"}:
+            raise RuntimeError(f"path response row has invalid wrong-action status: {path}")
+        has_swap_value = row.get("response_advantage_vs_action_swap") not in (None, "")
+        if (status == "exact") != has_swap_value:
+            raise RuntimeError(
+                f"path response row exact status and action-swap metric disagree: {path}"
+            )
+    else:
+        raise ValueError(f"unsupported path effect metric {metric!r}")
+    if str(row["pair_id"]) != expected_pair_id:
+        raise RuntimeError(
+            f"path effect row pair_id does not match its dataset identity: {path}"
+        )
+    return {
+        "seed": seed,
+        "scene": scene,
+        "source": source,
+        "target": target,
+        "position": position,
+        "query": query,
+        "bit_index": int(changed[0]),
+        **expected,
+    }
+
+
 def _join_effects(path, dataset, metric, epsilon, power_coverage, evidence):
     if not path.is_file():
         raise RuntimeError(f"path audit requires evaluation artifact {path}")
     output = []
+    canonical_bank_cache = {}
+    observed_rows = set()
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             _validate_row_evidence(row, evidence, path)
-            scene = int(row["scene_index"])
-            source = int(row["source_world"])
-            target = int(row["target_world"])
-            position = int(row["position_index"])
-            changed = np.flatnonzero(dataset.world_bits[source] != dataset.world_bits[target])
-            if changed.size != 1:
-                raise RuntimeError("path effect row is not a direct edit")
+            identity = _effect_row_identity(
+                row, dataset, path, metric, canonical_bank_cache
+            )
+            scene = identity["scene"]
+            source = identity["source"]
+            target = identity["target"]
+            position = identity["position"]
+            row_key = (identity["seed"], str(row["arm"]), str(row["pair_id"]))
+            if row_key in observed_rows:
+                raise RuntimeError(f"path effect table contains duplicate pair identity: {path}")
+            observed_rows.add(row_key)
             value = path_incidence(
-                dataset, scene, source, target, position, int(changed[0]), power_coverage
+                dataset,
+                scene,
+                source,
+                target,
+                position,
+                identity["bit_index"],
+                power_coverage,
             )
             covariates = _path_covariates(
                 dataset, scene, source, target, position, power_coverage
             )
-            if (
-                str(dataset.scene_roles[scene]) == "target"
-                and str(dataset.position_roles[scene, position]) != "query"
+            metric_value = float(row[metric])
+            if not np.isfinite(metric_value):
+                raise RuntimeError(f"path effect metric is non-finite: {path}")
+            auxiliary = {}
+            for name in (
+                "response_advantage_vs_action_swap",
+                "response_advantage_vs_no_action",
             ):
-                raise RuntimeError("target support_pool leaked into path denominator")
+                if name in row and row[name] != "":
+                    auxiliary[name] = float(row[name])
+                    if not np.isfinite(auxiliary[name]):
+                        raise RuntimeError(f"path auxiliary effect is non-finite: {path}")
             output.append(
                 {
-                    "seed": int(row["seed"]),
+                    "seed": identity["seed"],
                     "arm": row["arm"],
                     "pair_id": row["pair_id"],
                     "scene_index": scene,
-                    "bank_id": row["bank_id"],
-                    "base_map_cluster_id": str(dataset.base_map_cluster_ids[scene]),
-                    "city_id": row["city_id"],
+                    "bank_id": identity["bank_id"],
+                    "base_map_cluster_id": identity["base_map_cluster_id"],
+                    "canonical_base_map_digest": identity[
+                        "canonical_base_map_digest"
+                    ],
+                    "canonical_bank_digest": identity["canonical_bank_digest"],
+                    "city_id": identity["city_id"],
                     "source_world": source,
                     "target_world": target,
                     "position_index": position,
                     **(
-                        {"query_index": int(row["query_index"])}
-                        if "query_index" in row and row["query_index"] != ""
+                        {"query_index": identity["query"]}
+                        if identity["query"] is not None
                         else {}
                     ),
                     "route": row["route"],
-                    "bit_index": int(changed[0]),
+                    **(
+                        {"wrong_action_match_status": row["wrong_action_match_status"]}
+                        if row.get("wrong_action_match_status")
+                        else {}
+                    ),
+                    "bit_index": identity["bit_index"],
                     "a_path": value,
                     "a_path_bin": _path_bin(value, epsilon),
                     **covariates,
-                    metric: float(row[metric]),
-                    **{
-                        name: float(row[name])
-                        for name in (
-                            "response_advantage_vs_action_swap",
-                            "response_advantage_vs_no_action",
-                        )
-                        if name in row and row[name] != ""
-                    },
+                    metric: metric_value,
+                    **auxiliary,
                 }
             )
     if not output:
@@ -482,9 +672,31 @@ def _localization_rows(path, dataset, epsilon, power_coverage, evidence):
     if not path.is_file():
         raise RuntimeError("path audit requires localization per-sample results")
     rows = []
+    canonical_bank_cache = {}
+    observed_rows = set()
     with path.open(newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             _validate_row_evidence(row, evidence, path)
+            required = {
+                "seed",
+                "arm",
+                "city_id",
+                "bank_id",
+                "base_map_cluster_id",
+                "canonical_base_map_digest",
+                "canonical_bank_digest",
+                "budget",
+                "draw",
+                "position_id",
+                "true_x",
+                "true_y",
+                "error_m",
+            }
+            missing = sorted(name for name in required if row.get(name) in (None, ""))
+            if missing:
+                raise RuntimeError(
+                    f"path localization row is missing identity fields {missing}: {path}"
+                )
             clean_row = {
                 key: value
                 for key, value in row.items()
@@ -494,27 +706,75 @@ def _localization_rows(path, dataset, epsilon, power_coverage, evidence):
             if scenes.size != 1:
                 raise RuntimeError("localization bank join is not one-to-one")
             scene = int(scenes[0])
+            if str(dataset.scene_roles[scene]) != "target":
+                raise RuntimeError("localization path input must use target banks")
             positions = np.flatnonzero(dataset.position_ids[scene] == row["position_id"])
             if positions.size != 1:
                 raise RuntimeError("localization position join is not one-to-one")
+            position = int(positions[0])
+            if str(dataset.position_roles[scene, position]) != "query":
+                raise RuntimeError("target support_pool leaked into localization path denominator")
+            if scene not in canonical_bank_cache:
+                canonical_bank_cache[scene] = _canonical_bank_digest(dataset, scene)
+            expected = {
+                "city_id": str(dataset.city_ids[scene]),
+                "base_map_cluster_id": str(dataset.base_map_cluster_ids[scene]),
+                "canonical_base_map_digest": dataset.canonical_base_map_digest(scene),
+                "canonical_bank_digest": canonical_bank_cache[scene],
+            }
+            for name, expected_value in expected.items():
+                if str(row.get(name, "")) != str(expected_value):
+                    raise RuntimeError(
+                        f"path localization row {name} does not match bank_id={row['bank_id']}: {path}"
+                    )
+            if not np.allclose(
+                [float(row["true_x"]), float(row["true_y"])],
+                dataset.positions[scene, position],
+                rtol=0.0,
+                atol=1e-9,
+            ):
+                raise RuntimeError("path localization truth does not match its position identity")
+            error_m = float(row["error_m"])
+            if not np.isfinite(error_m) or error_m < 0:
+                raise RuntimeError("path localization error must be finite and nonnegative")
+            row_key = (
+                int(row["seed"]),
+                str(row["arm"]),
+                str(row["bank_id"]),
+                int(row["budget"]),
+                int(row["draw"]),
+                str(row["position_id"]),
+            )
+            if row_key in observed_rows:
+                raise RuntimeError("path localization table contains duplicate sample identity")
+            observed_rows.add(row_key)
             value = localization_path_incidence(
                 dataset,
                 scene,
                 int(dataset.natural_world_index[scene]),
-                int(positions[0]),
+                position,
                 power_coverage,
             )
-            rows.append({**clean_row, "a_path_loc": value, "a_path_bin": _path_bin(value, epsilon)})
+            clean_row.update(expected)
+            clean_row["error_m"] = error_m
+            rows.append(
+                {
+                    **clean_row,
+                    "a_path_loc": value,
+                    "a_path_bin": _path_bin(value, epsilon),
+                }
+            )
     return rows
 
 
 def _validate_row_evidence(row, evidence, path):
-    for key in ("dataset_sha256", "config_sha256"):
-        if row.get(key) != str(evidence[key]):
+    expected = {
+        key: ("True" if value else "False") if isinstance(value, bool) else str(value)
+        for key, value in evidence.items()
+    }
+    for key, value in expected.items():
+        if row.get(key) != value:
             raise RuntimeError(f"path input {key} mismatch: {path}")
-    expected_fixture = "True" if evidence["fixture"] else "False"
-    if row.get("fixture") != expected_fixture:
-        raise RuntimeError(f"path input fixture mismatch: {path}")
 
 
 def _bin_summaries(compatibility, response):
@@ -549,6 +809,7 @@ def _exact_path_match(rows):
     strata = sorted(
         {
             (
+                int(row["seed"]),
                 row["arm"],
                 row["route"],
                 row["bank_id"],
@@ -565,6 +826,7 @@ def _exact_path_match(rows):
                 row
                 for row in rows
                 if (
+                    int(row["seed"]),
                     row["arm"],
                     row["route"],
                     row["bank_id"],
@@ -591,7 +853,7 @@ def _exact_path_match(rows):
         scale = np.std(pooled, axis=0)
         scale[scale < 1e-9] = 1.0
         anchors = sorted(
-            groups["zero"], key=lambda row: (row["bank_id"], row["pair_id"], row["seed"])
+            groups["zero"], key=lambda row: (row["bank_id"], row["pair_id"])
         )[:count]
         available = {name: list(groups[name]) for name in bins if name != "zero"}
         for match_index, anchor in enumerate(anchors):
@@ -654,8 +916,11 @@ def _localization_mechanism_intervals(rows, resamples):
     row_by_key = {}
     for row in rows:
         key = (
-            str(row["base_map_cluster_id"]),
-            str(row["bank_id"]),
+            str(
+                row.get("canonical_base_map_digest")
+                or row["base_map_cluster_id"]
+            ),
+            str(row.get("canonical_bank_digest") or row["bank_id"]),
             int(row["seed"]),
             int(row["budget"]),
             int(row["draw"]),
@@ -673,6 +938,10 @@ def _localization_mechanism_intervals(rows, resamples):
             selected.append(
                 {
                     "base_map_cluster_id": key[0],
+                    "canonical_base_map_digest": key[0],
+                    "bank_id": key[1],
+                    "canonical_bank_digest": key[1],
+                    "seed": key[2],
                     "a_path": float(source["a_path_loc"]),
                     "localization_advantage": float(
                         np.mean(keyed[(key, baseline)]) - np.mean(keyed[(key, "full")])
@@ -695,15 +964,58 @@ def _mechanism_gate(
     compatibility,
     response,
     balance,
-    unmatched_count,
+    original_compatibility,
+    original_response,
     localization,
     provenance,
 ):
     minimum = float(config["path"]["minimum_trend_slope"])
     margin = float(config["path"]["equivalence_margin"])
     balance_max = float(config["path"]["balance_smd_max"])
-    comp = [row for row in compatibility if row["arm"] == "full" and row["route"] == "active"]
-    resp = [row for row in response if row["arm"] == "full" and row["route"] == "active"]
+    def slope_pass(interval):
+        return bool(
+            isinstance(interval, dict)
+            and interval.get("assessed", True) is True
+            and interval.get("ci95_low") is not None
+            and float(interval["ci95_low"]) > minimum
+        )
+
+    def headline(rows):
+        return [
+            row
+            for row in rows
+            if row["arm"] == "full" and row["route"] == "active"
+        ]
+
+    def exact_response(rows):
+        return [
+            row
+            for row in headline(rows)
+            if row.get("wrong_action_match_status") == "exact"
+            and "response_advantage_vs_action_swap" in row
+        ]
+
+    comp = headline(compatibility)
+    resp = headline(response)
+    original_comp = headline(original_compatibility)
+    original_resp = headline(original_response)
+    original_exact_resp = exact_response(original_response)
+    swap_resp = exact_response(response)
+    compatibility_overlap_consistent = len(comp) <= len(original_comp)
+    exact_response_overlap_consistent = len(swap_resp) <= len(original_exact_resp)
+    compatibility_overlap = (
+        len(comp) / len(original_comp)
+        if original_comp and compatibility_overlap_consistent
+        else 0.0
+    )
+    exact_response_overlap = (
+        len(swap_resp) / len(original_exact_resp)
+        if original_exact_resp and exact_response_overlap_consistent
+        else 0.0
+    )
+    original_exact_response_coverage = (
+        len(original_exact_resp) / len(original_resp) if original_resp else 0.0
+    )
     if not comp or not resp:
         return {
             "passed": False,
@@ -719,23 +1031,40 @@ def _mechanism_gate(
             "failure_reason": "no matched full-active strata spanning zero/low/medium/high path bins",
             "balance_passed": False,
             "matched_overlap_fraction": 0.0,
+            "compatibility_matched_overlap_fraction": compatibility_overlap,
+            "exact_response_matched_overlap_fraction": exact_response_overlap,
+            "original_exact_response_coverage": original_exact_response_coverage,
             "effective_base_map_clusters": 0,
+            "compatibility_effective_base_map_clusters": 0,
+            "exact_response_effective_base_map_clusters": 0,
             "path_provenance": provenance,
         }
     resamples = int(config["path"]["bootstrap_resamples"])
-    comp_slope = _cluster_slope_interval(
+    comp_slope = _safe_cluster_slope_interval(
         comp, "matched_minus_alternative", resamples, 120000
     )
-    response_slope = _cluster_slope_interval(
+    response_slope = _safe_cluster_slope_interval(
         resp, "response_advantage", resamples, 120001
     )
-    response_swap_slope = _cluster_slope_interval(
-        resp, "response_advantage_vs_action_swap", resamples, 120011
+    swap_coverage = len(swap_resp) / len(resp)
+    minimum_swap_coverage = float(
+        config["qualification"]["minimum_geometry_matched_wrong_action_fraction"]
     )
-    response_no_action_slope = _cluster_slope_interval(
+    response_swap_slope = _safe_cluster_slope_interval(
+        swap_resp, "response_advantage_vs_action_swap", resamples, 120011
+    )
+    response_no_action_slope = _safe_cluster_slope_interval(
         resp, "response_advantage_vs_no_action", resamples, 120012
     )
-    localization_slopes = _localization_mechanism_intervals(localization, resamples)
+    try:
+        localization_slopes = _localization_mechanism_intervals(
+            localization, resamples
+        )
+    except RuntimeError as error:
+        localization_slopes = {
+            arm: _unassessed_interval(str(error))
+            for arm in ("endpoint", "alignment", "response")
+        }
     zero_comp = _bank_bootstrap_equivalence(
         [row for row in compatibility if row["arm"] == "full" and row["a_path_bin"] == "zero"],
         "matched_minus_alternative",
@@ -753,12 +1082,29 @@ def _mechanism_gate(
     balance_pass = bool(
         balance and max(row["standardized_mean_difference"] for row in balance) <= balance_max
     )
-    effective_clusters = len({row["base_map_cluster_id"] for row in comp})
-    overlap = len(compatibility) / max(int(unmatched_count), 1)
+    compatibility_effective_clusters = len(
+        {
+            str(row.get("canonical_base_map_digest") or row["base_map_cluster_id"])
+            for row in comp
+        }
+    )
+    exact_response_effective_clusters = len(
+        {
+            str(row.get("canonical_base_map_digest") or row["base_map_cluster_id"])
+            for row in swap_resp
+        }
+    )
+    minimum_effective = int(config["path"]["minimum_effective_sample_size"])
+    minimum_overlap = float(config["path"]["covariate_overlap_minimum"])
     match_pass = bool(
         balance_pass
-        and effective_clusters >= int(config["path"]["minimum_effective_sample_size"])
-        and overlap >= float(config["path"]["covariate_overlap_minimum"])
+        and compatibility_overlap_consistent
+        and exact_response_overlap_consistent
+        and compatibility_effective_clusters >= minimum_effective
+        and exact_response_effective_clusters >= minimum_effective
+        and compatibility_overlap >= minimum_overlap
+        and exact_response_overlap >= minimum_overlap
+        and original_exact_response_coverage >= minimum_swap_coverage
     )
     g7_subgates = {
         "1_registered_path_provenance_and_noop_epsilon": "PASS"
@@ -766,13 +1112,14 @@ def _mechanism_gate(
         else "FAIL",
         "2_covariate_matching_balance_overlap_ess": "PASS" if match_pass else "FAIL",
         "3_compatibility_trend_cluster_ci": "PASS"
-        if comp_slope["ci95_low"] > minimum
+        if slope_pass(comp_slope)
         else "FAIL",
         "4_response_trend_cluster_ci": "PASS"
-        if response_slope["ci95_low"] > minimum
-        and response_swap_slope["ci95_low"] > minimum
-        and response_no_action_slope["ci95_low"] > minimum
-        and all(value["ci95_low"] > minimum for value in localization_slopes.values())
+        if slope_pass(response_slope)
+        and swap_coverage >= minimum_swap_coverage
+        and slope_pass(response_swap_slope)
+        and slope_pass(response_no_action_slope)
+        and all(slope_pass(value) for value in localization_slopes.values())
         else "FAIL",
         "5_zero_path_bank_equivalence": "PASS"
         if zero_comp["passed"] and zero_response["passed"]
@@ -785,6 +1132,9 @@ def _mechanism_gate(
         "compatibility_trend_slope": comp_slope,
         "response_trend_slope": response_slope,
         "response_vs_action_swap_trend_slope": response_swap_slope,
+        "response_action_swap_exact_coverage": swap_coverage,
+        "response_action_swap_original_exact_coverage": original_exact_response_coverage,
+        "response_action_swap_minimum_exact_coverage": minimum_swap_coverage,
         "response_vs_no_action_trend_slope": response_no_action_slope,
         "localization_full_advantage_trend_slopes": localization_slopes,
         "minimum_trend_slope": minimum,
@@ -792,8 +1142,20 @@ def _mechanism_gate(
         "zero_path_response_equivalence": zero_response,
         "balance_passed": balance_pass,
         "balance_smd_max": balance_max,
-        "matched_overlap_fraction": overlap,
-        "effective_base_map_clusters": effective_clusters,
+        "matched_overlap_fraction": min(
+            compatibility_overlap, exact_response_overlap
+        ),
+        "compatibility_matched_overlap_fraction": compatibility_overlap,
+        "exact_response_matched_overlap_fraction": exact_response_overlap,
+        "compatibility_overlap_count": len(comp),
+        "compatibility_overlap_denominator": len(original_comp),
+        "exact_response_overlap_count": len(swap_resp),
+        "exact_response_overlap_denominator": len(original_exact_resp),
+        "compatibility_effective_base_map_clusters": compatibility_effective_clusters,
+        "exact_response_effective_base_map_clusters": exact_response_effective_clusters,
+        "effective_base_map_clusters": min(
+            compatibility_effective_clusters, exact_response_effective_clusters
+        ),
         "path_provenance": provenance,
     }
 
@@ -804,62 +1166,180 @@ def _slope(rows, metric):
     return float(np.polyfit([row["a_path"] for row in rows], [row[metric] for row in rows], 1)[0])
 
 
-def _cluster_slope_interval(rows, metric, resamples, seed):
-    clusters = sorted({row["base_map_cluster_id"] for row in rows})
-    if len(clusters) < 2:
-        raise RuntimeError(f"path trend for {metric} requires two base-map clusters")
-    cluster_slopes = []
-    retained_clusters = []
-    for cluster in clusters:
-        selected = [row for row in rows if row["base_map_cluster_id"] == cluster]
-        if len(selected) >= 2 and np.std([row["a_path"] for row in selected]) > 1e-12:
-            retained_clusters.append(cluster)
-            cluster_slopes.append(_slope(selected, metric))
-    if len(cluster_slopes) < 2:
+def _seed_bank_foundation_interval(cells, resamples, seed):
+    foundations = sorted(cells)
+    if len(foundations) < 2:
+        raise RuntimeError("path interval requires two canonical base-map foundations")
+    seed_sets = []
+    canonical_banks = set()
+    for foundation in foundations:
+        if not cells[foundation]:
+            raise RuntimeError("path interval contains an empty foundation layer")
+        for bank, seed_values in cells[foundation].items():
+            canonical_banks.add(bank)
+            seed_sets.append(set(seed_values))
+            if not seed_values or not all(np.isfinite(value) for value in seed_values.values()):
+                raise RuntimeError("path interval contains an empty or non-finite seed cell")
+    seeds = sorted(seed_sets[0])
+    if not seeds or any(set(values) != set(seeds) for values in seed_sets):
         raise RuntimeError(
-            f"path trend for {metric} requires within-cluster variation in two base-map clusters"
+            "path interval requires the same complete paired training-seed layer in every bank"
         )
-    cluster_slopes = np.asarray(cluster_slopes, dtype=np.float64)
-    estimate = float(np.mean(cluster_slopes))
-    rng = np.random.default_rng(int(seed))
-    values = [
-        float(
-            np.mean(
-                cluster_slopes[
-                    rng.integers(0, len(cluster_slopes), size=len(cluster_slopes))
-                ]
+
+    def aggregate(selected_foundations, selected_seeds, rng=None):
+        foundation_values = []
+        for foundation in selected_foundations:
+            banks = sorted(cells[foundation])
+            selected_banks = (
+                [banks[index] for index in rng.integers(0, len(banks), size=len(banks))]
+                if rng is not None
+                else banks
             )
-        )
-        for _ in range(int(resamples))
-    ]
+            foundation_values.append(
+                float(
+                    np.mean(
+                        [
+                            np.mean(
+                                [cells[foundation][bank][seed_value] for seed_value in selected_seeds]
+                            )
+                            for bank in selected_banks
+                        ]
+                    )
+                )
+            )
+        return float(np.mean(foundation_values))
+
+    estimate = aggregate(foundations, seeds)
+    rng = np.random.default_rng(int(seed))
+    samples = np.empty(int(resamples), dtype=np.float64)
+    for index in range(int(resamples)):
+        selected_foundations = [
+            foundations[value]
+            for value in rng.integers(0, len(foundations), size=len(foundations))
+        ]
+        selected_seeds = [
+            seeds[value] for value in rng.integers(0, len(seeds), size=len(seeds))
+        ]
+        samples[index] = aggregate(selected_foundations, selected_seeds, rng)
     return {
         "estimate": estimate,
-        "ci95_low": float(np.percentile(values, 2.5)),
-        "ci95_high": float(np.percentile(values, 97.5)),
-        "base_map_cluster_count": len(retained_clusters),
-        "aggregation": "within-cluster slope then equal base-map-cluster macro",
+        "ci95_low": float(np.percentile(samples, 2.5)),
+        "ci95_high": float(np.percentile(samples, 97.5)),
+        "base_map_cluster_count": len(foundations),
+        "canonical_bank_count": len(canonical_banks),
+        "training_seed_count": len(seeds),
+        "aggregation": "per-seed slope/value then equal canonical-bank and canonical-foundation macro",
+        "resampling_layers": [
+            "canonical_foundation",
+            "canonical_bank_within_foundation",
+            "paired_training_seed_across_all_banks",
+        ],
     }
 
 
-def _bank_bootstrap_equivalence(rows, metric, margin, resamples, seed):
-    banks = sorted({row["base_map_cluster_id"] for row in rows})
-    if len(banks) < 2:
-        raise RuntimeError(f"zero-path equivalence for {metric} requires at least two base-map clusters")
-    values = np.asarray(
-        [np.mean([row[metric] for row in rows if row["base_map_cluster_id"] == bank]) for bank in banks]
-    )
-    rng = np.random.default_rng(seed)
-    samples = np.asarray(
-        [np.mean(values[rng.integers(0, len(values), size=len(values))]) for _ in range(int(resamples))]
-    )
-    low, high = float(np.percentile(samples, 2.5)), float(np.percentile(samples, 97.5))
+def _cluster_slope_interval(rows, metric, resamples, seed):
+    grouped = {}
+    all_seeds = {int(row["seed"]) for row in rows}
+    for row in rows:
+        foundation = str(
+            row.get("canonical_base_map_digest") or row["base_map_cluster_id"]
+        )
+        bank = str(row.get("canonical_bank_digest") or row["bank_id"])
+        grouped.setdefault(foundation, {}).setdefault(bank, {}).setdefault(
+            int(row["seed"]), []
+        ).append(row)
+    cells = {}
+    for foundation, banks in grouped.items():
+        for bank, seed_rows in banks.items():
+            if set(seed_rows) != all_seeds:
+                raise RuntimeError(
+                    f"path trend for {metric} has an incomplete paired seed layer"
+                )
+            variable = {
+                seed_value: len(values) >= 2
+                and np.std([row["a_path"] for row in values]) > 1e-12
+                for seed_value, values in seed_rows.items()
+            }
+            if any(variable.values()) and not all(variable.values()):
+                raise RuntimeError(
+                    f"path trend for {metric} has seed-selective within-bank variation"
+                )
+            if not all(variable.values()):
+                continue
+            cells.setdefault(foundation, {})[bank] = {
+                seed_value: _slope(values, metric)
+                for seed_value, values in seed_rows.items()
+            }
+    try:
+        return _seed_bank_foundation_interval(cells, resamples, seed)
+    except RuntimeError as error:
+        raise RuntimeError(f"path trend for {metric}: {error}") from error
+
+
+def _unassessed_interval(reason):
     return {
-        "base_map_cluster_count": len(banks),
-        "mean": float(np.mean(values)),
-        "ci95_low": low,
-        "ci95_high": high,
+        "assessed": False,
+        "estimate": None,
+        "ci95_low": None,
+        "ci95_high": None,
+        "base_map_cluster_count": 0,
+        "reason": str(reason),
+    }
+
+
+def _safe_cluster_slope_interval(rows, metric, resamples, seed):
+    try:
+        result = _cluster_slope_interval(rows, metric, resamples, seed)
+    except (KeyError, RuntimeError, ValueError) as error:
+        return _unassessed_interval(str(error))
+    return {"assessed": True, **result}
+
+
+def _bank_bootstrap_equivalence(rows, metric, margin, resamples, seed):
+    grouped = {}
+    for row in rows:
+        if metric not in row:
+            continue
+        foundation = str(
+            row.get("canonical_base_map_digest") or row["base_map_cluster_id"]
+        )
+        bank = str(row.get("canonical_bank_digest") or row["bank_id"])
+        grouped.setdefault(foundation, {}).setdefault(bank, {}).setdefault(
+            int(row["seed"]), []
+        ).append(float(row[metric]))
+    cells = {
+        foundation: {
+            bank: {
+                seed_value: float(np.mean(values))
+                for seed_value, values in seed_rows.items()
+            }
+            for bank, seed_rows in banks.items()
+        }
+        for foundation, banks in grouped.items()
+    }
+    try:
+        interval = _seed_bank_foundation_interval(cells, resamples, seed)
+    except RuntimeError as error:
+        return {
+            "passed": False,
+            "base_map_cluster_count": len(grouped),
+            "canonical_bank_count": len(
+                {bank for banks in grouped.values() for bank in banks}
+            ),
+            "mean": None,
+            "ci95_low": None,
+            "ci95_high": None,
+            "margin": margin,
+            "reason": f"zero-path equivalence for {metric}: {error}",
+        }
+    return {
+        **interval,
+        "mean": interval["estimate"],
         "margin": margin,
-        "passed": bool(low >= -margin and high <= margin),
+        "passed": bool(
+            interval["ci95_low"] >= -margin
+            and interval["ci95_high"] <= margin
+        ),
     }
 
 

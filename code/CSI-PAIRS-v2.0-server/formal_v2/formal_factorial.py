@@ -33,7 +33,13 @@ from .formal_model import (
     squared_rms_error,
     torch,
 )
-from .formal_protocol import PatchSpec, patchify_csi, typed_signed_edit, zero_typed_edit
+from .formal_protocol import (
+    PatchSpec,
+    headline_alignment_edge,
+    patchify_csi,
+    typed_signed_edit,
+    zero_typed_edit,
+)
 from .formal_routing import RouteNormalization, RoutedEdges, fit_route_normalization, route_dataset
 from .formal_statistics import (
     bank_only_factorial_interval,
@@ -339,7 +345,10 @@ def _build_corpus(dataset, scenes, teacher, config, route_normalization, normali
         response_null_bundles[scene] = []
         for edge in dataset.directed_edges(scene):
             for position in range(dataset.position_count):
-                if edge.source_world < edge.target_world:
+                if (
+                    edge.source_world < edge.target_world
+                    and headline_alignment_edge(dataset, scene, edge)
+                ):
                     route = routed.alignment_route[(scene, edge.source_world, edge.target_world, position)]
                     target = alignment_active if route == 2 else alignment_null if route == 0 else None
                     if target is not None:
@@ -1501,18 +1510,19 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
         else "FAIL",
     }
     g5_passed = all(value == "PASS" for value in g5_subgates.values())
+    software_only = bool(dataset.is_fixture)
     gate_vector = complete_gate_vector(
         {
-            "G1": "PASS",
-            "G2": "PASS",
+            "G1": "FAIL" if software_only else "PASS",
+            "G2": "FAIL" if software_only else "PASS",
             "G4": "NOT_ASSESSED",
             "G5": "PASS" if g5_passed else "FAIL",
         }
     )
     return {
         "schema_version": FACTORIAL_SCHEMA,
-        "status": "PASS" if g5_passed else "FAIL",
-        "passed": bool(g5_passed),
+        "status": "FAIL" if software_only else ("PASS" if g5_passed else "FAIL"),
+        "passed": bool(g5_passed and not software_only),
         **evidence,
         "gate_vector": gate_vector,
         "g4_subgates": subgates,
@@ -1526,6 +1536,7 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
         },
         "localization_city_budget_checks": localization_checks,
         "claim_boundary": "G4 cannot PASS until all seven subgates are PASS; NOT_ASSESSED is never PASS.",
+        "software_only_qualification_bypass": software_only,
         "config": public_formal_config(config),
     }
 

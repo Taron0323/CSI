@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .formal_data_verification import REGENERATED_FIELDS
-from .formal_io import parse_strict_json
+from formal_v2.formal_data_verification import REGENERATED_FIELDS
+from formal_v2.formal_io import parse_strict_json
 
 
 def main(argv=None):
