@@ -68,12 +68,12 @@ The appendix's `PLANNED` cells are registered result-schema sentinels, not popul
 claimed results. The startup guide, paper README and atomic matrix prohibit replacing them with
 fixture, smoke, unit-test or expected values.
 
-## Readiness verdict before remote-head replay
+## Readiness verdict after remote-head replay
 
 | Layer | Verdict | Boundary |
 |---|---|---|
 | `PACKAGE_INTEGRITY` | `PASS` | Deterministic local builds, sidecars and fresh extractions pass. |
-| `SOFTWARE_READY` | `PASS` | No open reproduced code-level P0/P1 remains in the audited environment. |
+| `SOFTWARE_READY` | `PASS` | No open reproduced code-level P0/P1 remains; clean-clone replay and hosted Linux CPU CI pass at `b2d22e56cf5ff4b2ab5ce1d9bc1a2e50035df01b`. |
 | `V6_PROTOCOL_FIDELITY` | `BLOCKED` | `SC-GAUGE-001` and `SC-ROUTE-002` require author decisions. |
 | `PAPER_PROTOCOL_READY` | `BLOCKED` | The paper is mechanically valid, but the two protocol conflicts prevent a scientific protocol GO. |
 | `FORMAL_INPUT_READY` | `BLOCKED` | Formal data, RT/reference evidence, a second C1 model, licenses and authorized CUDA compute are absent. |
@@ -82,4 +82,5 @@ fixture, smoke, unit-test or expected values.
 | `SCIENTIFIC_EVIDENCE` | `NOT_ASSESSED` | No authenticated non-fixture result exists and no formal training was run. |
 
 `SMOKE_GO=GO`, `PILOT_GO=CONDITIONAL-GO`, `FORMAL_GO=NO-GO`, and
-`PAPER_PROTOCOL_GO=NO-GO`. Remote PR-head clean-clone verification remains mandatory after push.
+`PAPER_PROTOCOL_GO=NO-GO`. Remote PR-head clean-clone verification and hosted CI completed at the
+last code-bearing head. A later ledger-only close commit does not alter executable or paper content.

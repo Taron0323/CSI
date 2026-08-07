@@ -10,7 +10,7 @@ Last updated: 2026-08-08 (Asia/Shanghai)
 - Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
 - Starting PR head: `1f5c5fafa0fd76cf1a243f18fcb234c3418a08a6`
 - `AUDITED_CODE_SHA`: `7560120ca588c2cce76507116d58ed98c49895bf`
-- Remote PR head before this delivery update: `73a344b05f607302036b503dbcb516b4a73396e9`
+- Last code-bearing remote PR head replayed cleanly: `b2d22e56cf5ff4b2ab5ce1d9bc1a2e50035df01b`
 
 ## Authority inputs
 
@@ -25,7 +25,7 @@ copied or used to restore code.
 
 ## Current phase
 
-`Final manifests, push, and clean remote re-review`
+`Clean remote re-review complete; external/author blocker handoff`
 
 ## Closed code findings
 
@@ -80,6 +80,7 @@ passes after the repair.
 | ICLR preflight on clean paper build | zero findings |
 | PDF render | 10/10 pages inspected; no overlap, clipping or identity metadata |
 | Remote main drift | none after fetch; `origin/main` remains `BASE_SHA` |
+| Hosted Linux CPU CI | `test-and-package` PASS at `b2d22e56cf5ff4b2ab5ce1d9bc1a2e50035df01b` ([run 31223556644](https://github.com/yiweinanzi/CSI/actions/runs/31223556644)) |
 | Anonymous exported-suite regression | PASS after fresh build/extraction; internal audit tooling absent |
 | Pull-request merge-ref anonymity regression | PASS against the actual PR merge-ref committer identity |
 | Deterministic server delivery | SHA-256 `4a3134d577f390f93d1b4eac665e0f343c3e8ca60790fb978bf3f8717c768dd5`; two byte-identical builds |
@@ -112,5 +113,7 @@ This prevents false completeness and leaves `GOAL_COMPLETE` blocked.
 
 ## Next single action
 
-Commit the verified delivery metadata, fetch and confirm `origin/main` has not drifted, then push
-normally to PR #3 and repeat all required checks from a fresh clone of the remote PR head.
+The authors must freeze `SC-GAUGE-001` and then `SC-ROUTE-002` in the V6 protocol. After both
+decisions are reflected in config, code, tests and paper, obtain the non-fixture data/RT/model/license
+and CUDA inputs listed above and run `prepare-full-run`. Until then, only the bounded smoke and
+non-scientific pilot operations in `artifacts/formal_experiment_blockers.md` are authorized.
