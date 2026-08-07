@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import torch
 
 from formal_v2.formal_config import load_formal_config
 from formal_v2.formal_dataset import FormalDataset
@@ -17,6 +18,7 @@ from formal_v2.formal_factorial import (
     _make_plan,
     _measure_execution,
     _new_model,
+    _response_batch,
     _training_normalization,
 )
 from formal_v2.formal_fixture import write_nonscientific_fixture
@@ -192,6 +194,25 @@ class ArmExecutionMutationTests(unittest.TestCase):
         self.assertGreater(measured_flops["alignment"], measured_flops["endpoint"])
         self.assertGreater(measured_flops["response"], measured_flops["endpoint"])
         self.assertGreater(measured_flops["full"], measured_flops["alignment"])
+
+    def test_response_pairing_break_keeps_action_but_replaces_target(self):
+        first = self.plan.response_all[0]
+        partner = next(
+            unit
+            for unit in self.plan.response_all
+            if unit[-1] == first[-1]
+            and (unit[0], unit[2], unit[3]) != (first[0], first[2], first[3])
+        )
+        entries = [
+            self.corpus.teacher.mask_bank[self.plan.response_all_masks[0]]
+        ]
+        matched = _response_batch(self.corpus, [first], entries)
+        shuffled = _response_batch(
+            self.corpus, [first], entries, target_units=[partner]
+        )
+        self.assertTrue(torch.equal(matched["action"], shuffled["action"]))
+        self.assertTrue(torch.equal(matched["source_z"], shuffled["source_z"]))
+        self.assertFalse(torch.equal(matched["target_z"], shuffled["target_z"]))
 
 
 def _statistics_rows():

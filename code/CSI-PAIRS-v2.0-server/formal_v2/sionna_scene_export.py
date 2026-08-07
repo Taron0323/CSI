@@ -71,8 +71,6 @@ def export_sionna_scenes(
             raise ValueError(f"{name} must be positive and finite")
     if not isinstance(max_depth, int) or isinstance(max_depth, bool) or max_depth <= 0:
         raise ValueError("Sionna max_depth must be a positive integer")
-    output = Path(output_root).resolve()
-    output.mkdir(parents=True, exist_ok=False)
     representation = dataset.metadata["representation"]
     resolution = float(representation["map_resolution_m"])
     origin = tuple(float(value) for value in representation["map_origin_xy_m"])
@@ -81,6 +79,8 @@ def export_sionna_scenes(
     scenes = dataset.indices_for_role("external_validation")
     if scenes.size == 0:
         raise RuntimeError("Sionna export requires at least one external_validation scene")
+    output = Path(output_root).resolve()
+    output.mkdir(parents=True, exist_ok=False)
     for scene_value in scenes:
         scene = int(scene_value)
         for world in range(dataset.world_count):

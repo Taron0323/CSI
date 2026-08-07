@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -32,6 +34,10 @@ CONTROL_IDS = (
 )
 G4_CONCAT_CONTROL_IDS = CONTROL_IDS[2:4]
 REPORT_ONLY_CONTROL_IDS = ("generous_2x_concat",)
+RESOURCE_MANIFEST_SCHEMAS = {
+    "csi-pairs-v6-resource-controls-v2",
+    "csi-pairs-v6-resource-controls-v3",
+}
 
 CONTROL_CONTRACTS = {
     "equal_flop_alignment": ("single_branch_alignment", {"endpoint", "alignment"}),
@@ -85,7 +91,11 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         source = (manifest_path.parent / adapter["adapter_source_path"]).resolve()
         architecture_path = (manifest_path.parent / adapter["architecture_spec_path"]).resolve()
         architecture = read_strict_json(architecture_path)
-        _validate_architecture_spec(control_id, architecture)
+        _validate_architecture_spec(
+            control_id,
+            architecture,
+            manifest_schema=manifest["schema_version"],
+        )
         target = output_dir / control_id
         target.mkdir(parents=True, exist_ok=True)
         command = [
@@ -96,7 +106,7 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
             )
             for value in adapter["command"]
         ]
-        completed = subprocess.run(command, check=False, capture_output=True, text=True)
+        completed = _run_adapter_process(command)
         (target / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
         (target / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
         if completed.returncode != 0:
@@ -104,26 +114,47 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         rows = _read_localization(target / "localization_per_bank.csv", evidence)
         if {row["arm"] for row in rows} != {control_id}:
             raise RuntimeError(f"resource control {control_id} emitted an incorrect arm name")
-        resource = read_strict_json(target / "resource.json")
-        _validate_resource(
-            control_id,
-            resource,
-            evidence,
-            target,
-            architecture=architecture,
-            architecture_sha256=adapter["architecture_spec_sha256"],
-            adapter_source_sha256=adapter["adapter_source_sha256"],
-        )
-        _run_replay(
-            adapter,
-            dataset,
-            root,
-            target,
-            resource,
-            architecture_path,
-            source,
-            evidence,
-        )
+        if manifest["schema_version"] == "csi-pairs-v6-resource-controls-v3":
+            index_path = target / "resource_index.json"
+            resource = _validate_resource_index(
+                control_id,
+                index_path,
+                evidence,
+                target,
+                config,
+                architecture=architecture,
+                architecture_sha256=adapter["architecture_spec_sha256"],
+                adapter_source_sha256=adapter["adapter_source_sha256"],
+            )
+            _run_replay_v3(
+                adapter,
+                target,
+                resource,
+                index_path,
+                architecture_path,
+                source,
+            )
+        else:
+            resource = read_strict_json(target / "resource.json")
+            _validate_resource(
+                control_id,
+                resource,
+                evidence,
+                target,
+                architecture=architecture,
+                architecture_sha256=adapter["architecture_spec_sha256"],
+                adapter_source_sha256=adapter["adapter_source_sha256"],
+            )
+            _run_replay(
+                adapter,
+                dataset,
+                root,
+                target,
+                resource,
+                architecture_path,
+                source,
+                evidence,
+            )
         if _localization_cells(rows) != _localization_cells(main_rows):
             raise RuntimeError(f"resource control {control_id} changes the frozen J estimand cells")
         utilities[control_id] = _utility(rows, control_id, config["localization"]["primary_budgets"])
@@ -207,7 +238,7 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
     subgates["7_parameter_and_flop_matched_concat_superiority"] = "PASS" if gate7 else "FAIL"
     g4 = "PASS" if all(value == "PASS" for value in subgates.values()) else "FAIL"
     gate = {
-        "schema_version": "csi-pairs-v6-resource-control-gate-v2",
+        "schema_version": "csi-pairs-v6-resource-control-gate-v3",
         "status": "PASS" if g4 == "PASS" else "FAIL",
         "passed": g4 == "PASS",
         **evidence,
@@ -231,6 +262,9 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         },
         "relative_tolerance": tolerance,
         "resource_integrity_verified": True,
+        "seed_complete_resource_evidence": bool(
+            manifest["schema_version"] == "csi-pairs-v6-resource-controls-v3"
+        ),
         "input_manifest_path": manifest_copy.name,
         "input_manifest_sha256": sha256_file(manifest_copy),
     }
@@ -249,7 +283,7 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
 def _validate_manifest(manifest, manifest_root=None):
     if not isinstance(manifest, dict) or set(manifest) != {"schema_version", "controls"}:
         raise ValueError("resource-control manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-resource-controls-v2":
+    if manifest["schema_version"] not in RESOURCE_MANIFEST_SCHEMAS:
         raise ValueError("resource-control manifest schema mismatch")
     controls = manifest["controls"]
     if not isinstance(controls, list) or {item.get("control_id") for item in controls} != set(CONTROL_IDS):
@@ -292,10 +326,18 @@ def _validate_manifest(manifest, manifest_root=None):
             _validate_architecture_spec(
                 item["control_id"],
                 read_strict_json(Path(manifest_root) / item["architecture_spec_path"]),
+                manifest_schema=manifest["schema_version"],
             )
 
 
-def _validate_architecture_spec(control_id, spec):
+def _validate_architecture_spec(
+    control_id,
+    spec,
+    *,
+    manifest_schema="csi-pairs-v6-resource-controls-v2",
+):
+    if manifest_schema == "csi-pairs-v6-resource-controls-v3":
+        return _validate_architecture_spec_v2(control_id, spec)
     required = {
         "schema_version", "control_id", "architecture_family", "state_keys",
         "objective_terms", "training_role", "selection_role", "evaluation_roles",
@@ -324,6 +366,57 @@ def _validate_architecture_spec(control_id, spec):
         or spec["evaluation_roles"] != ["source_final_unseen_bank", "target_query"]
     ):
         raise ValueError(f"{control_id} role ledger differs from the frozen control")
+
+
+def _validate_architecture_spec_v2(control_id, spec):
+    required = {
+        "schema_version", "control_id", "architecture_family",
+        "objective_terms", "training_role", "selection_role",
+        "evaluation_roles", "search_policy",
+    }
+    if not isinstance(spec, dict) or set(spec) != required:
+        raise ValueError(f"{control_id} architecture spec fields must be exact")
+    expected_family, expected_terms = CONTROL_CONTRACTS[control_id]
+    if (
+        spec["schema_version"] != "csi-pairs-v6-control-architecture-v2"
+        or spec["control_id"] != control_id
+        or spec["architecture_family"] != expected_family
+        or set(spec["objective_terms"]) != expected_terms
+        or spec["training_role"] != "source_encoder_train"
+        or spec["selection_role"] != "source_method_selection"
+        or spec["evaluation_roles"] != ["source_final_unseen_bank", "target_query"]
+    ):
+        raise ValueError(f"{control_id} V3 architecture contract is not frozen")
+    search = spec["search_policy"]
+    if not isinstance(search, dict) or set(search) != {
+        "selection_data", "selection_rule", "csi_encoder_layers",
+        "map_dim_scales", "hidden_dim_scales",
+    }:
+        raise ValueError(f"{control_id} architecture search policy fields must be exact")
+    if (
+        search["selection_data"] != "architecture_and_source_only_profiler"
+        or search["selection_rule"]
+        not in {"fixed_full_width", "closest_parameter_ratio", "closest_training_flop_ratio"}
+    ):
+        raise ValueError(f"{control_id} architecture search policy can read target evidence")
+    if not isinstance(search["csi_encoder_layers"], list) or not search["csi_encoder_layers"]:
+        raise ValueError(f"{control_id} CSI-layer search grid is empty")
+    if any(type(value) is not int or value < 1 for value in search["csi_encoder_layers"]):
+        raise ValueError(f"{control_id} CSI-layer search grid is invalid")
+    for name in ("map_dim_scales", "hidden_dim_scales"):
+        values = search[name]
+        if (
+            not isinstance(values, list)
+            or not values
+            or any(not np.isfinite(value) or not 0 < float(value) <= 1 for value in values)
+        ):
+            raise ValueError(f"{control_id} {name} search grid is invalid")
+    expected_rule = {
+        "parameter_matched_concat": "closest_parameter_ratio",
+        "flop_matched_concat": "closest_training_flop_ratio",
+    }.get(control_id, "fixed_full_width")
+    if search["selection_rule"] != expected_rule:
+        raise ValueError(f"{control_id} architecture selection rule mismatch")
 
 
 def _read_localization(path, evidence):
@@ -595,6 +688,407 @@ def _validate_loss_trace(control_id, path, optimizer_steps, objective_terms):
             raise RuntimeError(f"{control_id} loss trace has no measured gradient")
 
 
+def _validate_resource_index(
+    control_id,
+    index_path,
+    evidence,
+    control_root,
+    config,
+    *,
+    architecture,
+    architecture_sha256,
+    adapter_source_sha256,
+):
+    if not Path(index_path).is_file():
+        raise RuntimeError(f"{control_id} omitted resource_index.json")
+    index = read_strict_json(index_path)
+    required = {
+        "schema_version", "control_id", "dataset_sha256", "config_sha256",
+        "fixture", "architecture_spec_sha256", "adapter_source_sha256",
+        "records",
+    }
+    if not isinstance(index, dict) or set(index) != required:
+        raise RuntimeError(f"{control_id} resource index fields must be exact")
+    if (
+        index["schema_version"] != "csi-pairs-v6-resource-index-v3"
+        or index["control_id"] != control_id
+        or index["architecture_spec_sha256"] != architecture_sha256
+        or index["adapter_source_sha256"] != adapter_source_sha256
+    ):
+        raise RuntimeError(f"{control_id} resource index identity mismatch")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if index[key] != evidence[key]:
+            raise RuntimeError(f"{control_id} resource index {key} mismatch")
+    records = index["records"]
+    if not isinstance(records, list) or len(records) != len(config["seeds"]):
+        raise RuntimeError(f"{control_id} resource index must cover every seed")
+    seen = set()
+    normalized = []
+    for record in records:
+        normalized.append(
+            _validate_resource_seed_record(
+                control_id,
+                record,
+                evidence,
+                control_root,
+                config,
+                architecture,
+                architecture_sha256,
+                adapter_source_sha256,
+            )
+        )
+        seen.add(int(record["seed"]))
+    if seen != set(map(int, config["seeds"])) or len(seen) != len(records):
+        raise RuntimeError(f"{control_id} resource records have duplicate or missing seeds")
+    return {
+        "schema_version": "csi-pairs-v6-resource-record-v3",
+        "control_id": control_id,
+        "dataset_sha256": evidence["dataset_sha256"],
+        "config_sha256": evidence["config_sha256"],
+        "fixture": evidence["fixture"],
+        "training_flops": float(np.mean([row["training_flops"] for row in normalized])),
+        "inference_flops": float(np.mean([row["inference_flops"] for row in normalized])),
+        "parameters": float(np.mean([row["parameters"] for row in normalized])),
+        "wall_seconds": float(np.mean([row["wall_seconds"] for row in normalized])),
+        "seed_count": len(normalized),
+        "resource_index_path": Path(index_path).name,
+        "resource_index_sha256": sha256_file(index_path),
+        "architecture_spec_sha256": architecture_sha256,
+        "adapter_source_sha256": adapter_source_sha256,
+    }
+
+
+def _validate_resource_seed_record(
+    control_id,
+    record,
+    evidence,
+    control_root,
+    config,
+    architecture,
+    architecture_sha256,
+    adapter_source_sha256,
+):
+    required = {
+        "seed", "training_flops", "inference_flops", "parameters",
+        "wall_seconds", "checkpoint_path", "checkpoint_sha256",
+        "profiler_trace_path", "profiler_trace_sha256",
+        "training_log_path", "training_log_sha256",
+    }
+    if not isinstance(record, dict) or set(record) != required:
+        raise RuntimeError(f"{control_id} per-seed resource fields must be exact")
+    if int(record["seed"]) not in set(map(int, config["seeds"])):
+        raise RuntimeError(f"{control_id} resource record has an unknown seed")
+    for key in ("training_flops", "inference_flops", "parameters", "wall_seconds"):
+        if not np.isfinite(record[key]) or float(record[key]) <= 0:
+            raise RuntimeError(f"{control_id} per-seed {key} must be positive")
+    paths = {
+        prefix: _bound_control_file(
+            control_root,
+            record[f"{prefix}_path"],
+            record[f"{prefix}_sha256"],
+            f"{control_id} {prefix}",
+        )
+        for prefix in ("checkpoint", "profiler_trace", "training_log")
+    }
+    parameters = _validate_v3_checkpoint(
+        control_id,
+        paths["checkpoint"],
+        int(record["seed"]),
+        evidence,
+        config,
+        architecture,
+        architecture_sha256,
+        adapter_source_sha256,
+    )
+    if parameters != int(record["parameters"]):
+        raise RuntimeError(f"{control_id} parameter count differs from checkpoint tensors")
+    training_flops, inference_flops = _validate_v3_profiler(
+        control_id, paths["profiler_trace"]
+    )
+    if (
+        not np.isclose(training_flops, float(record["training_flops"]))
+        or not np.isclose(inference_flops, float(record["inference_flops"]))
+    ):
+        raise RuntimeError(f"{control_id} resource totals disagree with profiler")
+    _validate_v3_training_log(
+        control_id,
+        paths["training_log"],
+        int(record["seed"]),
+        record["checkpoint_sha256"],
+        control_root,
+        config,
+    )
+    return {
+        key: float(record[key])
+        for key in ("training_flops", "inference_flops", "parameters", "wall_seconds")
+    }
+
+
+def _bound_control_file(root, relative, digest, label):
+    root = Path(root).resolve()
+    path = (root / str(relative)).resolve()
+    if (
+        root not in path.parents
+        or not path.is_file()
+        or not _lower_sha256(digest)
+        or sha256_file(path) != digest
+    ):
+        raise RuntimeError(f"{label} is missing, escapes output, or is hash-mismatched")
+    return path
+
+
+def _validate_v3_checkpoint(
+    control_id,
+    path,
+    seed,
+    evidence,
+    config,
+    architecture,
+    architecture_sha256,
+    adapter_source_sha256,
+):
+    try:
+        import torch
+        from torch import nn
+        from .formal_localization import HeteroscedasticPositionHead
+        from .formal_model import CSIPairsFormalModel
+
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+    except Exception as error:
+        raise RuntimeError(f"{control_id} per-seed checkpoint is unreadable") from error
+    required = {
+        "schema_version", "control_id", "architecture_family",
+        "architecture_spec_sha256", "adapter_source_sha256",
+        "dataset_sha256", "config_sha256", "fixture", "seed",
+        "checkpoint_rule", "components", "bottleneck_state_dict",
+        "source_head_state_dict",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise RuntimeError(f"{control_id} per-seed checkpoint fields must be exact")
+    if (
+        payload["schema_version"] != "csi-pairs-v6-control-checkpoint-v3"
+        or payload["control_id"] != control_id
+        or payload["architecture_family"] != architecture["architecture_family"]
+        or payload["architecture_spec_sha256"] != architecture_sha256
+        or payload["adapter_source_sha256"] != adapter_source_sha256
+        or int(payload["seed"]) != seed
+        or payload["checkpoint_rule"] != "fixed_final_step_no_target_selection"
+    ):
+        raise RuntimeError(f"{control_id} per-seed checkpoint identity mismatch")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if payload[key] != evidence[key]:
+            raise RuntimeError(f"{control_id} per-seed checkpoint {key} mismatch")
+    expected_roles = {
+        "equal_flop_alignment": ("alignment",),
+        "equal_flop_response": ("response",),
+    }.get(control_id, ("alignment", "response"))
+    components = payload["components"]
+    if (
+        not isinstance(components, list)
+        or tuple(component.get("role") for component in components) != expected_roles
+    ):
+        raise RuntimeError(f"{control_id} checkpoint component roles mismatch")
+    resource_tensors = []
+    all_tensors = []
+    component_digests = []
+    state_dim = None
+    for component in components:
+        if not isinstance(component, dict) or set(component) != {
+            "role", "model_spec", "state_dict"
+        }:
+            raise RuntimeError(f"{control_id} checkpoint component fields must be exact")
+        model = CSIPairsFormalModel(**component["model_spec"])
+        model.load_state_dict(component["state_dict"], strict=True)
+        resource_tensors.extend(component["state_dict"].values())
+        all_tensors.extend(component["state_dict"].values())
+        component_digests.append(_tensor_state_digest(component["state_dict"]))
+        component_state_dim = int(component["model_spec"]["state_dim"])
+        if state_dim is None:
+            state_dim = component_state_dim
+        elif state_dim != component_state_dim:
+            raise RuntimeError(f"{control_id} concat components have unequal output width")
+    concat = len(expected_roles) == 2
+    bottleneck_state = payload["bottleneck_state_dict"]
+    if concat:
+        bottleneck = nn.Linear(2 * int(state_dim), int(config["model"]["state_dim"]))
+        if not isinstance(bottleneck_state, dict):
+            raise RuntimeError(f"{control_id} concat checkpoint omitted its bottleneck")
+        bottleneck.load_state_dict(bottleneck_state, strict=True)
+        resource_tensors.extend(bottleneck_state.values())
+        all_tensors.extend(bottleneck_state.values())
+        if component_digests[0] == component_digests[1]:
+            raise RuntimeError(f"{control_id} concat encoders are not independently trained")
+        representation_dim = int(config["model"]["state_dim"])
+    else:
+        if bottleneck_state is not None:
+            raise RuntimeError(f"{control_id} single-branch checkpoint has a bottleneck")
+        representation_dim = int(state_dim)
+    head = HeteroscedasticPositionHead(
+        representation_dim,
+        max(8, int(config["model"]["hidden_dim"]) // 2),
+    )
+    head.load_state_dict(payload["source_head_state_dict"], strict=True)
+    all_tensors.extend(payload["source_head_state_dict"].values())
+    if any(
+        not isinstance(value, torch.Tensor)
+        or value.numel() == 0
+        or not bool(torch.isfinite(value).all())
+        for value in all_tensors
+    ):
+        raise RuntimeError(f"{control_id} checkpoint contains invalid tensors")
+    return int(sum(value.numel() for value in resource_tensors))
+
+
+def _tensor_state_digest(state):
+    digest = hashlib.sha256()
+    for name, value in sorted(state.items()):
+        array = value.detach().cpu().contiguous().numpy()
+        digest.update(name.encode("utf-8"))
+        digest.update(str(array.dtype).encode("ascii"))
+        digest.update(np.asarray(array.shape, dtype=np.int64).tobytes())
+        digest.update(array.tobytes())
+    return digest.hexdigest()
+
+
+def _validate_v3_profiler(control_id, path):
+    profiler = read_strict_json(path)
+    required = {
+        "schema_version", "profiler", "events", "measured_training_flops",
+        "measured_inference_flops", "profiled_step_count",
+        "resource_accounting_scope",
+    }
+    if not isinstance(profiler, dict) or set(profiler) != required:
+        raise RuntimeError(f"{control_id} V3 profiler fields must be exact")
+    if (
+        profiler["schema_version"] != "csi-pairs-v6-profiler-summary-v3"
+        or profiler["profiler"] != "torch.utils.flop_counter.FlopCounterMode"
+        or profiler["resource_accounting_scope"]
+        != (
+            "representation_training_and_retained_inference_"
+            "excluding_common_localization_head"
+        )
+        or int(profiler["profiled_step_count"]) != len(profiler["events"])
+    ):
+        raise RuntimeError(f"{control_id} V3 profiler identity mismatch")
+    expected_roles = {
+        "equal_flop_alignment": ("alignment",),
+        "equal_flop_response": ("response",),
+    }.get(control_id, ("alignment", "response"))
+    expected_events = {
+        **{f"{role}_training_graph": "training" for role in expected_roles},
+        **{
+            f"{role}_retained_inference_graph": "inference"
+            for role in expected_roles
+        },
+    }
+    if len(expected_roles) == 2:
+        expected_events.update(
+            {
+                "concat_bottleneck_training_graph": "training",
+                "concat_bottleneck_inference_graph": "inference",
+            }
+        )
+    events = profiler["events"]
+    if (
+        not isinstance(events, list)
+        or {event.get("name") for event in events if isinstance(event, dict)}
+        != set(expected_events)
+        or len(events) != len(expected_events)
+    ):
+        raise RuntimeError(f"{control_id} V3 profiler event coverage mismatch")
+    totals = {"training": 0.0, "inference": 0.0}
+    for event in events:
+        if not isinstance(event, dict) or set(event) != {"name", "phase", "count", "flops"}:
+            raise RuntimeError(f"{control_id} V3 profiler event fields must be exact")
+        if (
+            event["phase"] not in totals
+            or event["phase"] != expected_events[event["name"]]
+            or type(event["count"]) is not int
+            or event["count"] < 1
+            or not np.isfinite(event["flops"])
+            or float(event["flops"]) <= 0
+        ):
+            raise RuntimeError(f"{control_id} V3 profiler event is invalid")
+        totals[event["phase"]] += int(event["count"]) * float(event["flops"])
+    if any(value <= 0 for value in totals.values()):
+        raise RuntimeError(f"{control_id} profiler omitted training or inference")
+    if (
+        not np.isclose(totals["training"], profiler["measured_training_flops"])
+        or not np.isclose(totals["inference"], profiler["measured_inference_flops"])
+    ):
+        raise RuntimeError(f"{control_id} profiler totals do not replay")
+    return totals["training"], totals["inference"]
+
+
+def _validate_v3_training_log(
+    control_id, path, seed, checkpoint_sha256, control_root, config
+):
+    training = read_strict_json(path)
+    required = {
+        "schema_version", "control_id", "seed", "component_optimizer_steps",
+        "component_objectives", "source_training_role", "selection_role",
+        "localizer_fit_role", "target_selection_used", "fixed_final_checkpoint",
+        "checkpoint_sha256", "component_loss_traces",
+        "localization_loss_trace_path", "localization_loss_trace_sha256",
+    }
+    if not isinstance(training, dict) or set(training) != required:
+        raise RuntimeError(f"{control_id} V3 training-log fields must be exact")
+    expected_roles = {
+        "equal_flop_alignment": {"alignment"},
+        "equal_flop_response": {"response"},
+    }.get(control_id, {"alignment", "response"})
+    if (
+        training["schema_version"] != "csi-pairs-v6-control-training-log-v3"
+        or training["control_id"] != control_id
+        or int(training["seed"]) != seed
+        or set(training["component_optimizer_steps"]) != expected_roles
+        or set(training["component_objectives"]) != expected_roles
+        or set(training["component_loss_traces"]) != expected_roles
+        or training["source_training_role"] != "source_encoder_train"
+        or training["selection_role"] != "source_method_selection"
+        or training["localizer_fit_role"] != "source_encoder_train"
+        or training["target_selection_used"] is not False
+        or training["fixed_final_checkpoint"] is not True
+        or training["checkpoint_sha256"] != checkpoint_sha256
+    ):
+        raise RuntimeError(f"{control_id} V3 training-log contract failed")
+    for role in expected_roles:
+        if training["component_objectives"][role] != ["endpoint", role]:
+            raise RuntimeError(f"{control_id} V3 component objective mismatch")
+        steps = int(training["component_optimizer_steps"][role])
+        if steps < 1:
+            raise RuntimeError(f"{control_id} V3 optimizer step count is invalid")
+        binding = training["component_loss_traces"][role]
+        if not isinstance(binding, dict) or set(binding) != {"path", "sha256"}:
+            raise RuntimeError(f"{control_id} V3 loss-trace binding is invalid")
+        trace = _bound_control_file(
+            control_root, binding["path"], binding["sha256"], f"{control_id} loss trace"
+        )
+        _validate_loss_trace(control_id, trace, steps, {"endpoint", role})
+    localization = _bound_control_file(
+        control_root,
+        training["localization_loss_trace_path"],
+        training["localization_loss_trace_sha256"],
+        f"{control_id} localization loss trace",
+    )
+    with localization.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    expected_steps = int(config["localization"]["head_steps"])
+    if (
+        len(rows) != expected_steps
+        or any(set(row) != {"step", "localization_loss", "gradient_norm"} for row in rows)
+    ):
+        raise RuntimeError(f"{control_id} localization trace is incomplete")
+    for index, row in enumerate(rows, start=1):
+        if (
+            int(row["step"]) != index
+            or not np.isfinite(float(row["localization_loss"]))
+            or not np.isfinite(float(row["gradient_norm"]))
+            or float(row["gradient_norm"]) <= 0
+        ):
+            raise RuntimeError(f"{control_id} localization trace is invalid")
+
+
 def _run_replay(
     adapter,
     dataset,
@@ -616,7 +1110,7 @@ def _run_replay(
         )
         for value in adapter["replay_command"]
     ]
-    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    completed = _run_adapter_process(command)
     (target / "replay_stdout.txt").write_text(completed.stdout, encoding="utf-8")
     (target / "replay_stderr.txt").write_text(completed.stderr, encoding="utf-8")
     if completed.returncode != 0 or not replay_path.is_file():
@@ -654,11 +1148,89 @@ def _run_replay(
         raise RuntimeError(f"resource control {adapter['control_id']} replay measurements disagree")
 
 
+def _run_replay_v3(
+    adapter,
+    target,
+    resource,
+    index_path,
+    architecture_path,
+    source,
+):
+    replay_path = target / "replay.json"
+    command = [
+        value.format(
+            output=str(target),
+            checkpoint="",
+            architecture_spec=str(architecture_path),
+            adapter_source=str(source),
+            replay_output=str(replay_path),
+            python=sys.executable,
+            dataset="",
+            root="",
+        )
+        for value in adapter["replay_command"]
+    ]
+    completed = _run_adapter_process(command)
+    (target / "replay_stdout.txt").write_text(completed.stdout, encoding="utf-8")
+    (target / "replay_stderr.txt").write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0 or not replay_path.is_file():
+        raise RuntimeError(f"resource control {adapter['control_id']} V3 replay failed")
+    replay = read_strict_json(replay_path)
+    required = {
+        "schema_version", "control_id", "resource_index_sha256",
+        "architecture_spec_sha256", "adapter_source_sha256",
+        "localization_per_bank_sha256", "recomputed_parameters",
+        "recomputed_training_flops", "recomputed_inference_flops",
+    }
+    if not isinstance(replay, dict) or set(replay) != required:
+        raise RuntimeError(f"resource control {adapter['control_id']} V3 replay fields must be exact")
+    expected = {
+        "schema_version": "csi-pairs-v6-resource-replay-v2",
+        "control_id": adapter["control_id"],
+        "resource_index_sha256": sha256_file(index_path),
+        "architecture_spec_sha256": adapter["architecture_spec_sha256"],
+        "adapter_source_sha256": adapter["adapter_source_sha256"],
+        "localization_per_bank_sha256": sha256_file(
+            target / "localization_per_bank.csv"
+        ),
+    }
+    for key, value in expected.items():
+        if replay[key] != value:
+            raise RuntimeError(f"resource control {adapter['control_id']} V3 replay {key} mismatch")
+    numeric = {
+        "recomputed_parameters": resource["parameters"],
+        "recomputed_training_flops": resource["training_flops"],
+        "recomputed_inference_flops": resource["inference_flops"],
+    }
+    if any(
+        not np.isclose(float(replay[key]), float(value))
+        for key, value in numeric.items()
+    ):
+        raise RuntimeError(f"resource control {adapter['control_id']} V3 replay measurements disagree")
+
+
 def _lower_sha256(value):
     return (
         isinstance(value, str)
         and len(value) == 64
         and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _run_adapter_process(command):
+    project_root = Path(__file__).resolve().parent.parent
+    environment = dict(os.environ)
+    existing = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        str(project_root) if not existing else os.pathsep.join((str(project_root), existing))
+    )
+    return subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        env=environment,
     )
 
 

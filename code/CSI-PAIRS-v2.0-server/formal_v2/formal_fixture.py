@@ -14,14 +14,22 @@ def write_nonscientific_fixture(
     seed: int = 20270805,
     scene_count: int = 11,
     positions: int = 16,
+    source_banks_per_role: int = 1,
 ) -> Path:
     """Create a V6-shaped deterministic code fixture with permanently forbidden use."""
     target = Path(path)
     if target.suffix != ".npz":
         target = Path(f"{target}.npz")
-    minimum_scenes = len(SOURCE_ROLES) + 4
+    if isinstance(source_banks_per_role, bool) or not isinstance(source_banks_per_role, int):
+        raise ValueError("source_banks_per_role must be a positive integer")
+    if source_banks_per_role < 1:
+        raise ValueError("source_banks_per_role must be a positive integer")
+    minimum_scenes = len(SOURCE_ROLES) * source_banks_per_role + 4
     if scene_count < minimum_scenes:
-        raise ValueError(f"fixture needs seven source roles and four target banks ({minimum_scenes} scenes)")
+        raise ValueError(
+            "fixture needs the requested banks for all seven source roles and "
+            f"four target banks ({minimum_scenes} scenes)"
+        )
     if positions < 8:
         raise ValueError("fixture needs at least eight positions")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -37,9 +45,20 @@ def write_nonscientific_fixture(
     primitive_ids = np.zeros((scene_count, 2), dtype=np.int64)
     anchor_bits = np.zeros((scene_count, 2), dtype=np.int64)
     natural = np.zeros(scene_count, dtype=np.int64)
-    roles = np.asarray(list(SOURCE_ROLES) + ["target"] * (scene_count - len(SOURCE_ROLES)), dtype="U40")
-    source_city_ids = ["source-a" if index % 2 == 0 else "source-b" for index in range(len(SOURCE_ROLES))]
-    target_count = scene_count - len(SOURCE_ROLES)
+    source_roles = [
+        role
+        for role in SOURCE_ROLES
+        for _ in range(source_banks_per_role)
+    ]
+    roles = np.asarray(source_roles + ["target"] * (scene_count - len(source_roles)), dtype="U40")
+    source_city_ids = [
+        "source-a"
+        if (bank_index if source_banks_per_role > 1 else role_index) % 2 == 0
+        else "source-b"
+        for role_index, _ in enumerate(SOURCE_ROLES)
+        for bank_index in range(source_banks_per_role)
+    ]
+    target_count = scene_count - len(source_roles)
     target_city_ids = ["target-a" if index % 2 == 0 else "target-b" for index in range(target_count)]
     city_ids = np.asarray(source_city_ids + target_city_ids, dtype="U32")
     scene_ids = np.asarray([f"fixture-scene-{index:02d}" for index in range(scene_count)], dtype="U32")

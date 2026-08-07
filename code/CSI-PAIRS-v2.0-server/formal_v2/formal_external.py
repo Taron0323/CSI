@@ -63,7 +63,12 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
         output_root,
         config,
         dataset,
-        ("source_final_unseen_bank", "target"),
+        (
+            "source_encoder_train",
+            "source_method_selection",
+            "source_final_unseen_bank",
+            "target",
+        ),
     )
     manifest = read_strict_json(manifest_path)
     _validate_manifest(manifest)

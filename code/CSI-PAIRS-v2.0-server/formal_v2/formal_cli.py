@@ -6,9 +6,25 @@ import sys
 from pathlib import Path
 
 from .formal_config import load_formal_config, resolve_dataset_path
-from .formal_dataset import FormalDataset
+from .formal_dataset import FormalDataset, SOURCE_ROLES
 from .formal_fixture import write_nonscientific_fixture
 from .formal_io import artifact_manifest, read_strict_json, write_json
+
+
+DEFAULT_SHUFFLED_PAIR_MANIFEST = str(
+    Path(__file__).resolve().parent
+    / "external_adapters"
+    / "shuffled_pair_control_v3.json"
+)
+DEFAULT_RETENTION_MANIFEST = str(
+    Path(__file__).resolve().parent / "external_adapters" / "retention_control_v3.json"
+)
+DEFAULT_SCENE_ID_MANIFEST = "builtin:sigmap-scene-id-v1"
+DEFAULT_RESOURCE_CONTROL_MANIFEST = str(
+    Path(__file__).resolve().parent
+    / "external_adapters"
+    / "resource_controls_v3.json"
+)
 
 
 COMMAND_OUTPUT_PATHS = {
@@ -43,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
     fixture = subparsers.add_parser("make-fixture", help="create a permanently non-scientific code fixture")
     fixture.add_argument("--output", required=True)
     fixture.add_argument("--seed", type=int, default=20270805)
+    fixture.add_argument(
+        "--source-banks-per-role",
+        type=int,
+        default=1,
+        help="non-scientific fixture banks per source role; use 2 to exercise cross-source-city controls",
+    )
     resources = subparsers.add_parser("verify-waibu-resources")
     resources.add_argument("--registry", required=True)
     resources.add_argument("--waibu-root", required=True)
@@ -101,13 +123,21 @@ def build_parser() -> argparse.ArgumentParser:
                 help="deprecated; all replays risk features in first-party code",
             )
             child.add_argument("--adapter-manifest", required=True)
-            child.add_argument("--control-manifest", required=True)
-            child.add_argument("--scene-id-manifest", required=True)
+            child.add_argument(
+                "--control-manifest", default=DEFAULT_RESOURCE_CONTROL_MANIFEST
+            )
+            child.add_argument(
+                "--scene-id-manifest", default=DEFAULT_SCENE_ID_MANIFEST
+            )
             child.add_argument("--external-validity-manifest", required=True)
             child.add_argument("--literature-resource-manifest", required=True)
             child.add_argument("--rt-calibration-manifest", required=True)
-            child.add_argument("--shuffled-pair-manifest", required=True)
-            child.add_argument("--retention-manifest", required=True)
+            child.add_argument(
+                "--shuffled-pair-manifest", default=DEFAULT_SHUFFLED_PAIR_MANIFEST
+            )
+            child.add_argument(
+                "--retention-manifest", default=DEFAULT_RETENTION_MANIFEST
+            )
             child.add_argument(
                 "--representation-baseline-config",
                 default=str(Path(__file__).resolve().parent / "configs" / "representation_baselines_v1.json"),
@@ -127,17 +157,27 @@ def build_parser() -> argparse.ArgumentParser:
         if command == "run-representation-baselines":
             child.add_argument("--representation-baseline-config", required=True)
         if command == "run-resource-controls":
-            child.add_argument("--control-manifest", required=True)
+            child.add_argument(
+                "--control-manifest", default=DEFAULT_RESOURCE_CONTROL_MANIFEST
+            )
         if command == "run-scene-id-audit":
-            child.add_argument("--scene-id-manifest", required=True)
+            child.add_argument(
+                "--scene-id-manifest", default=DEFAULT_SCENE_ID_MANIFEST
+            )
         if command == "run-external-validity":
             child.add_argument("--external-validity-manifest", required=True)
         if command == "run-literature-resources":
             child.add_argument("--literature-resource-manifest", required=True)
         if command == "run-rt-calibration":
             child.add_argument("--rt-calibration-manifest", required=True)
-        if command in {"run-shuffled-pair-control", "run-retention-audit"}:
-            child.add_argument("--claim-control-manifest", required=True)
+        if command == "run-shuffled-pair-control":
+            child.add_argument(
+                "--claim-control-manifest", default=DEFAULT_SHUFFLED_PAIR_MANIFEST
+            )
+        if command == "run-retention-audit":
+            child.add_argument(
+                "--claim-control-manifest", default=DEFAULT_RETENTION_MANIFEST
+            )
     return parser
 
 
@@ -146,21 +186,32 @@ def main(argv: list[str] | None = None) -> int:
     output_lock: Path | None = None
     try:
         if args.command == "make-fixture":
-            path = write_nonscientific_fixture(args.output, seed=int(args.seed))
+            source_banks_per_role = int(args.source_banks_per_role)
+            scene_count = len(SOURCE_ROLES) * source_banks_per_role + 4
+            path = write_nonscientific_fixture(
+                args.output,
+                seed=int(args.seed),
+                scene_count=scene_count,
+                source_banks_per_role=source_banks_per_role,
+            )
             print(json.dumps({"status": "success", "fixture": str(path.resolve()), "scientific_use": "FORBIDDEN"}))
             return 0
         if args.command == "verify-waibu-resources":
             from .formal_resources import verify_waibu_resources
 
-            result = verify_waibu_resources(args.registry, args.waibu_root, args.output)
-            print(json.dumps({"status": result["status"], "output": str(Path(args.output).resolve())}, sort_keys=True))
+            output = Path(args.output).resolve()
+            output_lock = _acquire_output_lock(output)
+            result = verify_waibu_resources(args.registry, args.waibu_root, output)
+            print(json.dumps({"status": result["status"], "output": str(output)}, sort_keys=True))
             return 0
         if args.command == "export-sionna-scenes":
             from .sionna_scene_export import export_sionna_scenes
 
+            output = Path(args.output).resolve()
+            output_lock = _acquire_output_lock(_sionna_export_lock_root(output))
             manifest = export_sionna_scenes(
                 args.dataset,
-                args.output,
+                output,
                 license_id=args.license_id,
                 carrier_frequency_hz=args.carrier_frequency_hz,
                 subcarrier_spacing_hz=args.subcarrier_spacing_hz,
@@ -405,6 +456,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _acquire_output_lock(output_root: Path) -> Path:
+    output_root = output_root.resolve()
     output_root.parent.mkdir(parents=True, exist_ok=True)
     lock_path = output_root.parent / f".{output_root.name}.csi-pairs-operation.lock"
     try:
@@ -414,6 +466,11 @@ def _acquire_output_lock(output_root: Path) -> Path:
             f"refusing concurrent V2 output use; operation lock exists: {lock_path}"
         ) from error
     return lock_path
+
+
+def _sionna_export_lock_root(output: Path) -> Path:
+    output = output.resolve()
+    return output.parent if output.name == "inputs" else output
 
 
 def _reserve_command_output(command: str, output_root: Path) -> Path | None:

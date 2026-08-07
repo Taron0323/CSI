@@ -35,7 +35,7 @@ STAGE_SPECS = {
     "G3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
     "G3_C3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
     "G3_C5": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
-    "G4": ("controls/gate.json", "csi-pairs-v6-resource-control-gate-v2"),
+    "G4": ("controls/gate.json", "csi-pairs-v6-resource-control-gate-v3"),
     "G5": ("factorial/gate.json", "csi-pairs-formal-factorial-gate-v2.1-v6"),
     "G6": ("risk/gate.json", "csi-pairs-v6-risk-gate-v2"),
     "G7": ("path/gate.json", "csi-pairs-v6-path-gate-v3"),
@@ -47,11 +47,11 @@ STAGE_SPECS = {
     "scene_id_mechanism": ("scene_id/gate.json", "csi-pairs-v6-scene-id-gate-v2"),
     "shuffled_pair": (
         "controls/shuffled_pair/gate.json",
-        "csi-pairs-v6-shuffled-pair-gate-v2",
+        "csi-pairs-v6-shuffled-pair-gate-v3",
     ),
     "retention": (
         "evaluation/retention/gate.json",
-        "csi-pairs-v6-retention-gate-v2",
+        "csi-pairs-v6-retention-gate-v3",
     ),
     "rt_calibration": (
         "qualification/rt_calibration/gate.json",
@@ -196,6 +196,7 @@ def _semantic_status(name, payload):
         generous = payload.get("generous_2x_report_only")
         if (
             payload.get("resource_integrity_verified") is not True
+            or payload.get("seed_complete_resource_evidence") is not True
             or not _lower_sha256(payload.get("input_manifest_sha256"))
             or not isinstance(generous, dict)
             or generous.get("included_in_g4_subgate_7") is not False
@@ -308,6 +309,10 @@ def _semantic_status(name, payload):
             return "FAIL"
         if name == "shuffled_pair" and (
             payload.get("shortcut_baselines_passed") is not True
+            or payload.get("independently_trained_shuffled_checkpoints_verified") is not True
+            or payload.get("alignment_and_response_pairing_breaks_verified") is not True
+            or payload.get("alignment_pairing_break_passed") is not True
+            or payload.get("response_pairing_break_passed") is not True
             or payload.get("evaluation_alignment_shortcut_audit_verified") is not True
             or not _lower_sha256(payload.get("evaluation_gate_sha256"))
             or not _lower_sha256(payload.get("alignment_shortcut_rows_sha256"))
@@ -315,12 +320,20 @@ def _semantic_status(name, payload):
             or not isinstance(payload.get("alignment_gain_interval"), dict)
             or not isinstance(payload.get("shuffled_alignment_gain_interval"), dict)
             or not isinstance(payload.get("shuffled_suppression_interval"), dict)
+            or not isinstance(payload.get("response_gain_interval"), dict)
+            or not isinstance(payload.get("shuffled_response_gain_interval"), dict)
+            or not isinstance(payload.get("shuffled_response_suppression_interval"), dict)
+            or not _lower_sha256(payload.get("training_provenance_sha256"))
+            or not _lower_sha256(payload.get("shuffled_checkpoint_index_sha256"))
             or payload.get("shortcut_familywise_method") != "Holm"
         ):
             return "FAIL"
         if name == "retention" and (
             payload.get("downstream_f_only_verified") is not True
             or payload.get("disposable_heads_absent_verified") is not True
+            or payload.get("source_only_probe_training_verified") is not True
+            or not _lower_sha256(payload.get("probe_checkpoint_index_sha256"))
+            or not _lower_sha256(payload.get("probe_training_provenance_sha256"))
             or int(payload.get("base_map_cluster_count", 0)) < 2
             or not isinstance(payload.get("effect_intervals"), dict)
             or set(payload["effect_intervals"]) != {
@@ -344,10 +357,13 @@ def _semantic_status(name, payload):
                 or int(row.get("base_map_cluster_count", 0)) < 2
                 or float(row.get("scene_id_minus_map_ci95_high", float("inf")))
                 > float(row.get("scene_id_error_noninferiority_margin_m", -1.0))
-                or float(row.get("map_swap_id_swap_spearman_ci95_low", -1.0))
-                < float(row.get("minimum_swap_spearman", 1.0))
+                or float(
+                    row.get("map_swap_id_swap_direction_cosine_ci95_low", -1.0)
+                )
+                < float(row.get("minimum_swap_direction_cosine", 1.0))
                 or not _lower_sha256(row.get("adapter_source_sha256"))
                 or not _lower_sha256(row.get("model_checkpoint_sha256"))
+                or not _lower_sha256(row.get("training_provenance_sha256"))
             ):
                 return "FAIL"
     elif name == "rt_calibration":
@@ -604,8 +620,8 @@ def _validate_stage_bound_input(
         _validate_protocol(read_strict_json(protocol))
     elif stage_name in {"shuffled_pair", "retention"}:
         expected_schema = {
-            "shuffled_pair": "csi-pairs-v6-shuffled-pair-adapter-v2",
-            "retention": "csi-pairs-v6-retention-adapter-v2",
+            "shuffled_pair": "csi-pairs-v6-shuffled-pair-adapter-v3",
+            "retention": "csi-pairs-v6-retention-adapter-v3",
         }[stage_name]
         required = {
             "schema_version", "command", "implementation_revision", "control_seed",

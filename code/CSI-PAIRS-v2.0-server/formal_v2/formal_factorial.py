@@ -556,11 +556,29 @@ def _mask_index_for_query(corpus, query, rng):
     return candidates[int(rng.integers(0, len(candidates)))]
 
 
-def _new_model(config: dict, corpus: TrainingCorpus, seed: int):
+def _new_model(
+    config: dict,
+    corpus: TrainingCorpus,
+    seed: int,
+    *,
+    model_spec: dict | None = None,
+):
     torch.manual_seed(int(seed))
-    spec = _model_spec(config, corpus)
+    spec = _model_spec(config, corpus) if model_spec is None else dict(model_spec)
     model = CSIPairsFormalModel(**spec)
-    model.initialize_csi_from_teacher(corpus.teacher.teacher)
+    teacher = corpus.teacher.teacher
+    if int(spec["csi_encoder_layers"]) == len(teacher.encoder.layers):
+        model.initialize_csi_from_teacher(teacher)
+    else:
+        if int(spec["csi_encoder_layers"]) > len(teacher.encoder.layers):
+            raise ValueError("control encoder cannot add CSI layers beyond the frozen teacher")
+        model.csi_patch_embedding.load_state_dict(teacher.patch_embedding.state_dict())
+        with torch.no_grad():
+            model.csi_mask_token.copy_(teacher.mask_token)
+            model.csi_row_position.copy_(teacher.row_position)
+            model.csi_column_position.copy_(teacher.column_position)
+        for index, layer in enumerate(model.csi_encoder.layers):
+            layer.load_state_dict(teacher.encoder.layers[index].state_dict(), strict=True)
     return model
 
 
@@ -681,8 +699,19 @@ def _noop_score_gaps(model, corpus, units):
     return gaps
 
 
-def _train_arm(config, corpus, seed, arm, pilot):
-    model = _new_model(config, corpus, seed)
+def _train_arm(
+    config,
+    corpus,
+    seed,
+    arm,
+    pilot,
+    *,
+    pairing_break=None,
+    step_count=None,
+    model_spec=None,
+    loss_trace=None,
+):
+    model = _new_model(config, corpus, seed, model_spec=model_spec)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(config["model"]["learning_rate"]),
@@ -704,7 +733,10 @@ def _train_arm(config, corpus, seed, arm, pilot):
     last = None
     started = time.perf_counter()
     execution = None
-    for step in range(int(config["factorial"]["steps"])):
+    steps = int(config["factorial"]["steps"] if step_count is None else step_count)
+    if steps < 1:
+        raise ValueError("control training step count must be positive")
+    for step in range(steps):
         plan = _make_plan(corpus, int(config["factorial"]["batch_size"]), seed, step)
         if step == 0:
             execution = _measure_execution(
@@ -713,8 +745,10 @@ def _train_arm(config, corpus, seed, arm, pilot):
                 plan,
                 weights,
             )
-        components = _loss_components(model, corpus, plan, weights)
-        if step in {0, int(config["factorial"]["steps"]) - 1}:
+        components = _loss_components(
+            model, corpus, plan, weights, pairing_break=pairing_break
+        )
+        if step in {0, steps - 1}:
             retained = _retained_parameters(model)
             raw_alignment_gradient_norms.append(_gradient_norm(components["alignment"], retained))
             raw_response_gradient_norms.append(_gradient_norm(components["response"], retained))
@@ -736,6 +770,30 @@ def _train_arm(config, corpus, seed, arm, pilot):
             )
         optimizer.zero_grad(set_to_none=True)
         components["total"].backward()
+        if loss_trace is not None:
+            squared_gradient = sum(
+                float(torch.sum(parameter.grad.detach() ** 2))
+                for parameter in model.parameters()
+                if parameter.grad is not None
+            )
+            loss_trace.append(
+                {
+                    "step": step + 1,
+                    "total_loss": float(components["total"].detach()),
+                    "endpoint_loss": float(components["endpoint"].detach()),
+                    "alignment_loss": float(
+                        weights.alignment
+                        * components["alignment"].detach()
+                        / max(float(weights.alignment_scale), 1e-12)
+                    ),
+                    "response_loss": float(
+                        weights.response
+                        * components["response"].detach()
+                        / max(float(weights.response_scale), 1e-12)
+                    ),
+                    "gradient_norm": math.sqrt(max(squared_gradient, 0.0)),
+                }
+            )
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         optimizer.step()
         last = components
@@ -747,7 +805,7 @@ def _train_arm(config, corpus, seed, arm, pilot):
     row = {
         "seed": int(seed),
         "arm": arm,
-        "steps": int(config["factorial"]["steps"]),
+        "steps": steps,
         "batch_size": int(config["factorial"]["batch_size"]),
         "parameters": int(sum(parameter.numel() for parameter in model.parameters())),
         "elapsed_seconds": elapsed,
@@ -755,7 +813,7 @@ def _train_arm(config, corpus, seed, arm, pilot):
         "predict_calls_per_step": execution["predict_calls"],
         "forward_calls_per_step": execution["state_calls"] + execution["predict_calls"],
         "total_forward_calls": (execution["state_calls"] + execution["predict_calls"])
-        * int(config["factorial"]["steps"]),
+        * steps,
         "measured_flops_per_step": execution["flops"],
         "flop_measurement_status": execution["flop_measurement_status"],
         "compute_contract": "all arms reuse the identical deterministic batch plan; disabled alignment/response supervision skips its forward graph and has zero raw and weighted gradient",
@@ -803,7 +861,7 @@ def _loss_weights(config, alignment_factor, response_factor, alignment_scale, re
     )
 
 
-def _loss_components(model, corpus, plan, weights):
+def _loss_components(model, corpus, plan, weights, *, pairing_break=None):
     endpoint_batch = _identity_batch(
         corpus, plan.endpoint, [corpus.teacher.mask_bank[index] for index in plan.endpoint_masks]
     )
@@ -828,12 +886,18 @@ def _loss_components(model, corpus, plan, weights):
             corpus,
             plan.alignment_active,
             ALIGNMENT_SCORE_PHYSICAL_WEIGHT,
+            supplied_map_units=_pairing_overrides(
+                plan.alignment_active, pairing_break, "alignment"
+            ),
         )
         null_scores = _alignment_scores(
             model,
             corpus,
             plan.alignment_null,
             ALIGNMENT_SCORE_PHYSICAL_WEIGHT,
+            supplied_map_units=_pairing_overrides(
+                plan.alignment_null, pairing_break, "alignment"
+            ),
         )
         active_effect = torch.as_tensor(
             [
@@ -879,16 +943,25 @@ def _loss_components(model, corpus, plan, weights):
             corpus,
             plan.response_all,
             [corpus.teacher.mask_bank[index] for index in plan.response_all_masks],
+            target_units=_pairing_overrides(
+                plan.response_all, pairing_break, "response"
+            ),
         )
         active_batch = _response_batch(
             corpus,
             plan.response_active,
             [corpus.teacher.mask_bank[index] for index in plan.response_active_masks],
+            target_units=_pairing_overrides(
+                plan.response_active, pairing_break, "response"
+            ),
         )
         null_batch = _response_batch(
             corpus,
             plan.response_null,
             [corpus.teacher.mask_bank[index] for index in plan.response_null_masks],
+            target_units=_pairing_overrides(
+                plan.response_null, pairing_break, "response"
+            ),
         )
         response_target, response_physical = _response_target_loss(
             model, target_batch, plan.response_all_weights
@@ -942,7 +1015,9 @@ def _endpoint_loss(model, batch, physical_weight):
     )
 
 
-def _alignment_scores(model, corpus, units, physical_weight):
+def _alignment_scores(
+    model, corpus, units, physical_weight, *, supplied_map_units=None
+):
     expanded = []
     entries = []
     for unit in units:
@@ -951,8 +1026,20 @@ def _alignment_scores(model, corpus, units, physical_weight):
             entries.append(entry)
     left = [(scene, source, position) for scene, source, target, position in expanded]
     right = [(scene, target, position) for scene, source, target, position in expanded]
-    map_u = [corpus.dataset.maps[scene, source] for scene, source, target, position in expanded]
-    map_v = [corpus.dataset.maps[scene, target] for scene, source, target, position in expanded]
+    map_units = units if supplied_map_units is None else supplied_map_units
+    if len(map_units) != len(units):
+        raise ValueError("alignment pairing override must match the sampled units")
+    expanded_maps = [
+        unit for unit in map_units for _ in corpus.alignment_bank
+    ]
+    map_u = [
+        corpus.dataset.maps[scene, source]
+        for scene, source, target, position in expanded_maps
+    ]
+    map_v = [
+        corpus.dataset.maps[scene, target]
+        for scene, source, target, position in expanded_maps
+    ]
     batches = (
         _identity_batch(corpus, left, entries, supplied_maps=map_u),
         _identity_batch(corpus, left, entries, supplied_maps=map_v),
@@ -1057,7 +1144,7 @@ def _identity_batch(corpus, units, entries, supplied_maps=None):
     }
 
 
-def _response_batch(corpus, units, entries):
+def _response_batch(corpus, units, entries, *, target_units=None):
     dataset = corpus.dataset
     base_units = [(scene, source, position) for scene, source, target, position, query in units]
     identity = _identity_batch(corpus, base_units, entries)
@@ -1066,7 +1153,14 @@ def _response_batch(corpus, units, entries):
     source_y = []
     target_z = []
     target_y = []
-    for scene, source, target, position, query in units:
+    supervision_units = units if target_units is None else target_units
+    if len(supervision_units) != len(units):
+        raise ValueError("response pairing override must match the sampled units")
+    for unit, supervision in zip(units, supervision_units):
+        scene, source, target, position, query = unit
+        target_scene, _target_source, target_world, target_position, target_query = supervision
+        if int(target_query) != int(query):
+            raise ValueError("response pairing override must preserve the query patch")
         action = typed_signed_edit(
             dataset.maps[scene, source],
             dataset.maps[scene, target],
@@ -1075,9 +1169,17 @@ def _response_batch(corpus, units, entries):
         )
         actions.append(action)
         source_z.append(_normalized_latent(corpus, scene, source, position, query))
-        target_z.append(_normalized_latent(corpus, scene, target, position, query))
+        target_z.append(
+            _normalized_latent(
+                corpus, target_scene, target_world, target_position, target_query
+            )
+        )
         source_y.append(_normalized_patches(corpus, scene, source, position)[query])
-        target_y.append(_normalized_patches(corpus, scene, target, position)[query])
+        target_y.append(
+            _normalized_patches(
+                corpus, target_scene, target_world, target_position
+            )[target_query]
+        )
     identity.update(
         {
             "action": torch.as_tensor(
@@ -1090,6 +1192,21 @@ def _response_batch(corpus, units, entries):
         }
     )
     return identity
+
+
+def _pairing_overrides(units, pairing_break, branch):
+    if pairing_break is None:
+        return None
+    mapping = pairing_break.get(branch)
+    if not isinstance(mapping, dict):
+        raise ValueError(f"pairing break lacks the {branch} permutation")
+    output = []
+    for unit in units:
+        key = tuple(map(int, unit))
+        if key not in mapping:
+            raise RuntimeError(f"pairing break omits sampled {branch} unit")
+        output.append(tuple(map(int, mapping[key])))
+    return tuple(output)
 
 
 def _normalized_patches(corpus, scene, world, position):

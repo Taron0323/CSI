@@ -68,8 +68,8 @@
       "title": "WiSER: A Wireless Scene Encoder for Geometry-Grounded Multi-View Wireless Prediction",
       "kind": "paper",
       "integration_role": "WiSER controlled forward-model specification",
-      "implementation_status": "paper-spec-controlled-implementation",
-      "allowed_name": "WiSER paper-spec controlled implementation"
+      "implementation_status": "style-controlled-implementation",
+      "allowed_name": "WiSER style-controlled implementation"
     },
     {
       "file": "Wi-GATr-main.zip",

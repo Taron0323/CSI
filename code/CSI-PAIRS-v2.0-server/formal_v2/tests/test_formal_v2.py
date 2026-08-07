@@ -6,9 +6,11 @@ import inspect
 import json
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -22,10 +24,15 @@ from formal_v2.formal_claims import (
 )
 from formal_v2.formal_cli import (
     COMMAND_OUTPUT_PATHS,
+    DEFAULT_RESOURCE_CONTROL_MANIFEST,
+    DEFAULT_RETENTION_MANIFEST,
+    DEFAULT_SCENE_ID_MANIFEST,
+    DEFAULT_SHUFFLED_PAIR_MANIFEST,
     SELF_RESERVING_DIRECTORY_COMMANDS,
     _acquire_output_lock,
     _reserve_command_output,
     _reserve_full_run_output,
+    _sionna_export_lock_root,
     build_parser,
     main as formal_cli_main,
 )
@@ -126,10 +133,10 @@ from formal_v2.formal_risk import (
 )
 from formal_v2.formal_routing import route_code
 from formal_v2.formal_scene_id import (
-    _cluster_spearman_interval,
     _model_assessment as scene_id_model_assessment,
     _validate_manifest as validate_scene_id_manifest,
     _validate_rows as validate_scene_id_rows,
+    _validate_training_provenance as validate_scene_id_training_provenance,
 )
 from formal_v2.sionna_scene_export import export_sionna_scenes
 from formal_v2.formal_statistics import (
@@ -165,6 +172,30 @@ class ConfigTests(unittest.TestCase):
         config["factorial"]["arms"] = ["full", "endpoint", "alignment", "response"]
         with self.assertRaisesRegex(ValueError, "exactly"):
             validate_formal_config(config)
+
+    def test_fixture_can_cover_cross_source_city_controls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            default_path = write_nonscientific_fixture(
+                Path(temporary) / "default.npz"
+            )
+            default_dataset = FormalDataset.load(default_path)
+            self.assertEqual(
+                set(default_dataset.city_ids[:-4].tolist()),
+                {"source-a", "source-b"},
+            )
+            path = write_nonscientific_fixture(
+                Path(temporary) / "fixture.npz",
+                scene_count=2 * len(SOURCE_ROLES) + 4,
+                source_banks_per_role=2,
+            )
+            dataset = FormalDataset.load(path)
+            for role in SOURCE_ROLES:
+                indices = dataset.indices_for_role(role)
+                self.assertEqual(indices.size, 2)
+                self.assertEqual(
+                    set(dataset.city_ids[indices].tolist()),
+                    {"source-a", "source-b"},
+                )
 
     def test_rejects_teacher_state_initialization_mismatch(self):
         config = load_formal_config(SMOKE_CONFIG)
@@ -251,6 +282,172 @@ class ConfigTests(unittest.TestCase):
             second = _acquire_output_lock(output)
             self.assertTrue(second.is_file())
             second.unlink()
+
+    def test_resource_verification_respects_run_root_lock_and_releases_after_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "run"
+            lock = _acquire_output_lock(output)
+            status = formal_cli_main(
+                [
+                    "verify-waibu-resources",
+                    "--registry",
+                    str(ROOT / "formal_v2" / "configs" / "waibu_resources_v1.json"),
+                    "--waibu-root",
+                    str(ROOT / "waibu"),
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertFalse((output / "waibu_resources").exists())
+            lock.unlink()
+
+            invalid_registry = root / "invalid-registry.json"
+            invalid_registry.write_text("{}\n", encoding="utf-8")
+            status = formal_cli_main(
+                [
+                    "verify-waibu-resources",
+                    "--registry",
+                    str(invalid_registry),
+                    "--waibu-root",
+                    str(ROOT / "waibu"),
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertFalse(
+                (output.parent / f".{output.name}.csi-pairs-operation.lock").exists()
+            )
+
+    def test_resource_verification_refuses_existing_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "run"
+            marker = output / "waibu_resources" / "keep.txt"
+            marker.parent.mkdir(parents=True)
+            marker.write_text("existing evidence\n", encoding="utf-8")
+            status = formal_cli_main(
+                [
+                    "verify-waibu-resources",
+                    "--registry",
+                    str(ROOT / "formal_v2" / "configs" / "waibu_resources_v1.json"),
+                    "--waibu-root",
+                    str(ROOT / "waibu"),
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertEqual(marker.read_text(encoding="utf-8"), "existing evidence\n")
+            self.assertFalse(
+                (output.parent / f".{output.name}.csi-pairs-operation.lock").exists()
+            )
+
+    def test_resource_lock_excludes_resource_and_normal_stage_concurrently(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = write_nonscientific_fixture(root / "fixture.npz")
+            output = root / "run"
+            started = threading.Event()
+            release = threading.Event()
+
+            def blocked_verifier(*_args):
+                started.set()
+                if not release.wait(timeout=5):
+                    raise RuntimeError("test verifier release timed out")
+                return {"status": "PASS"}
+
+            resource_args = [
+                "verify-waibu-resources",
+                "--registry",
+                str(ROOT / "formal_v2" / "configs" / "waibu_resources_v1.json"),
+                "--waibu-root",
+                str(ROOT / "waibu"),
+                "--output",
+                str(output),
+            ]
+            inspect_args = [
+                "inspect-data",
+                "--config",
+                str(SMOKE_CONFIG),
+                "--dataset",
+                str(dataset),
+                "--output",
+                str(output),
+            ]
+            with patch(
+                "formal_v2.formal_resources.verify_waibu_resources",
+                side_effect=blocked_verifier,
+            ) as verifier, ThreadPoolExecutor(max_workers=2) as executor:
+                first = executor.submit(formal_cli_main, resource_args)
+                self.assertTrue(started.wait(timeout=5))
+                self.assertEqual(formal_cli_main(resource_args), 2)
+                self.assertEqual(formal_cli_main(inspect_args), 2)
+                release.set()
+                self.assertEqual(first.result(timeout=5), 0)
+            self.assertEqual(verifier.call_count, 1)
+            self.assertFalse((output / "data_contract.json").exists())
+            self.assertFalse(
+                (output.parent / f".{output.name}.csi-pairs-operation.lock").exists()
+            )
+
+    def test_sionna_export_respects_parent_run_root_lock(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = write_nonscientific_fixture(root / "fixture.npz")
+            output = root / "run" / "inputs"
+            lock = _acquire_output_lock(output.parent)
+            status = formal_cli_main(
+                [
+                    "export-sionna-scenes",
+                    "--dataset",
+                    str(dataset),
+                    "--output",
+                    str(output),
+                    "--license-id",
+                    "GENERATED-FIXTURE-NO-EXTERNAL-ASSET",
+                    "--carrier-frequency-hz",
+                    "3500000000",
+                    "--subcarrier-spacing-hz",
+                    "30000",
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertFalse(output.exists())
+            lock.unlink()
+
+    def test_sionna_export_lock_root_only_treats_inputs_as_reserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            self.assertEqual(_sionna_export_lock_root(root / "run" / "inputs"), root / "run")
+            self.assertEqual(_sionna_export_lock_root(root / "scenes"), root / "scenes")
+
+    def test_failed_sionna_export_does_not_leave_partial_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = write_nonscientific_fixture(root / "fixture.npz")
+            output = root / "run" / "inputs"
+            status = formal_cli_main(
+                [
+                    "export-sionna-scenes",
+                    "--dataset",
+                    str(dataset),
+                    "--output",
+                    str(output),
+                    "--license-id",
+                    "GENERATED-FIXTURE-NO-EXTERNAL-ASSET",
+                    "--carrier-frequency-hz",
+                    "3500000000",
+                    "--subcarrier-spacing-hz",
+                    "30000",
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertFalse(output.exists())
+            self.assertFalse(
+                (output.parent.parent / f".{output.parent.name}.csi-pairs-operation.lock").exists()
+            )
 
     def test_full_run_reservation_accepts_only_new_root_or_staged_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -715,10 +912,11 @@ class EvidenceAndPathTests(unittest.TestCase):
                     "base_map_cluster_count": 3,
                     "scene_id_minus_map_ci95_high": 0.1,
                     "scene_id_error_noninferiority_margin_m": 0.25,
-                    "map_swap_id_swap_spearman_ci95_low": 0.9,
-                    "minimum_swap_spearman": 0.8,
+                    "map_swap_id_swap_direction_cosine_ci95_low": 0.9,
+                    "minimum_swap_direction_cosine": 0.8,
                     "adapter_source_sha256": "c" * 64,
                     "model_checkpoint_sha256": "d" * 64,
+                    "training_provenance_sha256": "e" * 64,
                 }
             ],
         }
@@ -1052,7 +1250,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             validate_control_manifest(controls)
         validate_scene_id_manifest(
             {
-                "schema_version": "csi-pairs-v6-scene-id-adapters-v2",
+                "schema_version": "csi-pairs-v6-scene-id-adapters-v3",
                 "adapters": [
                     {
                         "adapter_id": "m",
@@ -1062,6 +1260,8 @@ class EvidenceAndPathTests(unittest.TestCase):
                         "adapter_source_sha256": "a" * 64,
                         "model_checkpoint_path": "model.pt",
                         "model_checkpoint_sha256": "b" * 64,
+                        "training_provenance_path": "training.json",
+                        "training_provenance_sha256": "c" * 64,
                         "command": ["{python}", "{adapter_source}"],
                     }
                 ],
@@ -1106,7 +1306,8 @@ class EvidenceAndPathTests(unittest.TestCase):
                             self.dataset.position_ids[scene, int(position)]
                         ),
                         "localization_error_m": "1.0",
-                        "response_score": str(index),
+                        "prediction_x": str(index + 1),
+                        "prediction_y": "0.0",
                         "source_role": "source_final_unseen_bank",
                         "dataset_sha256": str(evidence["dataset_sha256"]),
                         "config_sha256": str(evidence["config_sha256"]),
@@ -1123,23 +1324,67 @@ class EvidenceAndPathTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "duplicates"):
             validate_scene_id_rows(adapter, [dict(row) for row in rows] + [dict(rows[0])], self.dataset, evidence)
 
+        scalar_only = [{**row, "response_score": "1.0"} for row in rows]
+        for row in scalar_only:
+            row.pop("prediction_x")
+            row.pop("prediction_y")
+        with self.assertRaisesRegex(RuntimeError, "columns must be exact"):
+            validate_scene_id_rows(adapter, scalar_only, self.dataset, evidence)
+
+    def test_scene_id_training_provenance_must_bind_training_artifacts(self):
+        evidence = evidence_context(self.config, self.dataset, "FORBIDDEN")
+        training = self.root / "training.json"
+        write_json(training, {"source_roles": ["source_encoder_train"]})
+        adapter = {
+            "adapter_id": "m",
+            "model_name": "model",
+            "adapter_source_sha256": "a" * 64,
+            "model_checkpoint_sha256": "b" * 64,
+        }
+        provenance = self.root / "provenance.json"
+        payload = {
+            "schema_version": "csi-pairs-v6-scene-id-training-provenance-v1",
+            "adapter_id": "m",
+            "model_name": "model",
+            "dataset_sha256": evidence["dataset_sha256"],
+            "config_sha256": evidence["config_sha256"],
+            "fixture": evidence["fixture"],
+            "training_role": "source_encoder_train",
+            "selection_role": "source_method_selection",
+            "evaluation_role": "source_final_unseen_bank",
+            "target_data_used": False,
+            "checkpoint_rule": "source_selection_then_frozen",
+            "adapter_source_sha256": "a" * 64,
+            "model_checkpoint_sha256": "b" * 64,
+            "training_record_path": str(training),
+            "training_record_sha256": sha256_file(training),
+            "training_command_sha256": "c" * 64,
+            "external_execution_manifest_sha256": "d" * 64,
+        }
+        write_json(provenance, payload)
+        validate_scene_id_training_provenance(adapter, provenance, evidence)
+        write_json(training, {"source_roles": ["target"]})
+        with self.assertRaisesRegex(RuntimeError, "training record"):
+            validate_scene_id_training_provenance(adapter, provenance, evidence)
+
     def test_scene_id_gate_uses_cluster_macro_confidence_intervals(self):
         rows = []
         for cluster_index, cluster in enumerate(("a", "b", "c", "d")):
             for repeat in range(1 if cluster != "a" else 20):
                 unit = f"{cluster}-{repeat}"
-                for condition, error, score in (
-                    ("map", 1.0, 0.0),
-                    ("scene_id", 1.05, 0.0),
-                    ("map_swap", 0.0, float(cluster_index)),
-                    ("id_swap", 0.0, float(cluster_index)),
+                for condition, error, prediction in (
+                    ("map", 1.0, (0.0, 0.0)),
+                    ("scene_id", 1.05, (0.0, 0.0)),
+                    ("map_swap", 0.0, (float(cluster_index + 1), 0.0)),
+                    ("id_swap", 0.0, (float(cluster_index + 1), 0.0)),
                 ):
                     rows.append(
                         {
                             "unit_id": unit,
                             "condition": condition,
                             "localization_error_m": error,
-                            "response_score": score,
+                            "prediction_x": prediction[0],
+                            "prediction_y": prediction[1],
                             "canonical_unit_id": unit,
                             "canonical_base_map_digest": cluster,
                             "canonical_bank_digest": f"bank-{cluster}",
@@ -1151,14 +1396,6 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(result["base_map_cluster_count"], 4)
         self.assertAlmostEqual(result["scene_id_minus_map_error_m"], 0.05)
         self.assertTrue(result["passed"])
-        interval = _cluster_spearman_interval(
-            np.asarray(["a", "a", "b", "c"]),
-            np.asarray([0.0, 0.0, 1.0, 2.0]),
-            np.asarray([0.0, 0.0, 1.0, 2.0]),
-            100,
-            9,
-        )
-        self.assertAlmostEqual(interval["estimate"], 1.0)
 
     def test_external_direction_gate_cannot_be_inflated_by_duplicate_rows(self):
         rows = []
@@ -1370,6 +1607,18 @@ class EvidenceAndPathTests(unittest.TestCase):
             "assemble-claims",
         ):
             self.assertIn(command, help_text)
+
+    def test_cli_ships_first_party_claim_and_scene_id_defaults(self):
+        parser = build_parser()
+        common = ["--config", str(SMOKE_CONFIG), "--output", str(self.root / "run")]
+        shuffled = parser.parse_args(["run-shuffled-pair-control", *common])
+        retention = parser.parse_args(["run-retention-audit", *common])
+        scene_id = parser.parse_args(["run-scene-id-audit", *common])
+        resource = parser.parse_args(["run-resource-controls", *common])
+        self.assertEqual(shuffled.claim_control_manifest, DEFAULT_SHUFFLED_PAIR_MANIFEST)
+        self.assertEqual(retention.claim_control_manifest, DEFAULT_RETENTION_MANIFEST)
+        self.assertEqual(scene_id.scene_id_manifest, DEFAULT_SCENE_ID_MANIFEST)
+        self.assertEqual(resource.control_manifest, DEFAULT_RESOURCE_CONTROL_MANIFEST)
 
 
 class WiGATrAdapterTests(unittest.TestCase):

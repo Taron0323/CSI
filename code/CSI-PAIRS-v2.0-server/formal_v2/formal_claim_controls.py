@@ -30,6 +30,7 @@ SHUFFLED_SYSTEMS = (
     "edit_status_xor",
     "variant_id_matcher",
 )
+SHUFFLED_METRICS = ("alignment_cgs", "response_probe")
 PAIR_LABELS = ("positive", "negative")
 RETENTION_CONDITIONS = ("correct", "map_swap", "map_removed")
 
@@ -49,17 +50,19 @@ def run_shuffled_pair_control(config, dataset, manifest_path, output_root):
         dataset,
         manifest_path,
         output_dir,
-        "csi-pairs-v6-shuffled-pair-adapter-v2",
+        "csi-pairs-v6-shuffled-pair-adapter-v3",
         "results.json",
     )
     required = {
         "schema_version", "dataset_sha256", "config_sha256", "fixture",
         "per_unit_results_path", "per_unit_results_sha256",
         "pair_registry_sha256", "checkpoint_index_sha256", "adapter_source_sha256",
+        "shuffled_checkpoint_index_path", "shuffled_checkpoint_index_sha256",
+        "training_provenance_path", "training_provenance_sha256",
     }
     if not isinstance(result, dict) or set(result) != required:
         raise RuntimeError("shuffled-pair result fields must be exact")
-    if result["schema_version"] != "csi-pairs-v6-shuffled-pair-results-v2":
+    if result["schema_version"] != "csi-pairs-v6-shuffled-pair-results-v3":
         raise RuntimeError("shuffled-pair result schema mismatch")
     evidence = _validate_result_evidence(config, dataset, result)
     if result["adapter_source_sha256"] != source_hash:
@@ -68,13 +71,18 @@ def run_shuffled_pair_control(config, dataset, manifest_path, output_root):
         config, dataset, output_root, evidence
     )
     checkpoints = _verify_checkpoint_index_binding(config, dataset, output_root, result)
+    shuffled_checkpoints = _verify_shuffled_training_binding(
+        config, dataset, output_dir, result, checkpoints, manifest["control_seed"]
+    )
     registry = _read_active_pair_registry(output_root, result, evidence, dataset)
     rows = _read_bound_rows(output_dir, result, "per_unit_results", _shuffled_columns())
-    _validate_shuffled_rows(rows, registry, checkpoints, dataset)
+    _validate_shuffled_rows(
+        rows, registry, checkpoints, shuffled_checkpoints, dataset
+    )
     assessment = _shuffled_assessment(config, rows, registry)
     passed = assessment["passed"]
     gate = {
-        "schema_version": "csi-pairs-v6-shuffled-pair-gate-v2",
+        "schema_version": "csi-pairs-v6-shuffled-pair-gate-v3",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
@@ -82,6 +90,10 @@ def run_shuffled_pair_control(config, dataset, manifest_path, output_root):
         **assessment,
         "pairing_permutation_seed": manifest["control_seed"],
         "checkpoint_hashes_verified": True,
+        "independently_trained_shuffled_checkpoints_verified": True,
+        "alignment_and_response_pairing_breaks_verified": True,
+        "training_provenance_sha256": result["training_provenance_sha256"],
+        "shuffled_checkpoint_index_sha256": result["shuffled_checkpoint_index_sha256"],
         "per_unit_rows_verified": True,
         "adapter_source_sha256": source_hash,
         **shortcut_binding,
@@ -108,35 +120,41 @@ def run_retention_audit(config, dataset, manifest_path, output_root):
         dataset,
         manifest_path,
         output_dir,
-        "csi-pairs-v6-retention-adapter-v2",
+        "csi-pairs-v6-retention-adapter-v3",
         "results.json",
     )
     required = {
         "schema_version", "dataset_sha256", "config_sha256", "fixture",
         "per_unit_results_path", "per_unit_results_sha256",
         "pair_registry_sha256", "checkpoint_index_sha256", "adapter_source_sha256",
+        "probe_checkpoint_index_path", "probe_checkpoint_index_sha256",
+        "probe_training_provenance_path", "probe_training_provenance_sha256",
     }
     if not isinstance(result, dict) or set(result) != required:
         raise RuntimeError("retention result fields must be exact")
-    if result["schema_version"] != "csi-pairs-v6-retention-results-v2":
+    if result["schema_version"] != "csi-pairs-v6-retention-results-v3":
         raise RuntimeError("retention result schema mismatch")
     evidence = _validate_result_evidence(config, dataset, result)
     if result["adapter_source_sha256"] != source_hash:
         raise RuntimeError("retention result is not bound to the authenticated adapter source")
     checkpoints = _verify_checkpoint_index_binding(config, dataset, output_root, result)
+    probes = _verify_retention_probe_binding(config, dataset, output_dir, result)
     registry = _read_active_pair_registry(output_root, result, evidence, dataset)
     rows = _read_bound_rows(output_dir, result, "per_unit_results", _retention_columns())
-    _validate_retention_rows(rows, registry, checkpoints)
+    _validate_retention_rows(rows, registry, checkpoints, probes)
     assessment = _retention_assessment(config, rows, registry)
     passed = assessment["passed"]
     gate = {
-        "schema_version": "csi-pairs-v6-retention-gate-v2",
+        "schema_version": "csi-pairs-v6-retention-gate-v3",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
         "claim": "C6",
         **assessment,
         "checkpoint_hashes_verified": True,
+        "source_only_probe_training_verified": True,
+        "probe_checkpoint_index_sha256": result["probe_checkpoint_index_sha256"],
+        "probe_training_provenance_sha256": result["probe_training_provenance_sha256"],
         "per_unit_rows_verified": True,
         "downstream_f_only_verified": True,
         "disposable_heads_absent_verified": True,
@@ -150,6 +168,8 @@ def run_retention_audit(config, dataset, manifest_path, output_root):
 
 
 def _run_adapter(config, dataset, manifest_path, output_dir, schema, result_name):
+    from .formal_config import public_formal_config
+
     manifest_path = Path(manifest_path).resolve()
     manifest = read_strict_json(manifest_path)
     required = {
@@ -186,10 +206,24 @@ def _run_adapter(config, dataset, manifest_path, output_dir, schema, result_name
     bound_manifest = dict(manifest)
     bound_manifest["adapter_source_path"] = source_copy.name
     write_json(output_dir / "adapter_manifest.json", bound_manifest)
+    context_path = output_dir / "control_context.json"
+    write_json(
+        context_path,
+        {
+            "schema_version": "csi-pairs-v6-claim-control-context-v1",
+            "config": public_formal_config(config),
+            **evidence_context(
+                config,
+                dataset,
+                "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM",
+            ),
+        },
+    )
     command = [
         value.format(
             dataset=str(dataset.source_path), output=str(output_dir), python=sys.executable,
             adapter_source=str(source), run_root=str(Path(output_dir).parents[1]),
+            context=str(context_path),
         )
         for value in manifest["command"]
     ]
@@ -244,6 +278,346 @@ def _verify_checkpoint_index_binding(config, dataset, output_root, result):
     if not full_by_seed:
         raise RuntimeError("claim-control checkpoint index has no authenticated full-arm checkpoint")
     return full_by_seed
+
+
+def _verify_shuffled_training_binding(
+    config, dataset, output_dir, result, matched_checkpoints, control_seed
+):
+    evidence = evidence_context(
+        config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
+    )
+    provenance_path = _bound_output_file(
+        output_dir,
+        result["training_provenance_path"],
+        result["training_provenance_sha256"],
+        "shuffled training provenance",
+    )
+    provenance = read_strict_json(provenance_path)
+    required = {
+        "schema_version", "dataset_sha256", "config_sha256", "fixture",
+        "control_seed", "training_roles", "selection_role", "target_roles_used",
+        "pairing_breaks", "pairing_strata", "loss_form_preserved", "training_steps",
+        "permutation_registry_path", "permutation_registry_sha256",
+        "training_summary_path", "training_summary_sha256",
+    }
+    if not isinstance(provenance, dict) or set(provenance) != required:
+        raise RuntimeError("shuffled training provenance fields must be exact")
+    if (
+        provenance["schema_version"]
+        != "csi-pairs-v6-shuffled-training-provenance-v1"
+        or provenance["control_seed"] != int(control_seed)
+        or provenance["training_roles"] != ["source_encoder_train"]
+        or provenance["selection_role"] != "source_method_selection"
+        or provenance["target_roles_used"] != []
+        or set(provenance["pairing_breaks"])
+        != {"alignment_h_map_edge", "response_action_target"}
+        or set(provenance["pairing_strata"])
+        != {"scene", "edit_family", "effect_bucket"}
+        or provenance["loss_form_preserved"] is not True
+        or provenance["training_steps"] != int(config["factorial"]["steps"])
+    ):
+        raise RuntimeError("shuffled training provenance violates the frozen V6 control")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if provenance[key] != evidence[key]:
+            raise RuntimeError(f"shuffled training provenance {key} mismatch")
+    permutation_path = _bound_output_file(
+        output_dir,
+        provenance["permutation_registry_path"],
+        provenance["permutation_registry_sha256"],
+        "shuffled permutation registry",
+    )
+    _validate_pairing_permutations(permutation_path, set(matched_checkpoints))
+    training_summary_path = _bound_output_file(
+        output_dir,
+        provenance["training_summary_path"],
+        provenance["training_summary_sha256"],
+        "shuffled training summary",
+    )
+    _validate_shuffled_training_summary(
+        training_summary_path,
+        set(matched_checkpoints),
+        int(config["factorial"]["steps"]),
+    )
+
+    index_path = _bound_output_file(
+        output_dir,
+        result["shuffled_checkpoint_index_path"],
+        result["shuffled_checkpoint_index_sha256"],
+        "shuffled checkpoint index",
+    )
+    index = read_strict_json(index_path)
+    if not isinstance(index, dict) or set(index) != {
+        "schema_version", "dataset_sha256", "config_sha256", "fixture",
+        "training_provenance_sha256", "checkpoints",
+    }:
+        raise RuntimeError("shuffled checkpoint index fields must be exact")
+    if (
+        index["schema_version"] != "csi-pairs-v6-shuffled-checkpoint-index-v1"
+        or index["training_provenance_sha256"]
+        != result["training_provenance_sha256"]
+    ):
+        raise RuntimeError("shuffled checkpoint index identity mismatch")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if index[key] != evidence[key]:
+            raise RuntimeError(f"shuffled checkpoint index {key} mismatch")
+    rows = index["checkpoints"]
+    if not isinstance(rows, list):
+        raise RuntimeError("shuffled checkpoint index checkpoints must be a list")
+    shuffled = {}
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {
+            "seed", "path", "sha256", "matched_checkpoint_sha256"
+        }:
+            raise RuntimeError("shuffled checkpoint index row fields must be exact")
+        seed = int(row["seed"])
+        if seed in shuffled or seed not in matched_checkpoints:
+            raise RuntimeError("shuffled checkpoint index has an unexpected or duplicate seed")
+        if row["matched_checkpoint_sha256"] != matched_checkpoints[seed]:
+            raise RuntimeError("shuffled checkpoint does not bind its matched full checkpoint")
+        path = _bound_output_file(
+            output_dir, row["path"], row["sha256"], "shuffled checkpoint"
+        )
+        _require_distinct_checkpoint_hash(
+            matched_checkpoints[seed], row["sha256"]
+        )
+        _validate_shuffled_checkpoint(
+            path, row, evidence, result["training_provenance_sha256"]
+        )
+        shuffled[seed] = row["sha256"]
+    if set(shuffled) != set(matched_checkpoints):
+        raise RuntimeError("shuffled checkpoints do not cover every full-arm seed")
+    return shuffled
+
+
+def _require_distinct_checkpoint_hash(matched_sha256, shuffled_sha256):
+    if not _lower_sha256(matched_sha256) or not _lower_sha256(shuffled_sha256):
+        raise RuntimeError("shuffled checkpoint digest is invalid")
+    if shuffled_sha256 == matched_sha256:
+        raise RuntimeError("shuffled control reused the matched full checkpoint")
+
+
+def _validate_pairing_permutations(path, expected_seeds):
+    with Path(path).open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    required = {
+        "seed", "branch", "scene_id", "edit_family", "effect_bucket",
+        "original_pair_id", "permuted_pair_id",
+    }
+    if not rows or any(set(row) != required for row in rows):
+        raise RuntimeError("shuffled permutation registry columns must be exact")
+    if {int(row["seed"]) for row in rows} != set(expected_seeds):
+        raise RuntimeError("shuffled permutation registry does not cover every seed")
+    groups = {}
+    for row in rows:
+        if row["branch"] not in {"alignment_h_map_edge", "response_action_target"}:
+            raise RuntimeError("shuffled permutation registry has an unknown branch")
+        if row["original_pair_id"] == row["permuted_pair_id"]:
+            raise RuntimeError("shuffled permutation registry contains an unshuffled pair")
+        group = (
+            int(row["seed"]), row["branch"], row["scene_id"],
+            row["edit_family"], row["effect_bucket"],
+        )
+        groups.setdefault(group, []).append(row)
+    branches = {group[1] for group in groups}
+    if branches != {"alignment_h_map_edge", "response_action_target"}:
+        raise RuntimeError("shuffled permutation registry must break both V6 branches")
+    for rows_in_group in groups.values():
+        original = [row["original_pair_id"] for row in rows_in_group]
+        permuted = [row["permuted_pair_id"] for row in rows_in_group]
+        if len(original) < 2 or len(original) != len(set(original)) or set(original) != set(permuted):
+            raise RuntimeError("shuffled permutation stratum is not a complete derangement")
+
+
+def _validate_shuffled_training_summary(path, expected_seeds, expected_steps):
+    with Path(path).open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    required = {
+        "seed", "arm", "steps", "parameters", "measured_flops_per_step",
+        "alignment_gradient_norm_mean", "response_gradient_norm_mean",
+        "raw_alignment_gradient_norm_mean", "raw_response_gradient_norm_mean",
+        "checkpoint_rule",
+    }
+    if (
+        not rows
+        or any(not required.issubset(row) for row in rows)
+        or {int(row["seed"]) for row in rows} != set(expected_seeds)
+        or len(rows) != len(expected_seeds)
+    ):
+        raise RuntimeError("shuffled training summary does not cover every seed exactly once")
+    for row in rows:
+        if (
+            row["arm"] != "full"
+            or int(row["steps"]) != int(expected_steps)
+            or row["checkpoint_rule"] != "fixed_final_step_no_target_selection"
+            or int(row["parameters"]) <= 0
+            or not np.isfinite(float(row["measured_flops_per_step"]))
+            or float(row["measured_flops_per_step"]) <= 0
+            or any(
+                not np.isfinite(float(row[key])) or float(row[key]) <= 0
+                for key in (
+                    "alignment_gradient_norm_mean", "response_gradient_norm_mean",
+                    "raw_alignment_gradient_norm_mean", "raw_response_gradient_norm_mean",
+                )
+            )
+        ):
+            raise RuntimeError("shuffled training summary violates the full-arm contract")
+
+
+def _validate_shuffled_checkpoint(path, row, evidence, provenance_sha256):
+    try:
+        import torch
+        from .formal_model import CSIPairsFormalModel
+
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+    except Exception as error:
+        raise RuntimeError("shuffled checkpoint is unreadable") from error
+    required = {
+        "schema_version", "arm", "seed", "model_spec", "normalization",
+        "teacher_checkpoint_sha256", "checkpoint_rule", "state_dict",
+        "dataset_sha256", "config_sha256", "fixture", "artifact_label",
+        "scientific_use", "pairing_breaks", "training_provenance_sha256",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise RuntimeError("shuffled checkpoint fields are not exact")
+    if (
+        payload["schema_version"] != "csi-pairs-v6-shuffled-formal-checkpoint-v1"
+        or payload["arm"] != "full"
+        or int(payload["seed"]) != int(row["seed"])
+        or payload["checkpoint_rule"] != "fixed_final_step_no_target_selection"
+        or set(payload["pairing_breaks"])
+        != {"alignment_h_map_edge", "response_action_target"}
+        or payload["training_provenance_sha256"] != provenance_sha256
+    ):
+        raise RuntimeError("shuffled checkpoint identity mismatch")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if payload[key] != evidence[key]:
+            raise RuntimeError(f"shuffled checkpoint {key} mismatch")
+    try:
+        model = CSIPairsFormalModel(**payload["model_spec"])
+        model.load_state_dict(payload["state_dict"], strict=True)
+    except Exception as error:
+        raise RuntimeError("shuffled checkpoint state is not the frozen formal model") from error
+
+
+def _verify_retention_probe_binding(config, dataset, output_dir, result):
+    evidence = evidence_context(
+        config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
+    )
+    provenance_path = _bound_output_file(
+        output_dir,
+        result["probe_training_provenance_path"],
+        result["probe_training_provenance_sha256"],
+        "retention probe training provenance",
+    )
+    provenance = read_strict_json(provenance_path)
+    required = {
+        "schema_version", "dataset_sha256", "config_sha256", "fixture",
+        "fit_role", "selection_role", "evaluation_roles",
+        "formal_model_parameters_updated", "target_labels_used",
+    }
+    if not isinstance(provenance, dict) or set(provenance) != required:
+        raise RuntimeError("retention probe training provenance fields must be exact")
+    if (
+        provenance["schema_version"]
+        != "csi-pairs-v6-retention-probe-training-v1"
+        or provenance["fit_role"] != "source_probe_train"
+        or provenance["selection_role"] != "source_probe_selection"
+        or provenance["evaluation_roles"] != ["source_final_unseen_bank", "target"]
+        or provenance["formal_model_parameters_updated"] is not False
+        or provenance["target_labels_used"] is not False
+    ):
+        raise RuntimeError("retention probes violate the frozen source-only role ledger")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if provenance[key] != evidence[key]:
+            raise RuntimeError(f"retention probe training provenance {key} mismatch")
+
+    index_path = _bound_output_file(
+        output_dir,
+        result["probe_checkpoint_index_path"],
+        result["probe_checkpoint_index_sha256"],
+        "retention probe checkpoint index",
+    )
+    index = read_strict_json(index_path)
+    if not isinstance(index, dict) or set(index) != {
+        "schema_version", "dataset_sha256", "config_sha256", "fixture",
+        "training_provenance_sha256", "probes",
+    }:
+        raise RuntimeError("retention probe checkpoint index fields must be exact")
+    if (
+        index["schema_version"] != "csi-pairs-v6-retention-probe-index-v1"
+        or index["training_provenance_sha256"]
+        != result["probe_training_provenance_sha256"]
+    ):
+        raise RuntimeError("retention probe checkpoint index identity mismatch")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if index[key] != evidence[key]:
+            raise RuntimeError(f"retention probe checkpoint index {key} mismatch")
+    probes = {}
+    for row in index["probes"] if isinstance(index["probes"], list) else []:
+        if not isinstance(row, dict) or set(row) != {"seed", "kind", "path", "sha256"}:
+            raise RuntimeError("retention probe index row fields must be exact")
+        seed = int(row["seed"])
+        kind = row["kind"]
+        if kind not in {"compatibility", "response"} or kind in probes.setdefault(seed, {}):
+            raise RuntimeError("retention probe index has a duplicate or unknown probe")
+        path = _bound_output_file(output_dir, row["path"], row["sha256"], "retention probe")
+        _validate_retention_probe_checkpoint(
+            path, seed, kind, evidence, result["probe_training_provenance_sha256"]
+        )
+        probes[seed][kind] = row["sha256"]
+    if set(probes) != set(map(int, config["seeds"])) or any(
+        set(value) != {"compatibility", "response"} for value in probes.values()
+    ):
+        raise RuntimeError("retention probes do not cover both probes for every seed")
+    return probes
+
+
+def _validate_retention_probe_checkpoint(path, seed, kind, evidence, provenance_sha256):
+    try:
+        import torch
+
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+    except Exception as error:
+        raise RuntimeError("retention probe checkpoint is unreadable") from error
+    required = {
+        "schema_version", "seed", "kind", "dataset_sha256", "config_sha256",
+        "fixture", "fit_role", "selection_role", "training_provenance_sha256",
+        "full_checkpoint_sha256", "state_dict",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise RuntimeError("retention probe checkpoint fields must be exact")
+    if (
+        payload["schema_version"] != "csi-pairs-v6-retention-probe-checkpoint-v1"
+        or int(payload["seed"]) != int(seed)
+        or payload["kind"] != kind
+        or payload["fit_role"] != "source_probe_train"
+        or payload["selection_role"] != "source_probe_selection"
+        or payload["training_provenance_sha256"] != provenance_sha256
+        or not _lower_sha256(payload["full_checkpoint_sha256"])
+        or not isinstance(payload["state_dict"], dict)
+        or not payload["state_dict"]
+    ):
+        raise RuntimeError("retention probe checkpoint identity mismatch")
+    for key in ("dataset_sha256", "config_sha256", "fixture"):
+        if payload[key] != evidence[key]:
+            raise RuntimeError(f"retention probe checkpoint {key} mismatch")
+    if any(
+        not isinstance(value, torch.Tensor)
+        or value.numel() == 0
+        or not bool(torch.isfinite(value).all())
+        for value in payload["state_dict"].values()
+    ):
+        raise RuntimeError("retention probe checkpoint contains invalid tensors")
+
+
+def _bound_output_file(output_dir, relative, digest, label):
+    if not isinstance(relative, str) or not relative or not _lower_sha256(digest):
+        raise RuntimeError(f"{label} binding is invalid")
+    root = Path(output_dir).resolve()
+    path = (root / relative).resolve()
+    if root not in path.parents or not path.is_file() or sha256_file(path) != digest:
+        raise RuntimeError(f"{label} is missing, escapes output, or is hash-mismatched")
+    return path
 
 
 def _validate_formal_checkpoint(path, row, evidence):
@@ -405,34 +779,55 @@ def _read_bound_rows(output_dir, result, prefix, required_columns):
 
 
 def _shuffled_columns():
-    return {"seed", "pair_id", "system", "pair_label", "alignment_score", "checkpoint_sha256", "action_sha256"}
+    return {
+        "seed", "pair_id", "metric", "system", "pair_label", "score",
+        "matched_checkpoint_sha256", "shuffled_checkpoint_sha256", "action_sha256",
+    }
 
 
 def _retention_columns():
-    return {"seed", "pair_id", "condition", "cgs_score", "response_score", "checkpoint_sha256", "representation_scope"}
+    return {
+        "seed", "pair_id", "condition", "cgs_score", "response_score",
+        "checkpoint_sha256", "compatibility_probe_sha256", "response_probe_sha256",
+        "representation_scope",
+    }
 
 
-def _validate_shuffled_rows(rows, registry, checkpoints, dataset):
+def _validate_shuffled_rows(
+    rows, registry, checkpoints, shuffled_checkpoints, dataset
+):
     expected = {
-        (seed, pair_id, system, label)
+        (seed, pair_id, metric, system, label)
         for seed, pair_id in registry
-        for system in SHUFFLED_SYSTEMS
+        for metric in SHUFFLED_METRICS
+        for system in (
+            SHUFFLED_SYSTEMS if metric == "alignment_cgs" else SHUFFLED_SYSTEMS[:2]
+        )
         for label in PAIR_LABELS
     }
     seen = set()
     for row in rows:
         key = (int(row["seed"]), row["pair_id"])
-        expanded = (*key, row["system"], row["pair_label"])
+        expanded = (*key, row["metric"], row["system"], row["pair_label"])
         if expanded in seen:
             raise RuntimeError("shuffled-pair rows duplicate a pair/system/label")
         seen.add(expanded)
-        if key not in registry or row["system"] not in SHUFFLED_SYSTEMS or row["pair_label"] not in PAIR_LABELS:
+        allowed_systems = (
+            SHUFFLED_SYSTEMS
+            if row["metric"] == "alignment_cgs"
+            else SHUFFLED_SYSTEMS[:2]
+            if row["metric"] == "response_probe"
+            else ()
+        )
+        if key not in registry or row["system"] not in allowed_systems or row["pair_label"] not in PAIR_LABELS:
             raise RuntimeError("shuffled-pair rows do not match the frozen pair registry")
-        value = float(row["alignment_score"])
+        value = float(row["score"])
         if not np.isfinite(value):
-            raise RuntimeError("shuffled-pair alignment scores must be finite")
-        if row["checkpoint_sha256"] != checkpoints.get(key[0]):
-            raise RuntimeError("shuffled-pair row is not bound to its full-arm seed checkpoint")
+            raise RuntimeError("shuffled-pair scores must be finite")
+        if row["matched_checkpoint_sha256"] != checkpoints.get(key[0]):
+            raise RuntimeError("shuffled-pair row is not bound to its matched full-arm checkpoint")
+        if row["shuffled_checkpoint_sha256"] != shuffled_checkpoints.get(key[0]):
+            raise RuntimeError("shuffled-pair row is not bound to its independently trained shuffled checkpoint")
         expected_action = _registry_action_sha256(dataset, registry[key])
         if row["action_sha256"] != expected_action:
             raise RuntimeError("shuffled-pair row action digest differs from outer recomputation")
@@ -440,7 +835,7 @@ def _validate_shuffled_rows(rows, registry, checkpoints, dataset):
         raise RuntimeError("shuffled-pair rows do not cover the complete active pair registry")
 
 
-def _validate_retention_rows(rows, registry, checkpoints):
+def _validate_retention_rows(rows, registry, checkpoints, probes):
     expected = {
         (seed, pair_id, condition)
         for seed, pair_id in registry
@@ -459,6 +854,13 @@ def _validate_retention_rows(rows, registry, checkpoints):
             raise RuntimeError("retention rows do not evaluate the downstream retained F representation")
         if row["checkpoint_sha256"] != checkpoints.get(key[0]):
             raise RuntimeError("retention row is not bound to its full-arm seed checkpoint")
+        probe_hashes = probes.get(key[0])
+        if (
+            probe_hashes is None
+            or row["compatibility_probe_sha256"] != probe_hashes["compatibility"]
+            or row["response_probe_sha256"] != probe_hashes["response"]
+        ):
+            raise RuntimeError("retention row is not bound to its source-only frozen probes")
         for field in ("cgs_score", "response_score"):
             if not np.isfinite(float(row[field])):
                 raise RuntimeError("retention scores must be finite")
@@ -494,23 +896,31 @@ def _registry_action_sha256(dataset, row):
 def _shuffled_assessment(config, rows, registry):
     _require_unique_canonical_units(registry)
     lookup = {
-        (int(row["seed"]), row["pair_id"], row["system"], row["pair_label"]): float(row["alignment_score"])
+        (
+            int(row["seed"]), row["pair_id"], row.get("metric", "alignment_cgs"),
+            row["system"], row["pair_label"],
+        ): float(row.get("score", row.get("alignment_score")))
         for row in rows
     }
     keys = sorted(registry)
-    unit_gains = {
-        system: {
-            key:
-            lookup[(*key, system, "positive")] - lookup[(*key, system, "negative")]
-            for key in keys
+    metric_gains = {
+        metric: {
+            system: {
+                key: lookup[(*key, metric, system, "positive")]
+                - lookup[(*key, metric, system, "negative")]
+                for key in keys
+            }
+            for system in (
+                SHUFFLED_SYSTEMS if metric == "alignment_cgs" else SHUFFLED_SYSTEMS[:2]
+            )
         }
-        for system in SHUFFLED_SYSTEMS
+        for metric in SHUFFLED_METRICS
     }
     clusters = None
     gains = {}
     for system in SHUFFLED_SYSTEMS:
         system_clusters, system_values = _canonical_cluster_macro(
-            registry, unit_gains[system]
+            registry, metric_gains["alignment_cgs"][system]
         )
         if clusters is None:
             clusters = system_clusters
@@ -569,10 +979,45 @@ def _shuffled_assessment(config, rows, registry):
         and value["holm_adjusted_p"] < alpha
         for value in shortcut_intervals.values()
     )
-    passed = bool(
+    response_clusters, response_matched = _canonical_cluster_macro(
+        registry, metric_gains["response_probe"]["matched_model"]
+    )
+    response_shuffled_clusters, response_shuffled = _canonical_cluster_macro(
+        registry, metric_gains["response_probe"]["shuffled_model"]
+    )
+    if not np.array_equal(response_clusters, response_shuffled_clusters):
+        raise RuntimeError("shuffled-pair response systems do not share canonical support")
+    response_matched_interval = paired_cluster_interval(
+        response_clusters,
+        response_matched,
+        np.zeros_like(response_matched),
+        resamples,
+        86204,
+    )
+    response_shuffled_interval = paired_cluster_interval(
+        response_clusters,
+        response_shuffled,
+        np.zeros_like(response_shuffled),
+        resamples,
+        86205,
+    )
+    response_suppression_interval = paired_cluster_interval(
+        response_clusters,
+        maximum_fraction * response_matched,
+        response_shuffled,
+        resamples,
+        86206,
+    )
+    alignment_passed = bool(
         interval_decision(matched_interval, threshold=0.0, relation="superiority")
         and interval_decision(suppression_interval, threshold=0.0, relation="superiority")
         and shortcut_passed
+    )
+    response_passed = bool(
+        interval_decision(response_matched_interval, threshold=0.0, relation="superiority")
+        and interval_decision(
+            response_suppression_interval, threshold=0.0, relation="superiority"
+        )
     )
     return {
         "base_map_cluster_count": int(np.unique(clusters).size),
@@ -586,7 +1031,14 @@ def _shuffled_assessment(config, rows, registry):
         "shortcut_familywise_method": "Holm",
         "shortcut_familywise_alpha": alpha,
         "shortcut_baselines_passed": shortcut_passed,
-        "passed": passed,
+        "alignment_pairing_break_passed": alignment_passed,
+        "response_gain": float(response_matched_interval["paired_mean_difference"]),
+        "response_gain_interval": response_matched_interval,
+        "shuffled_response_gain": float(response_shuffled_interval["paired_mean_difference"]),
+        "shuffled_response_gain_interval": response_shuffled_interval,
+        "shuffled_response_suppression_interval": response_suppression_interval,
+        "response_pairing_break_passed": response_passed,
+        "passed": bool(alignment_passed and response_passed),
     }
 
 
@@ -687,4 +1139,12 @@ def _write_manifest(output_dir, evidence):
             **evidence,
             "files": artifact_manifest(output_dir, evidence=evidence),
         },
+    )
+
+
+def _lower_sha256(value):
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
     )

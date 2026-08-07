@@ -602,6 +602,7 @@ def _compatibility_dataset(
     route_norm = fit_route_normalization(dataset, teacher)
     routed = route_dataset(dataset, teacher, config, scenes, normalization=route_norm)
     features = []
+    without_map_features = []
     labels = []
     native_scores = []
     native_training_scores = []
@@ -672,6 +673,21 @@ def _compatibility_dataset(
                                 patches,
                                 normalization,
                             )
+                            no_map_representation, _ = _masked_alignment_state_and_score(
+                                model,
+                                patch_tensor,
+                                torch.zeros_like(map_tensor),
+                                radio_tensor,
+                                zero_tensor,
+                                tuple(
+                                    entry
+                                    for entry in teacher.mask_bank
+                                    if entry.mode == "random_75"
+                                ),
+                                routed.teacher_latent[scene][csi_world, position],
+                                patches,
+                                normalization,
+                            )
                             _, audit_score = _masked_alignment_state_and_score(
                                 model,
                                 patch_tensor,
@@ -688,6 +704,7 @@ def _compatibility_dataset(
                                 normalization,
                             )
                         features.append(representation)
+                        without_map_features.append(no_map_representation)
                         labels.append(label)
                         native_scores.append(audit_score)
                         native_training_scores.append(training_score)
@@ -744,6 +761,9 @@ def _compatibility_dataset(
         raise RuntimeError("compatibility probe dataset has no active quartets")
     return {
         "features": np.asarray(features, dtype=np.float64),
+        "without_map_features": np.asarray(
+            without_map_features, dtype=np.float64
+        ),
         "labels": np.asarray(labels, dtype=np.int64),
         "native_scores": np.asarray(native_scores, dtype=np.float64),
         "native_training_scores": np.asarray(native_training_scores, dtype=np.float64),
@@ -1046,6 +1066,7 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
     action_swap_features = []
     no_action_features = []
     without_map_features = []
+    map_swap_features = []
     edit_only_features = []
     csi_only_features = []
     oracle_x_features = []
@@ -1103,6 +1124,9 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
                 maps = _normalized_map(
                     normalization, dataset.maps[scene, edge.source_world]
                 )[None, ...]
+                swapped_maps = _normalized_map(
+                    normalization, dataset.maps[scene, edge.target_world]
+                )[None, ...]
                 radio = _normalized_radio(
                     normalization, dataset.radio_config[scene], dataset.bs_pose[scene]
                 )[None, ...]
@@ -1128,6 +1152,12 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
                             torch.as_tensor(radio, dtype=torch.float32),
                             torch.as_tensor(entry.mask[None, :], dtype=torch.bool),
                         )[0, query].numpy()
+                        map_swap_state = model.state(
+                            torch.as_tensor(visible[None, ...], dtype=torch.float32),
+                            torch.as_tensor(swapped_maps, dtype=torch.float32),
+                            torch.as_tensor(radio, dtype=torch.float32),
+                            torch.as_tensor(entry.mask[None, :], dtype=torch.bool),
+                        )[0, query].numpy()
                         map_only_state = model.state(
                             torch.zeros_like(
                                 torch.as_tensor(visible[None, ...], dtype=torch.float32)
@@ -1145,6 +1175,9 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
                     )
                     without_map_features.append(
                         np.concatenate((no_map_state, action_features, query_onehot))
+                    )
+                    map_swap_features.append(
+                        np.concatenate((map_swap_state, action_features, query_onehot))
                     )
                     edit_only_features.append(
                         np.concatenate((map_only_state, action_features, query_onehot))
@@ -1203,6 +1236,7 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
         "action_swap_features": np.asarray(action_swap_features),
         "no_action_features": np.asarray(no_action_features),
         "without_map_features": np.asarray(without_map_features),
+        "map_swap_features": np.asarray(map_swap_features),
         "edit_only_features": np.asarray(edit_only_features),
         "csi_only_features": np.asarray(csi_only_features),
         "oracle_x_features": np.asarray(oracle_x_features),
