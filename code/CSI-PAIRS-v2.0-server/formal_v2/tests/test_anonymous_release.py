@@ -136,6 +136,15 @@ class AnonymousReleaseTests(unittest.TestCase):
 
     def test_built_supplement_contains_a_runnable_public_test_suite(self):
         project_root = Path(__file__).resolve().parents[2]
+        git_probe = subprocess.run(
+            ["git", "-C", str(project_root), "rev-parse", "--is-inside-work-tree"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if git_probe.returncode != 0 or git_probe.stdout.strip() != "true":
+            self.skipTest("anonymous source export requires the repository Git history")
+
         archive = self.root / "anonymous.zip"
         builder = project_root / "formal_v2/scripts/build_anonymous_supplement.sh"
         subprocess.run(
