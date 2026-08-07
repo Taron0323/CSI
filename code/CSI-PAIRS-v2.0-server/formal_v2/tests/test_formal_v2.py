@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import inspect
 import json
@@ -21,7 +22,10 @@ from formal_v2.formal_claims import (
 )
 from formal_v2.formal_cli import (
     COMMAND_OUTPUT_PATHS,
-    _require_fresh_command_output,
+    SELF_RESERVING_DIRECTORY_COMMANDS,
+    _acquire_output_lock,
+    _reserve_command_output,
+    _reserve_full_run_output,
     build_parser,
     main as formal_cli_main,
 )
@@ -199,12 +203,72 @@ class ConfigTests(unittest.TestCase):
             for command, relative_path in COMMAND_OUTPUT_PATHS.items():
                 with self.subTest(command=command):
                     target = output / relative_path
-                    target.mkdir(parents=True, exist_ok=True)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if command == "inspect-data":
+                        target.write_text("existing evidence\n", encoding="utf-8")
+                    else:
+                        target.mkdir()
                     with self.assertRaisesRegex(FileExistsError, "refusing to overwrite"):
-                        _require_fresh_command_output(command, output)
-                    target.rmdir()
-                    _require_fresh_command_output(command, output)
-            _require_fresh_command_output("all", output)
+                        _reserve_command_output(command, output)
+                    if target.is_dir():
+                        target.rmdir()
+                    else:
+                        target.unlink()
+                    reserved = _reserve_command_output(command, output)
+                    self.assertEqual(reserved, target)
+                    if command in SELF_RESERVING_DIRECTORY_COMMANDS:
+                        self.assertFalse(target.exists())
+                    else:
+                        self.assertTrue(target.exists())
+                        if target.is_dir():
+                            target.rmdir()
+                        else:
+                            target.unlink()
+            self.assertIsNone(_reserve_command_output("all", output))
+
+    def test_stage_output_reservation_is_atomic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "run"
+
+            def reserve(_):
+                try:
+                    return _reserve_command_output("run-risk", output)
+                except FileExistsError:
+                    return None
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(reserve, range(2)))
+            self.assertEqual(sum(result is not None for result in results), 1)
+            self.assertEqual(sum(result is None for result in results), 1)
+
+    def test_output_root_operation_lock_is_exclusive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "run"
+            first = _acquire_output_lock(output)
+            with self.assertRaisesRegex(FileExistsError, "operation lock exists"):
+                _acquire_output_lock(output)
+            first.unlink()
+            second = _acquire_output_lock(output)
+            self.assertTrue(second.is_file())
+            second.unlink()
+
+    def test_full_run_reservation_accepts_only_new_root_or_staged_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fresh = root / "fresh"
+            _reserve_full_run_output(fresh)
+            self.assertTrue(fresh.is_dir())
+            with self.assertRaisesRegex(FileExistsError, "single pre-staged inputs"):
+                _reserve_full_run_output(fresh)
+
+            staged = root / "staged"
+            inputs = staged / "inputs"
+            inputs.mkdir(parents=True)
+            _reserve_full_run_output(staged)
+            self.assertEqual(list(staged.iterdir()), [inputs])
+            (staged / "unexpected.txt").write_text("unexpected\n", encoding="utf-8")
+            with self.assertRaisesRegex(FileExistsError, "single pre-staged inputs"):
+                _reserve_full_run_output(staged)
 
     def test_cli_calls_the_overwrite_guard_before_running_a_stage(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -227,6 +291,9 @@ class ConfigTests(unittest.TestCase):
             )
             self.assertEqual(status, 2)
             self.assertEqual(marker.read_text(encoding="utf-8"), "existing evidence\n")
+            self.assertFalse(
+                (output.parent / f".{output.name}.csi-pairs-operation.lock").exists()
+            )
 
     def test_make_fixture_refuses_to_overwrite_an_existing_file(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -235,6 +302,38 @@ class ConfigTests(unittest.TestCase):
             status = formal_cli_main(["make-fixture", "--output", str(target)])
             self.assertEqual(status, 2)
             self.assertEqual(target.read_bytes(), b"existing fixture bytes")
+
+    def test_make_fixture_normalizes_npz_suffix_before_exclusive_create(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            existing = root / "fixture.npz"
+            existing.write_bytes(b"existing fixture bytes")
+            status = formal_cli_main(
+                ["make-fixture", "--output", str(root / "fixture")]
+            )
+            self.assertEqual(status, 2)
+            self.assertEqual(existing.read_bytes(), b"existing fixture bytes")
+
+            created = write_nonscientific_fixture(root / "fresh-fixture")
+            self.assertEqual(created, root / "fresh-fixture.npz")
+            self.assertTrue(created.is_file())
+            self.assertFalse((root / "fresh-fixture").exists())
+
+    def test_concurrent_fixture_writers_cannot_share_one_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "fixture.npz"
+
+            def write(seed):
+                try:
+                    return write_nonscientific_fixture(target, seed=seed)
+                except FileExistsError:
+                    return None
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(write, (101, 202)))
+            self.assertEqual(sum(result == target for result in results), 1)
+            self.assertEqual(sum(result is None for result in results), 1)
+            FormalDataset.load(target)
 
 
 class StrictJsonTests(unittest.TestCase):

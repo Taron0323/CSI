@@ -146,11 +146,12 @@ CSI_PAIRS_RETENTION_MANIFEST=/absolute/path/retention.json \
   formal_v2/scripts/run_formal_v2.sh
 ```
 
-Never reuse an output directory. Every individual evidence-producing CLI stage also refuses to
-overwrite its registered output subdirectory. Incremental execution may share one run root only
-while each next stage output is absent and all upstream manifests remain authenticated. Never
-replace paper placeholders with fixture output. The inherited No-X failures and four warning names
-remain binding until new untouched non-fixture banks pass the registered gates.
+Never reuse an output directory. Every individual evidence-producing CLI stage atomically reserves
+its registered output under an exclusive run-root operation lock. Incremental execution may share
+one run root only while each next stage output is absent and all upstream manifests remain
+authenticated. Fixture filenames are normalized to `.npz` before exclusive creation. Never replace
+paper placeholders with fixture output. The inherited No-X failures and four warning names remain
+binding until new untouched non-fixture banks pass the registered gates.
 
 The current bidirectional paper/code audit and five-layer readiness verdict are recorded in
 `artifacts/v6_traceability_audit_2026-08-07.md`.

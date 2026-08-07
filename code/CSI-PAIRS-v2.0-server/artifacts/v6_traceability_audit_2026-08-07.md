@@ -24,7 +24,7 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | Layer | Verdict | Evidence and boundary |
 |---|---|---|
 | `PACKAGE_INTEGRITY` | `PASS` | Repository SHA inventory is regenerated and verified after the change; no private path, secret, cache, or run output is included. |
-| `SOFTWARE_EXECUTION` | `PASS` | 175 unit tests, Python compilation, shell syntax, CLI help, resource hashes, and the non-scientific verifier/qualification smoke complete. |
+| `SOFTWARE_EXECUTION` | `PASS` | 180 unit tests, Python compilation, shell syntax, CLI help, resource hashes, and the non-scientific verifier/qualification smoke complete. |
 | `V6_PROTOCOL_FIDELITY` | `PASS_WITH_EXTERNAL_CONTRACTS` | All code-resolvable P0/P1 findings in this audit are closed. External controls and evidence remain fail-closed interfaces. |
 | `FORMAL_EXPERIMENT_READINESS` | `CODE_READY_FOR_FORMAL_INPUT` | The runner can start formal qualification when admissible inputs exist, but the complete reviewer-grade `all` run is externally blocked. |
 | `SCIENTIFIC_EVIDENCE` | `NOT_ASSESSED` | No qualified non-fixture Stage-0, four-arm, target-city, calibration, or external-validity result has been run. |
@@ -134,7 +134,7 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | Risk outputs | V6 5.3-5.4 | `q_comp` and `p_fail` remain distinct; target route is never an online input | `EXACT` |
 | External adapters | V6 10-11, G8 | Hash-bound code/config/checkpoint/unit rows; style controls cannot self-promote | `PARTIAL/PROXY` until external implementations/results exist |
 | Gate and claim outputs | V6 14-15 | Missing, fixture, `NOT_ASSESSED`, hash mismatch and incomplete dependencies never auto-PASS | `EXACT` |
-| CLI output policy | V6 reproducibility/evidence integrity | Every evidence-producing stage and fixture writer refuses to overwrite its registered output | `EXACT` |
+| CLI output policy | V6 reproducibility/evidence integrity | Every evidence-producing stage atomically reserves its registered output under an exclusive run-root operation lock; fixture writers normalize `.npz` before exclusive creation | `EXACT` |
 
 ## CLI and orchestration audit
 
@@ -184,7 +184,7 @@ claim assembly. No required stage is silently skipped.
 | `all` omits required evidence stages | `REFUTED` | enumerated reachable call chain above |
 | Stage-0 reuses a small fixed mask bank | `CONFIRMED_AND_FIXED` | independent exact-cardinality sampler plus per-step integration test |
 | Route null thresholds lack same-unit noise-floor proof | `CONFIRMED_AND_FIXED` | `route_noise_floor.csv` and G1 four-metric coverage requirement |
-| Single-stage commands can overwrite evidence | `CONFIRMED_AND_FIXED` | centralized output registry and real CLI overwrite mutation test |
+| Single-stage commands can overwrite evidence | `CONFIRMED_AND_FIXED` | atomic output reservation, exclusive run-root operation locks, normalized fixture paths, and sequential/concurrent overwrite mutation tests |
 
 ## External blockers
 

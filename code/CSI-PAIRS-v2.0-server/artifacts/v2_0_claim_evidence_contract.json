@@ -21,7 +21,7 @@
     "Stage-0 independent exact-cardinality 75% masks resampled per sample and optimization step",
     "teacher checkpoint schema v2.3 binds the pretraining mask sampler",
     "G1 audits four same-unit per-bank repeat-pair route noise floors",
-    "all evidence-producing single-stage commands refuse output overwrite"
+    "all evidence-producing single-stage commands atomically reserve outputs under an exclusive run-root operation lock"
   ],
   "qualification_gate_additions": {
     "noise_floor_source_role": "source_method_selection",

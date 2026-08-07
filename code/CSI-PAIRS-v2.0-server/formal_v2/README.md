@@ -32,8 +32,10 @@ and physical/latent norms. Overall repeat NMSE cannot substitute for this test.
 
 The full-run root must be new, except that a single pre-staged `inputs/` directory is allowed for
 authenticated Sionna scenes and other immutable run inputs; any existing result/stage file is rejected.
-Individual stage commands use the same rule for their registered output path, so an interrupted or
-completed evidence directory cannot be silently overwritten.
+Individual stage commands atomically reserve their registered output path and hold an exclusive
+operation lock for the run root, so concurrent, interrupted, or completed evidence directories
+cannot be silently mixed or overwritten. Fixture paths are normalized to `.npz` before exclusive
+creation.
 
 `external_adapters/all_map_adapters_v1.json` registers SigMap, Wi-GATr, WiSER, and RFIR for the
 same internally generated six-condition unit registry. `configs/representation_baselines_v1.json`

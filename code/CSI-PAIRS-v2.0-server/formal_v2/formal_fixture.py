@@ -17,8 +17,8 @@ def write_nonscientific_fixture(
 ) -> Path:
     """Create a V6-shaped deterministic code fixture with permanently forbidden use."""
     target = Path(path)
-    if target.exists():
-        raise FileExistsError(f"refusing to overwrite fixture: {target}")
+    if target.suffix != ".npz":
+        target = Path(f"{target}.npz")
     minimum_scenes = len(SOURCE_ROLES) + 4
     if scene_count < minimum_scenes:
         raise ValueError(f"fixture needs seven source roles and four target banks ({minimum_scenes} scenes)")
@@ -235,40 +235,44 @@ def write_nonscientific_fixture(
             "pairing_rule": "NOT-APPLICABLE",
         },
     }
-    np.savez_compressed(
-        target,
-        csi_repeat=csi_repeat,
-        csi_clean=clean,
-        maps=maps,
-        map_channel_names=map_channel_names,
-        positions=coordinates,
-        position_ids=position_ids,
-        free_space=free_space,
-        radio_config=radio_config,
-        bs_pose=bs_pose,
-        repeat_seeds=repeat_seeds,
-        phase_reference_ids=phase_reference_ids,
-        base_map_cluster_ids=base_map_cluster_ids,
-        canonical_map_sha256=canonical_map_sha256,
-        noop_maps=noop_maps,
-        noop_map_sha256=noop_map_sha256,
-        engine_config_json=np.asarray(engine_config_text),
-        path_ids=path_ids,
-        path_power=path_power,
-        path_surface_ids=path_surface_ids,
-        noop_path_ids=path_ids.copy(),
-        noop_path_power=path_power.copy(),
-        noop_path_surface_ids=path_surface_ids.copy(),
-        primitive_surface_ids=primitive_surface_ids,
-        world_bits=bits,
-        primitive_ids=primitive_ids,
-        anchor_bits=anchor_bits,
-        natural_world_index=natural,
-        scene_ids=scene_ids,
-        city_ids=city_ids,
-        bank_ids=bank_ids,
-        scene_roles=roles,
-        position_roles=position_roles,
-        metadata_json=np.asarray(json.dumps(metadata, sort_keys=True, separators=(",", ":"))),
-    )
+    try:
+        with target.open("xb") as handle:
+            np.savez_compressed(
+                handle,
+                csi_repeat=csi_repeat,
+                csi_clean=clean,
+                maps=maps,
+                map_channel_names=map_channel_names,
+                positions=coordinates,
+                position_ids=position_ids,
+                free_space=free_space,
+                radio_config=radio_config,
+                bs_pose=bs_pose,
+                repeat_seeds=repeat_seeds,
+                phase_reference_ids=phase_reference_ids,
+                base_map_cluster_ids=base_map_cluster_ids,
+                canonical_map_sha256=canonical_map_sha256,
+                noop_maps=noop_maps,
+                noop_map_sha256=noop_map_sha256,
+                engine_config_json=np.asarray(engine_config_text),
+                path_ids=path_ids,
+                path_power=path_power,
+                path_surface_ids=path_surface_ids,
+                noop_path_ids=path_ids.copy(),
+                noop_path_power=path_power.copy(),
+                noop_path_surface_ids=path_surface_ids.copy(),
+                primitive_surface_ids=primitive_surface_ids,
+                world_bits=bits,
+                primitive_ids=primitive_ids,
+                anchor_bits=anchor_bits,
+                natural_world_index=natural,
+                scene_ids=scene_ids,
+                city_ids=city_ids,
+                bank_ids=bank_ids,
+                scene_roles=roles,
+                position_roles=position_roles,
+                metadata_json=np.asarray(json.dumps(metadata, sort_keys=True, separators=(",", ":"))),
+            )
+    except FileExistsError as error:
+        raise FileExistsError(f"refusing to overwrite fixture: {target}") from error
     return target

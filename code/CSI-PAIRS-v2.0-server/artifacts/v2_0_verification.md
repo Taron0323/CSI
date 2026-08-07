@@ -17,14 +17,15 @@ The latest audit closed four code-resolvable protocol/evidence-integrity gaps:
 2. Formal patch grids must have a patch count divisible by four; 75% masking is never rounded.
 3. G1 now checks four same-unit per-bank repeat-pair noise floors against the corresponding
    alignment/response and physical/latent null thresholds.
-4. Every evidence-producing single-stage CLI command and `make-fixture` refuse to overwrite their
-   registered output.
+4. Every evidence-producing single-stage CLI command atomically reserves its registered output
+   under an exclusive run-root operation lock. `make-fixture` normalizes `.npz` before exclusive
+   creation, so suffix aliases and concurrent writers cannot overwrite an archive.
 
 Follow-up checks on the current tree:
 
 | Check | Result |
 |---|---|
-| Full `unittest` discovery | 175/175 PASS |
+| Full `unittest` discovery | 180/180 PASS |
 | Python compilation and CLI help | PASS |
 | Shell syntax | PASS |
 | Repository and vendored SHA-256 inventories | PASS after regeneration |

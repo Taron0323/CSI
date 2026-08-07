@@ -31,6 +31,8 @@ COMMAND_OUTPUT_PATHS = {
     "run-retention-audit": "evaluation/retention",
     "assemble-claims": "claims",
 }
+FILE_OUTPUT_COMMANDS = frozenset({"inspect-data"})
+SELF_RESERVING_DIRECTORY_COMMANDS = frozenset({"run-representation-baselines"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -141,9 +143,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    output_lock: Path | None = None
     try:
         if args.command == "make-fixture":
-            _require_absent(Path(args.output))
             path = write_nonscientific_fixture(args.output, seed=int(args.seed))
             print(json.dumps({"status": "success", "fixture": str(path.resolve()), "scientific_use": "FORBIDDEN"}))
             return 0
@@ -182,20 +184,13 @@ def main(argv: list[str] | None = None) -> int:
             minimum_banks_per_target_city=int(config["data"]["minimum_banks_per_target_city"]),
             minimum_banks_per_source_role=int(config["data"]["minimum_banks_per_source_role"]),
         )
-        output = Path(args.output)
-        _require_fresh_command_output(args.command, output)
-        if args.command == "all" and output.exists():
-            entries = list(output.iterdir()) if output.is_dir() else []
-            if (
-                len(entries) != 1
-                or entries[0].name != "inputs"
-                or not entries[0].is_dir()
-                or entries[0].is_symlink()
-            ):
-                raise FileExistsError(
-                    f"refusing to reuse V2 full-run output directory except for a single pre-staged inputs directory: {output}"
-                )
-        output.mkdir(parents=True, exist_ok=True)
+        output = Path(args.output).resolve()
+        output_lock = _acquire_output_lock(output)
+        if args.command == "all":
+            _reserve_full_run_output(output)
+        else:
+            _reserve_command_output(args.command, output)
+            output.mkdir(parents=True, exist_ok=True)
         if args.command == "inspect-data":
             target = output / "data_contract.json"
             report = dataset.contract_report()
@@ -404,17 +399,60 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+    finally:
+        if output_lock is not None:
+            output_lock.unlink(missing_ok=True)
 
 
-def _require_absent(path: Path) -> None:
-    if path.exists():
-        raise FileExistsError(f"refusing to overwrite V2 output: {path}")
+def _acquire_output_lock(output_root: Path) -> Path:
+    output_root.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = output_root.parent / f".{output_root.name}.csi-pairs-operation.lock"
+    try:
+        lock_path.touch(exist_ok=False)
+    except FileExistsError as error:
+        raise FileExistsError(
+            f"refusing concurrent V2 output use; operation lock exists: {lock_path}"
+        ) from error
+    return lock_path
 
 
-def _require_fresh_command_output(command: str, output_root: Path) -> None:
+def _reserve_command_output(command: str, output_root: Path) -> Path | None:
     relative_path = COMMAND_OUTPUT_PATHS.get(command)
-    if relative_path is not None:
-        _require_absent(output_root / relative_path)
+    if relative_path is None:
+        return None
+    target = output_root / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if command in SELF_RESERVING_DIRECTORY_COMMANDS:
+        if target.exists() or target.is_symlink():
+            raise FileExistsError(f"refusing to overwrite V2 output: {target}")
+        return target
+    try:
+        if command in FILE_OUTPUT_COMMANDS:
+            target.touch(exist_ok=False)
+        else:
+            target.mkdir(exist_ok=False)
+    except FileExistsError as error:
+        raise FileExistsError(f"refusing to overwrite V2 output: {target}") from error
+    return target
+
+
+def _reserve_full_run_output(output_root: Path) -> None:
+    try:
+        output_root.mkdir(parents=True, exist_ok=False)
+        return
+    except FileExistsError:
+        pass
+    entries = list(output_root.iterdir()) if output_root.is_dir() else []
+    if (
+        len(entries) != 1
+        or entries[0].name != "inputs"
+        or not entries[0].is_dir()
+        or entries[0].is_symlink()
+    ):
+        raise FileExistsError(
+            "refusing to reuse V2 full-run output directory except for a single "
+            f"pre-staged inputs directory: {output_root}"
+        )
 
 
 if __name__ == "__main__":
