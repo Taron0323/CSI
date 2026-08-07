@@ -8,7 +8,7 @@
 ## 2026-08-08 current PR addendum
 
 - Current `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`.
-- Current `AUDITED_CODE_SHA`: `4074e98fe3c1d1ddccee79672f312b9111185992`.
+- Current `AUDITED_CODE_SHA`: `7560120ca588c2cce76507116d58ed98c49895bf`.
 - Current source-tree verification: `258/258` tests, Python compilation, Ruff `E9,F`, dependency
   health, strict V2.3 configs, 25 CLI help paths, shell syntax, and vendored hashes pass.
 - The anonymous exporter now omits internal requirement-matrix code and audit tests together. A
@@ -16,6 +16,10 @@
 - Remote replay additionally closes the bundle verifier's expected fixture-exit propagation and the
   GitHub pull-request merge committer's non-identifying anonymity-scan false positive. Real project
   identities, repository provenance, project SHAs, and personal paths remain fail-closed.
+- A later GitHub Actions replay exposed two legitimate nested integration commands exceeding their
+  former 120-second subprocess bounds on the hosted Linux CPU. Their assertions and coverage are
+  unchanged; both bounded waits are now 300 seconds, while local targeted and complete-suite
+  executions pass.
 - The current paper PDF passes reproducible-build, ICLR preflight, metadata/font, LaTeX-log, and
   10-page visual inspection checks. It remains a pre-experiment protocol draft and contains no
   substituted fixture results.

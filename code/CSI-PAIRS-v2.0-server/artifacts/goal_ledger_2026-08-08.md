@@ -9,8 +9,8 @@ Last updated: 2026-08-08 (Asia/Shanghai)
 - Branch: `codex/fix-formal-experiment-readiness`
 - Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
 - Starting PR head: `1f5c5fafa0fd76cf1a243f18fcb234c3418a08a6`
-- `AUDITED_CODE_SHA`: `4074e98fe3c1d1ddccee79672f312b9111185992`
-- Current remote PR head: `742ec70b88ef48e3179aa6a23f7cba482c846a5b` (latest repairs not pushed yet)
+- `AUDITED_CODE_SHA`: `7560120ca588c2cce76507116d58ed98c49895bf`
+- Remote PR head before this delivery update: `73a344b05f607302036b503dbcb516b4a73396e9`
 
 ## Authority inputs
 
@@ -47,23 +47,31 @@ All independently reproduced code-level P0/P1 findings are repaired at `AUDITED_
   authenticating it as a successful outer software check;
 - pull-request CI treating the generic `GitHub <noreply@github.com>` merge committer as a project
   identity and false-positive scanning ordinary GitHub URLs.
+- hosted Linux CPU execution legitimately taking longer than the tests' former 120-second nested
+  integration bounds; the bounds are now 300 seconds without skipping work or weakening assertions.
 
 The last hypothesis-driven sweep found one additional P1: the main runtime could record but not
 reject an internally consistent unlocked environment. The unified evidence context now requires
 CPython 3.12, every exact pinned version and a nonempty installed-distribution RECORD digest. The
 new version/missing-package/RECORD mutations pass.
 
-The first remote-head replay then found the two delivery findings above. The dry-run wrapper now
+The first remote-head replay found the two delivery findings above. The dry-run wrapper now
 requires exact exit `1` and reauthenticates the complete `DRY_RUN_FAIL_NOT_EVIDENCE`,
 `passed=false`, fixture/FORBIDDEN state before it returns `0`. The anonymity scan ignores only the
 two generic GitHub automation tokens while continuing to reject real authors, committers, emails,
 repository owners, project SHAs, and personal paths. Both repairs have regression tests.
 
+The second remote-head replay completed every assertion but GitHub Actions reported two
+`TimeoutExpired` errors: the extracted anonymous public suite and the complete fixture dry-run took
+longer than 120 seconds on the hosted Linux CPU. Their subprocess bounds are now 300 seconds. The
+targeted tests pass locally in 63.532 and 51.993 seconds, and the unchanged complete 258-test suite
+passes after the repair.
+
 ## Latest local verification
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `258/258 PASS`, 123.402 s |
+| Full unittest discovery | `258/258 PASS`, 122.409 s after the hosted-runner timeout repair |
 | Compilation, Ruff `E9,F`, `pip check` | PASS |
 | CLI help | `25/25 PASS` (top level plus 24 subcommands) |
 | Formal/smoke strict config | V2.3 V6 PASS |
@@ -74,8 +82,8 @@ repository owners, project SHAs, and personal paths. Both repairs have regressio
 | Remote main drift | none after fetch; `origin/main` remains `BASE_SHA` |
 | Anonymous exported-suite regression | PASS after fresh build/extraction; internal audit tooling absent |
 | Pull-request merge-ref anonymity regression | PASS against the actual PR merge-ref committer identity |
-| Deterministic server delivery | SHA-256 `e8c0713dfe04fb03a93c4d64588fe8269ba5e3809e4ee7e5d6f8d35ea9cde94f`; two byte-identical builds |
-| Deterministic anonymous delivery | SHA-256 `3b4959ef147baab62997ad0225eed0b7c705e362e827c209ac054ad0ea300839`; two byte-identical builds |
+| Deterministic server delivery | SHA-256 `4a3134d577f390f93d1b4eac665e0f343c3e8ca60790fb978bf3f8717c768dd5`; two byte-identical builds |
+| Deterministic anonymous delivery | SHA-256 `3bf2be70ae0fe776d3e28821a4cc21b8dcd4a0895249ed704a95915758fd0d50`; two byte-identical builds |
 | Fresh server package | 174 inventory entries; 258 tests pass with one expected source-only skip; outer verifier authenticates the expected fixture failure and returns `0` without claim promotion |
 | Fresh anonymous package | 155 inventory entries; 247 tests pass; pre/post tree and ZIP anonymity scans pass |
 | Reproducible paper PDF | two builds and tracked PDF share SHA-256 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e` |
@@ -104,6 +112,5 @@ This prevents false completeness and leaves `GOAL_COMPLETE` blocked.
 
 ## Next single action
 
-Regenerate and verify the repository root `SHA256SUMS`, commit the delivery metadata, fetch and
-confirm `origin/main` has not drifted, then push normally to PR #3 and repeat all required checks
-from a fresh clone of the remote PR head.
+Commit the verified delivery metadata, fetch and confirm `origin/main` has not drifted, then push
+normally to PR #3 and repeat all required checks from a fresh clone of the remote PR head.

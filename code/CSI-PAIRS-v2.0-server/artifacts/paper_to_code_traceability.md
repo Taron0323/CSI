@@ -2,7 +2,7 @@
 
 Date: 2026-08-08 (Asia/Shanghai)
 
-Audited code: `4074e98fe3c1d1ddccee79672f312b9111185992`
+Audited code: `7560120ca588c2cce76507116d58ed98c49895bf`
 
 ## Atomic source ledger
 

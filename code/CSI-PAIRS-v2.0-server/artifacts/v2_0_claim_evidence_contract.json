@@ -3,7 +3,7 @@
   "artifact_label": "csi-pairs-formal-v2.1-v6",
   "status": "CODE_READY_FOR_FORMAL_INPUT",
   "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
-  "audited_code_sha": "4074e98fe3c1d1ddccee79672f312b9111185992",
+  "audited_code_sha": "7560120ca588c2cce76507116d58ed98c49895bf",
   "launch_status": "BLOCKED",
   "author_decision_blockers": [
     "SC-GAUGE-001: choose one shared RT reference or one source-derived per-pair gauge without changing the estimand silently",
@@ -39,7 +39,8 @@
     "nonredistributable resource exclusion, deterministic server and anonymous bundles, identity scanning, and CPU CI",
     "anonymous supplement excludes internal requirement-matrix tooling and proves its exported public test suite runs to completion",
     "bundle dry-run verification authenticates the exact expected fixture failure while returning success only for the outer software check",
-    "anonymous identity scanning retains real project identities while excluding generic GitHub merge-committer tokens that otherwise make pull-request CI false-positive"
+    "anonymous identity scanning retains real project identities while excluding generic GitHub merge-committer tokens that otherwise make pull-request CI false-positive",
+    "hosted Linux CPU integration waits allow 300 seconds for the complete extracted public suite and fixture qualification chain without skipping tests or weakening assertions"
   ],
   "implementation_inventory": {
     "shuffled_pair": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",

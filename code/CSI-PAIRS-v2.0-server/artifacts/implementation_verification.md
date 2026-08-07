@@ -3,7 +3,7 @@
 Date: 2026-08-08 (Asia/Shanghai)
 
 - `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`
-- `AUDITED_CODE_SHA`: `4074e98fe3c1d1ddccee79672f312b9111185992`
+- `AUDITED_CODE_SHA`: `7560120ca588c2cce76507116d58ed98c49895bf`
 - Branch: `codex/fix-formal-experiment-readiness`
 - Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
 - Environment: CPython 3.12.10, locked packages, macOS arm64, CPU-only
@@ -12,7 +12,7 @@ Date: 2026-08-08 (Asia/Shanghai)
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `258/258 PASS` in 123.402 s |
+| Full unittest discovery | `258/258 PASS` in 122.409 s |
 | Python compilation | PASS for core, adapters and tests |
 | Ruff `E9,F` | PASS |
 | Dependency health | `pip check` PASS |
@@ -45,13 +45,16 @@ failed tests.
   reclassifies it as a scientific PASS;
 - pull-request merge-ref anonymity scanning ignores only GitHub's generic automation identity while
   retaining project author, committer, email, repository, SHA and personal-path checks.
+- hosted Linux CPU nested integration bounds allow 300 seconds for the extracted public suite and
+  complete fixture dry-run; assertions and executed coverage are unchanged, and both targeted
+  regressions plus the complete source suite pass.
 
 ## Final local delivery checks
 
 | Check | Result |
 |---|---|
-| Server bundle reproducibility | Two byte-identical builds; SHA-256 `e8c0713dfe04fb03a93c4d64588fe8269ba5e3809e4ee7e5d6f8d35ea9cde94f` |
-| Anonymous bundle reproducibility | Two byte-identical builds; SHA-256 `3b4959ef147baab62997ad0225eed0b7c705e362e827c209ac054ad0ea300839` |
+| Server bundle reproducibility | Two byte-identical builds; SHA-256 `4a3134d577f390f93d1b4eac665e0f343c3e8ca60790fb978bf3f8717c768dd5` |
+| Anonymous bundle reproducibility | Two byte-identical builds; SHA-256 `3bf2be70ae0fe776d3e28821a4cc21b8dcd4a0895249ed704a95915758fd0d50` |
 | Bundle sidecars | All four generated sidecars verify |
 | Fresh server extraction | Exact 174-entry inventory; 258 tests pass with one expected source-only Git-history test skipped |
 | Fresh anonymous extraction | Exact 155-entry inventory; 247 tests pass; pre/post-test tree and ZIP anonymity scans pass |
