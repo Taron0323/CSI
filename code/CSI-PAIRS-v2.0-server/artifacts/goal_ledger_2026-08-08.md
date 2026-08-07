@@ -49,6 +49,8 @@ All independently reproduced code-level P0/P1 findings are repaired at `AUDITED_
   identity and false-positive scanning ordinary GitHub URLs.
 - hosted Linux CPU execution legitimately taking longer than the tests' former 120-second nested
   integration bounds; the bounds are now 300 seconds without skipping work or weakening assertions.
+- GitHub-hosted runners deprecating the Node 20 runtime used by floating legacy action majors; the
+  workflow now pins the current official Node 24 checkout/setup-python release commits.
 
 The last hypothesis-driven sweep found one additional P1: the main runtime could record but not
 reject an internally consistent unlocked environment. The unified evidence context now requires
@@ -81,6 +83,7 @@ passes after the repair.
 | PDF render | 10/10 pages inspected; no overlap, clipping or identity metadata |
 | Remote main drift | none after fetch; `origin/main` remains `BASE_SHA` |
 | Hosted Linux CPU CI | `test-and-package` PASS at `b2d22e56cf5ff4b2ab5ce1d9bc1a2e50035df01b` ([run 31223556644](https://github.com/yiweinanzi/CSI/actions/runs/31223556644)) |
+| CI action supply chain | official `checkout@v7.0.1` and `setup-python@v7.0.0` commits pinned; both use Node 24 |
 | Anonymous exported-suite regression | PASS after fresh build/extraction; internal audit tooling absent |
 | Pull-request merge-ref anonymity regression | PASS against the actual PR merge-ref committer identity |
 | Deterministic server delivery | SHA-256 `4a3134d577f390f93d1b4eac665e0f343c3e8ca60790fb978bf3f8717c768dd5`; two byte-identical builds |

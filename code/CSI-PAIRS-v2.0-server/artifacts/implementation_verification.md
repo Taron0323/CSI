@@ -48,6 +48,8 @@ failed tests.
 - hosted Linux CPU nested integration bounds allow 300 seconds for the extracted public suite and
   complete fixture dry-run; assertions and executed coverage are unchanged, and both targeted
   regressions plus the complete source suite pass.
+- GitHub Actions checkout and Python setup are pinned to the current official Node 24 release
+  commits rather than floating legacy majors that emit a Node 20 deprecation annotation.
 
 ## Final local delivery checks
 
@@ -83,4 +85,5 @@ fixture, smoke, unit-test or expected values.
 
 `SMOKE_GO=GO`, `PILOT_GO=CONDITIONAL-GO`, `FORMAL_GO=NO-GO`, and
 `PAPER_PROTOCOL_GO=NO-GO`. Remote PR-head clean-clone verification and hosted CI completed at the
-last code-bearing head. A later ledger-only close commit does not alter executable or paper content.
+last experiment-code-bearing head. Later ledger and CI-maintenance close commits do not alter
+executable or paper content.
