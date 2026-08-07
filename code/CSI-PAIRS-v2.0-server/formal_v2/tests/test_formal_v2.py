@@ -4,7 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import inspect
 import json
+import os
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -585,6 +587,51 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(sum(result == target for result in results), 1)
             self.assertEqual(sum(result is None for result in results), 1)
             FormalDataset.load(target)
+
+    def test_dry_run_wrapper_accepts_only_authenticated_fixture_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "dry-run"
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "CSI_PAIRS_PYTHON": sys.executable,
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                }
+            )
+            completed = subprocess.run(
+                [
+                    "bash",
+                    str(ROOT / "formal_v2" / "scripts" / "run_formal_v2_dry_run.sh"),
+                    str(output),
+                ],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            self.assertEqual(
+                completed.returncode,
+                0,
+                msg=f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+            )
+            summary = json.loads(completed.stdout.splitlines()[-1])
+            self.assertEqual(
+                summary,
+                {
+                    "dry_run_status": "EXPECTED_FAIL_CLOSED",
+                    "scientific_use": "FORBIDDEN",
+                    "status": "PASS",
+                },
+            )
+            gate = json.loads(
+                (output / "qualification" / "gate.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(gate["status"], "DRY_RUN_FAIL_NOT_EVIDENCE")
+            self.assertFalse(gate["passed"])
+            self.assertTrue(gate["fixture"])
+            self.assertEqual(gate["scientific_use"], "FORBIDDEN")
 
 
 class StrictJsonTests(unittest.TestCase):
