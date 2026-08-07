@@ -19,6 +19,8 @@ STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/csi-pairs-v2-server.XXXXXX")"
 BUNDLE_ROOT="${STAGING_ROOT}/CSI-PAIRS-v2.1-server"
 trap 'rm -rf "${STAGING_ROOT}"' EXIT
 
+echo "building internal research delivery; do not submit this bundle as anonymous supplementary" >&2
+
 mkdir -p "${BUNDLE_ROOT}/artifacts" "${BUNDLE_ROOT}/output/pdf" "${BUNDLE_ROOT}/paper/official_style"
 (
   cd "${PROJECT_ROOT}"
@@ -54,8 +56,13 @@ find . -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r pa
   shasum -a 256 "${path}"
 done > SHA256SUMS
 
+find "${BUNDLE_ROOT}" -type d -exec chmod 0755 {} +
+find "${BUNDLE_ROOT}" -type f -exec chmod 0644 {} +
+find "${BUNDLE_ROOT}" -type f -name '*.sh' -exec chmod 0755 {} +
+find "${BUNDLE_ROOT}" -exec touch -t 198001010000.00 {} +
+
 cd "${STAGING_ROOT}"
-find CSI-PAIRS-v2.1-server -type f -print | LC_ALL=C sort | zip -X -q "${OUTPUT_ZIP}" -@
+TZ=UTC find CSI-PAIRS-v2.1-server -type f -print | LC_ALL=C sort | TZ=UTC zip -X -q "${OUTPUT_ZIP}" -@
 cd "${OUTPUT_PARENT}"
 shasum -a 256 "$(basename "${OUTPUT_ZIP}")" > "${OUTPUT_ZIP}.sha256"
 

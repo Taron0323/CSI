@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import math
 from pathlib import Path
 import sys
@@ -10,12 +8,9 @@ import sys
 import numpy as np
 
 from formal_v2.formal_dataset import FormalDataset
-from formal_v2.formal_evidence import evidence_context, require_manifested_formal_qualification
-from formal_v2.formal_io import read_strict_json, sha256_file, write_csv
+from formal_v2.formal_io import read_strict_json, sha256_file
 from formal_v2.formal_protocol import PatchSpec
 from formal_v2.formal_resources import validate_resource_registry
-from formal_v2.formal_routing import fit_route_normalization, route_dataset
-from formal_v2.formal_teacher import load_teacher_bundle
 
 
 SCHEMA = "csi-pairs-v6-sionna-scene-manifest-v1"
@@ -31,7 +26,6 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Sionna RT independent-engine G8 adapter")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--run-root", required=True)
     parser.add_argument("--scene-manifest", required=True)
     try:
         run(parser.parse_args(argv))
@@ -44,74 +38,30 @@ def main(argv=None) -> int:
 def run(args):
     _verify_sionna_resources()
     dataset = FormalDataset.load(args.dataset)
-    run_root = Path(args.run_root).resolve()
-    qualification = read_strict_json(run_root / "qualification" / "gate.json")
-    config = qualification["config"]
-    qualification = require_manifested_formal_qualification(
-        qualification, config, dataset, allow_nonscientific_fixture=True
-    )
     manifest = load_scene_manifest(args.scene_manifest, dataset)
     _require_sionna_version(manifest["sionna_rt_version"])
-    teacher = load_teacher_bundle(qualification["teacher_checkpoint"], config)
-    normalization = fit_route_normalization(dataset, teacher)
     scenes = dataset.indices_for_role("external_validation")
-    routed = route_dataset(dataset, teacher, config, scenes, normalization=normalization)
     cfr = _trace_all(dataset, manifest, scenes)
-    evidence = evidence_context(config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM")
-    entries = {(row["scene_id"], int(row["world"])): row for row in manifest["worlds"]}
-    rows = []
-    for scene_value in scenes:
-        scene = int(scene_value)
-        for edge in dataset.directed_edges(scene):
-            for position in range(dataset.position_count):
-                route = int(routed.alignment_route[(scene, edge.source_world, edge.target_world, position)])
-                if route not in {0, 2}:
-                    continue
-                primary_source = dataset.csi_clean[scene, edge.source_world, position]
-                primary_target = dataset.csi_clean[scene, edge.target_world, position]
-                external_source = cfr[(scene, edge.source_world)][position]
-                external_target = cfr[(scene, edge.target_world)][position]
-                primary_effect = _relative_effect(primary_source, primary_target)
-                external_effect = _relative_effect(external_source, external_target)
-                primary_direction = _power_direction(primary_source, primary_target)
-                external_direction = _power_direction(external_source, external_target)
-                source_entry = entries[(str(dataset.scene_ids[scene]), edge.source_world)]
-                target_entry = entries[(str(dataset.scene_ids[scene]), edge.target_world)]
-                context = hashlib.sha256(
-                    json.dumps(
-                        {
-                            "scene_id": str(dataset.scene_ids[scene]),
-                            "source_world": edge.source_world,
-                            "target_world": edge.target_world,
-                            "position_id": str(dataset.position_ids[scene, position]),
-                            "source_scene_sha256": source_entry["scene_xml_sha256"],
-                            "target_scene_sha256": target_entry["scene_xml_sha256"],
-                            "engine": manifest["sionna_revision"],
-                        },
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ).encode("utf-8")
-                ).hexdigest()
-                rows.append(
-                    {
-                        "unit_id": f"{dataset.bank_ids[scene]}:{edge.source_world}:{edge.target_world}:{dataset.position_ids[scene, position]}",
-                        "bank_id": str(dataset.bank_ids[scene]),
-                        "route": "active" if route == 2 else "null",
-                        "primary_direction": primary_direction,
-                        "external_direction": external_direction,
-                        "primary_effect": primary_effect,
-                        "external_effect": external_effect,
-                        "context_sha256": context,
-                        "dataset_sha256": evidence["dataset_sha256"],
-                        "config_sha256": evidence["config_sha256"],
-                        "fixture": evidence["fixture"],
-                    }
-                )
-    if not rows:
-        raise RuntimeError("Sionna external-validity adapter found no active/null routed units")
+    external_csi = np.stack(
+        [
+            np.stack(
+                [cfr[(int(scene), world)] for world in range(dataset.world_count)],
+                axis=0,
+            )
+            for scene in scenes
+        ],
+        axis=0,
+    )
+    if not np.all(np.isfinite(external_csi)):
+        raise RuntimeError("Sionna external-validity adapter produced nonfinite CSI")
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    write_csv(output / "paired_effects.csv", rows)
+    np.savez(
+        output / "external_csi.npz",
+        scene_ids=np.asarray(dataset.scene_ids[scenes], dtype=str),
+        position_ids=np.asarray(dataset.position_ids[scenes], dtype=str),
+        external_csi=np.asarray(external_csi, dtype=np.float64),
+    )
 
 
 def load_scene_manifest(path: str | Path, dataset) -> dict:
@@ -302,21 +252,6 @@ def _point3(values):
     if len(point) != 3 or not all(math.isfinite(value) for value in point):
         raise ValueError("Sionna device position must contain three finite coordinates")
     return point
-
-
-def _relative_effect(source, target):
-    source = np.asarray(source)
-    target = np.asarray(target)
-    return float(np.linalg.norm(target - source) / max(np.linalg.norm(source), 1e-12))
-
-
-def _power_direction(source, target):
-    source = np.asarray(source)
-    target = np.asarray(target)
-    half = source.shape[-1] // 2
-    source_power = np.mean(source[:half] ** 2 + source[half:] ** 2)
-    target_power = np.mean(target[:half] ** 2 + target[half:] ** 2)
-    return 1 if target_power >= source_power else -1
 
 
 def _require_sionna_version(expected):

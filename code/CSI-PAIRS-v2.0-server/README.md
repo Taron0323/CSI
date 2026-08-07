@@ -3,7 +3,7 @@
 Status: formal code `CODE_READY_FOR_FORMAL_INPUT`; scientific evidence `NOT_ASSESSED` until
 required non-fixture gates pass. Archived V1 fixture failures remain non-scientific history.
 
-This bundle is self-contained for the V2.1 runtime. It does not require the frozen V1 `experiments/` tree. It includes the formal code, tests, configs, data contract, paper source, official LaTeX style files, draft PDF, claim contract, verification report, supplied external papers, and authenticated official source archives. It intentionally contains no formal dataset, external model checkpoint, licensed scene asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain `v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated bundle root are V2.1.
+This internal research-delivery bundle is self-contained for the V2.1 runtime. It is not an anonymous ICLR supplementary artifact because it includes delivery provenance and locally supplied third-party resources. Use `formal_v2/scripts/build_anonymous_supplement.sh` for the separate identity-scanned package that excludes `waibu/` and delivery audits. The internal bundle intentionally contains no formal dataset, external model checkpoint, licensed scene asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain `v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated bundle root are V2.1.
 
 The collaborator's GitHub tree is the sole implementation baseline. Historical local ICLR2027
 code is not imported, copied, or required by this bundle.
@@ -48,7 +48,8 @@ checkpoints are rejected.
 
 ## 3.1 External papers, baselines, and Sionna facilities
 
-Authenticate all ten supplied resources before any external experiment:
+Authenticate all ten locally supplied resources before any external experiment. The registry records
+source URL, license URL, and redistribution status separately from byte authentication:
 
 ```bash
 "$PWD/.venv/bin/python" -m formal_v2.formal_cli verify-waibu-resources \
@@ -134,13 +135,18 @@ Review the generated `data_contract.json`, the engine/config hash, license recor
   --output "$PWD/runs/formal-001"
 ```
 
-Only a non-fixture `qualification/gate.json` with `passed=true` permits the four-arm experiment.
+This is the current experiment boundary. Run only regeneration and qualification first; do not use
+`formal_v2/scripts/run_formal_v2.sh` or start the four-arm, two-city, full-baseline chain while the
+Response gate is unreviewed. A non-fixture `qualification/gate.json` with `passed=true` is necessary
+but still requires an explicit human stop/go review of oracle-x, no-x, copy, no-action, action-swap,
+map/edit-only, and null-hallucination rows before the expensive experiment is approved.
 Qualification writes `route_noise_floor.csv`. For every `source_method_selection` bank, G1 requires
 the registered alignment-physical, alignment-latent, response-physical, and response-latent null
 thresholds to cover the configured quantile of independent repeat-pair noise measured in exactly
 the same normalized units as the corresponding route. A repeat NMSE PASS alone is insufficient.
 
-After approval, run the complete chain into another unused directory:
+Only after that review approves the no-position Response feasibility result, run the complete chain
+into another unused directory:
 
 ```bash
 CSI_PAIRS_PYTHON="$PWD/.venv/bin/python" \
@@ -151,6 +157,7 @@ CSI_PAIRS_EXTERNAL_ADAPTER_MANIFEST=/absolute/path/external_adapters.json \
 CSI_PAIRS_EXTERNAL_VALIDITY_MANIFEST=/absolute/path/external_validity.json \
 CSI_PAIRS_LITERATURE_RESOURCE_MANIFEST=/absolute/path/literature.json \
 CSI_PAIRS_RT_CALIBRATION_MANIFEST=/absolute/path/rt_calibration.json \
+CSI_PAIRS_APPROVE_FULL_EXPERIMENT=YES \
   formal_v2/scripts/run_formal_v2.sh
 ```
 

@@ -30,7 +30,7 @@ CLAIM_DEPENDENCIES = {
 
 
 STAGE_SPECS = {
-    "G0": ("literature_resources/gate.json", "csi-pairs-v6-literature-resource-gate-v2"),
+    "G0": ("literature_resources/gate.json", "csi-pairs-v6-literature-resource-gate-v3"),
     "G1_G2": ("qualification/gate.json", "csi-pairs-formal-qualification-gate-v2.1-v6"),
     "G3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
     "G3_C3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
@@ -39,7 +39,7 @@ STAGE_SPECS = {
     "G5": ("factorial/gate.json", "csi-pairs-formal-factorial-gate-v2.1-v6"),
     "G6": ("risk/gate.json", "csi-pairs-v6-risk-gate-v2"),
     "G7": ("path/gate.json", "csi-pairs-v6-path-gate-v3"),
-    "G8": ("external_validity/gate.json", "csi-pairs-v6-external-validity-gate-v2"),
+    "G8": ("external_validity/gate.json", "csi-pairs-v6-external-validity-gate-v3"),
     "external_baselines": (
         "external_baselines/gate.json",
         "csi-pairs-v6-external-baseline-gate-v2",
@@ -55,7 +55,7 @@ STAGE_SPECS = {
     ),
     "rt_calibration": (
         "qualification/rt_calibration/gate.json",
-        "csi-pairs-v6-rt-calibration-gate-v2",
+        "csi-pairs-v6-rt-calibration-gate-v3",
     ),
 }
 
@@ -93,12 +93,7 @@ def assemble_claim_evidence(config, dataset, output_root):
             assessments[value] if value in assessments else "NOT_ASSESSED"
             for value in CLAIM_DEPENDENCIES[claim_id]
         ]
-        if any(value in {"FAIL", "INVALID"} for value in statuses):
-            claims[claim_id] = "INVALID"
-        elif all(value == "PASS" for value in statuses):
-            claims[claim_id] = "SOFTWARE_ONLY" if dataset.is_fixture else "SUPPORTED"
-        else:
-            claims[claim_id] = "BLOCKED"
+        claims[claim_id] = _claim_state(claim_id, statuses, dataset.is_fixture)
 
     all_required_assessed = all(value in {"PASS", "FAIL"} for value in gates.values())
     result = {
@@ -125,6 +120,18 @@ def assemble_claim_evidence(config, dataset, output_root):
         },
     )
     return result
+
+
+def _claim_state(claim_id, statuses, fixture):
+    if any(value in {"FAIL", "INVALID"} for value in statuses):
+        return "INVALID"
+    if not all(value == "PASS" for value in statuses):
+        return "BLOCKED"
+    if fixture:
+        return "SOFTWARE_ONLY"
+    if claim_id == "C13":
+        return "REVIEW_REQUIRED"
+    return "SUPPORTED"
 
 
 def _assess_stage(path, schema, name, config, dataset):
@@ -174,6 +181,12 @@ def _semantic_status(name, payload):
             or not isinstance(decision.get("novelty_scope"), str)
             or not decision["novelty_scope"].strip()
             or not _lower_sha256(payload.get("input_manifest_sha256"))
+            or payload.get("search_receipts_verified") is not True
+            or int(payload.get("query_count", 0)) < 1
+            or not isinstance(payload.get("databases"), list)
+            or int(payload.get("search_receipt_count", 0))
+            != int(payload.get("query_count", 0)) * len(payload.get("databases", []))
+            or payload.get("c13_requires_human_review") is not True
         ):
             return "FAIL"
     elif name == "G1_G2":
@@ -186,7 +199,7 @@ def _semantic_status(name, payload):
     if name == "G3_C5":
         return "PASS" if payload.get("c5_evidence_complete") is True else "FAIL"
     if name == "G3":
-        if not _require_pass_subgates(payload, "g3_subgates", 8):
+        if not _require_pass_subgates(payload, "g3_subgates", 9):
             return "FAIL"
         if payload.get("c3_evidence_complete") is not True or payload.get("c5_evidence_complete") is not True:
             return "FAIL"
@@ -248,6 +261,11 @@ def _semantic_status(name, payload):
             or not _lower_sha256(payload.get("adapter_source_sha256"))
             or payload.get("rt_scene_manifest_path") != "rt_scene_manifest.json"
             or not _lower_sha256(payload.get("rt_scene_manifest_sha256"))
+            or payload.get("external_csi_path") != "external_csi.npz"
+            or not _lower_sha256(payload.get("external_csi_sha256"))
+            or payload.get("external_csi_contract")
+            != "outer-recomputed-direction-and-effect-from-raw-csi-v1"
+            or int(payload.get("external_scene_count", 0)) < 1
         ):
             return "FAIL"
     elif name == "external_baselines":
@@ -373,12 +391,22 @@ def _semantic_status(name, payload):
             or set(statistics) != {"path_loss", "delay_spread", "angular_spread", "visible_path_count"}
             or any(not isinstance(value, dict) or value.get("passed") is not True for value in statistics.values())
             or payload.get("fit_validation_are_independent") is not True
-            or payload.get("fit_dataset_sha256") == payload.get("validation_dataset_sha256")
+            or payload.get("aggregation") != "mean_per_unit"
+            or int(payload.get("validation_unit_count", 0)) < 2
+            or len({
+                payload.get("fit_dataset_sha256"),
+                payload.get("validation_inputs_sha256"),
+                payload.get("validation_reference_sha256"),
+            }) != 3
+            or payload.get("simulated_statistics_path") != "simulated_statistics.csv"
+            or payload.get("validated_statistics_path") != "validated_statistics.csv"
             or any(
                 not _lower_sha256(payload.get(key))
                 for key in (
                     "protocol_sha256", "input_manifest_sha256", "adapter_source_sha256",
-                    "fit_dataset_sha256", "validation_dataset_sha256", "fitted_parameters_sha256",
+                    "fit_dataset_sha256", "validation_inputs_sha256",
+                    "validation_reference_sha256", "fitted_parameters_sha256",
+                    "simulated_statistics_sha256", "validated_statistics_sha256",
                 )
             )
         ):
@@ -561,7 +589,15 @@ def _validate_stage_bound_input(
 
         _validate_manifest(manifest, path.parent)
     elif stage_name == "G8":
-        from .formal_external_validity import _validate_manifest, _verify_adapter_source
+        from .formal_external_validity import (
+            _cluster_direction_interval,
+            _expected_external_registry,
+            _load_external_csi,
+            _paired_bank_equivalence,
+            _rows_from_external_csi,
+            _validate_manifest,
+            _verify_adapter_source,
+        )
         from .external_adapters.sionna_external_validity import load_scene_manifest
 
         _validate_manifest(manifest)
@@ -586,7 +622,49 @@ def _validate_stage_bound_input(
             raise RuntimeError(
                 "G8 RT scene manifest is absent from or mismatched with the stage manifest"
             )
-        load_scene_manifest(scene_path, dataset)
+        scene_manifest = load_scene_manifest(scene_path, dataset)
+        raw_relative = payload.get("external_csi_path")
+        raw_digest = payload.get("external_csi_sha256")
+        if raw_relative != "external_csi.npz" or not _lower_sha256(raw_digest):
+            raise RuntimeError("G8 gate has no authenticated raw external CSI")
+        raw_path = gate_path.parent / raw_relative
+        raw_matches = [
+            row
+            for row in files
+            if isinstance(row, dict) and row.get("path") == raw_relative
+        ] if isinstance(files, list) else []
+        if (
+            not raw_path.is_file()
+            or raw_path.is_symlink()
+            or sha256_file(raw_path) != raw_digest
+            or len(raw_matches) != 1
+            or raw_matches[0].get("sha256") != raw_digest
+        ):
+            raise RuntimeError("G8 raw external CSI is not stage-authenticated")
+        external_csi = _load_external_csi(raw_path, dataset)
+        registry = _expected_external_registry(
+            config, dataset, gate_path.parent.parent, scene_manifest
+        )
+        rows = _rows_from_external_csi(external_csi, registry)
+        active = [row for row in rows if row["route"] == "active"]
+        null_rows = [row for row in rows if row["route"] == "null"]
+        agreement = _cluster_direction_interval(
+            active, int(config["external_validity"]["bootstrap_resamples"])
+        )
+        equivalence = _paired_bank_equivalence(
+            null_rows,
+            float(config["external_validity"]["null_equivalence_margin"]),
+            int(config["external_validity"]["bootstrap_resamples"]),
+        )
+        if (
+            payload.get("active_direction_agreement") != agreement["estimate"]
+            or payload.get("active_direction_agreement_ci95_low") != agreement["ci95_low"]
+            or payload.get("active_direction_agreement_ci95_high") != agreement["ci95_high"]
+            or payload.get("active_direction_cluster_count") != agreement["base_map_cluster_count"]
+            or payload.get("null_equivalence") != equivalence
+            or payload.get("external_scene_count") != external_csi.shape[0]
+        ):
+            raise RuntimeError("G8 gate statistics differ from raw-CSI outer recomputation")
     elif stage_name == "scene_id_mechanism":
         from .formal_scene_id import _validate_manifest, _verify_adapter_files
 
@@ -594,7 +672,13 @@ def _validate_stage_bound_input(
         for adapter in manifest["adapters"]:
             _verify_adapter_files(adapter, path.parent)
     elif stage_name == "rt_calibration":
-        from .formal_rt_calibration import _bound_input, _validate_manifest, _validate_protocol
+        from .formal_rt_calibration import (
+            _bound_input,
+            _join_and_assess,
+            _read_statistics_csv,
+            _validate_manifest,
+            _validate_protocol,
+        )
 
         _validate_manifest(manifest)
         protocol = _bound_input(
@@ -603,11 +687,17 @@ def _validate_stage_bound_input(
         fit = _bound_input(
             manifest["fit_dataset_path"], manifest["fit_dataset_sha256"], path.parent, "fit dataset"
         )
-        validation = _bound_input(
-            manifest["validation_dataset_path"],
-            manifest["validation_dataset_sha256"],
+        validation_inputs = _bound_input(
+            manifest["validation_inputs_path"],
+            manifest["validation_inputs_sha256"],
             path.parent,
-            "validation dataset",
+            "validation inputs",
+        )
+        validation_reference = _bound_input(
+            manifest["validation_reference_path"],
+            manifest["validation_reference_sha256"],
+            path.parent,
+            "validation reference",
         )
         _bound_input(
             manifest["adapter_source_path"],
@@ -615,9 +705,44 @@ def _validate_stage_bound_input(
             path.parent,
             "adapter source",
         )
-        if fit == validation:
+        if len({fit, validation_inputs, validation_reference}) != 3:
             raise RuntimeError("RT calibration fit and validation paths are not independent")
-        _validate_protocol(read_strict_json(protocol))
+        protocol_payload = read_strict_json(protocol)
+        _validate_protocol(protocol_payload)
+        simulated_name = payload.get("simulated_statistics_path")
+        validated_name = payload.get("validated_statistics_path")
+        for name, digest in (
+            (simulated_name, payload.get("simulated_statistics_sha256")),
+            (validated_name, payload.get("validated_statistics_sha256")),
+        ):
+            if not isinstance(name, str) or Path(name).name != name or not _lower_sha256(digest):
+                raise RuntimeError("RT calibration gate has an invalid statistics artifact")
+            artifact = gate_path.parent / name
+            matches = [
+                row for row in files
+                if isinstance(row, dict) and row.get("path") == name
+            ]
+            if (
+                not artifact.is_file()
+                or sha256_file(artifact) != digest
+                or len(matches) != 1
+                or matches[0].get("sha256") != digest
+            ):
+                raise RuntimeError("RT calibration statistics artifact is not stage-authenticated")
+        reference_rows = _read_statistics_csv(validation_reference, "validation reference")
+        simulated_rows = _read_statistics_csv(
+            gate_path.parent / simulated_name, "simulated statistics"
+        )
+        validated_rows, assessments = _join_and_assess(
+            reference_rows,
+            simulated_rows,
+            protocol_payload["absolute_tolerances"],
+        )
+        if (
+            len(validated_rows) != payload.get("validation_unit_count")
+            or assessments != payload.get("statistics")
+        ):
+            raise RuntimeError("RT calibration gate statistics differ from outer recomputation")
     elif stage_name in {"shuffled_pair", "retention"}:
         expected_schema = {
             "shuffled_pair": "csi-pairs-v6-shuffled-pair-adapter-v3",

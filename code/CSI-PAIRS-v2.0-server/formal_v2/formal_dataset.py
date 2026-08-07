@@ -400,10 +400,12 @@ class FormalDataset:
             if len(set(self.position_ids[scene].tolist())) != positions:
                 raise FormalDatasetError("position_ids must be unique within each scene bank")
         city_position_coordinates = {}
+        city_position_roles = {}
         for scene in range(scenes):
             city = str(self.city_ids[scene])
             for position in range(positions):
-                key = (city, str(self.position_ids[scene, position]))
+                position_id = str(self.position_ids[scene, position])
+                key = (city, position_id)
                 coordinate = self.positions[scene, position]
                 if key in city_position_coordinates and not np.allclose(
                     city_position_coordinates[key], coordinate, rtol=0.0, atol=1e-9
@@ -412,6 +414,12 @@ class FormalDataset:
                         "a city-level position_id maps to inconsistent BS-centered coordinates"
                     )
                 city_position_coordinates[key] = coordinate
+                role = str(self.position_roles[scene, position])
+                if key in city_position_roles and city_position_roles[key] != role:
+                    raise FormalDatasetError(
+                        "a city-level position_id may not cross support_pool/query roles"
+                    )
+                city_position_roles[key] = role
         for name, identifiers in (
             ("scene_ids", self.scene_ids),
             ("bank_ids", self.bank_ids),
@@ -440,6 +448,13 @@ class FormalDataset:
         source_cities = set(self.city_ids[np.isin(self.scene_roles, SOURCE_ROLES)].tolist())
         if len(source_cities) < minimum_source_cities:
             raise FormalDatasetError("too few independent source cities")
+        encoder_train_cities = set(
+            self.city_ids[self.scene_roles == "source_encoder_train"].tolist()
+        )
+        if len(encoder_train_cities) < minimum_source_cities:
+            raise FormalDatasetError(
+                "source_encoder_train covers too few independent source cities"
+            )
         if source_cities.intersection(target_cities):
             raise FormalDatasetError("source and target city identifiers must be disjoint")
         for city in target_cities:

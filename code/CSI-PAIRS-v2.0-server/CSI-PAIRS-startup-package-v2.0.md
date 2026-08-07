@@ -1,5 +1,9 @@
 # CSI-PAIRS 论文启动包 V2.1（V6 协议修订）
 
+> 打包边界：`build_server_bundle.sh` 生成内部实验交付包，不能作为匿名 supplementary
+> 提交。匿名投稿包必须使用 `formal_v2/scripts/build_anonymous_supplement.sh`；它会排除内部
+> Git provenance，以及没有下游再分发许可的第三方文件。
+
 > 兼容性说明：文件名保留 `v2.0` 是为了不破坏冻结审计路径；本文、运行时 schema 和打包根均为 V2.1。
 
 > 日期：2026-08-06（Asia/Shanghai）

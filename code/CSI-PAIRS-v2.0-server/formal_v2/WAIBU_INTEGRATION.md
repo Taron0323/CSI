@@ -4,6 +4,11 @@ This document maps every file under `waibu/` to executable V6 behavior. The auth
 is `configs/waibu_resources_v1.json`. SHA-256 authentication proves local bytes, not paper fidelity
 or scientific support.
 
+The registry separately records `source_url`, `license_url`, and `redistribution_allowed`.
+`2502.11965v2.pdf`, `2505.09160v2.pdf`, `2601.03789v1.pdf`, and `2604.07086v1.pdf` use the arXiv
+non-exclusive distribution license and are local research inputs only. They are excluded from the
+anonymous supplementary package; each user must obtain them from the recorded source URL.
+
 | Resource | Project role | Executable implementation | Allowed evidence label |
 |---|---|---|---|
 | `2406.14995v2.pdf`, `Wi-GATr-main.zip` | map-conditioned forward baseline | official tokenizer/GATr plus CSI-PAIRS mesh and inverse localization | Wi-GATr official-code adaptation |

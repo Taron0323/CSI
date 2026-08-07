@@ -41,8 +41,8 @@ from formal_v2.formal_external import (
 )
 from formal_v2.formal_external_validity import (
     _cluster_direction_interval,
+    _rows_from_external_csi,
     _validate_manifest as validate_external_validity_manifest,
-    _validate_rows as validate_external_validity_rows,
 )
 from formal_v2.formal_io import sha256_file, write_json
 from formal_v2.formal_statistics import (
@@ -162,6 +162,13 @@ class EvidenceIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "authenticated source"):
             validate_external_manifest(manifest)
 
+    def test_external_adapter_id_cannot_escape_stage_output(self):
+        source = ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json"
+        manifest = json.loads(source.read_text())
+        manifest["adapters"][0]["adapter_id"] = "../../../qualification"
+        with self.assertRaisesRegex(ValueError, "safe path component"):
+            validate_external_manifest(manifest)
+
     def test_external_adapter_config_path_hash_and_command_are_frozen(self):
         source = ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json"
         manifest = json.loads(source.read_text())
@@ -209,7 +216,7 @@ class EvidenceIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one --config"):
             validate_external_manifest(changed)
 
-    def test_g8_command_and_primary_registry_are_outer_authenticated(self):
+    def test_g8_command_and_raw_csi_are_outer_authenticated(self):
         manifest = json.loads(
             (ROOT / "formal_v2/configs/sionna_external_validity_adapter_v2.json").read_text()
         )
@@ -222,15 +229,14 @@ class EvidenceIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "authenticated adapter module"):
             validate_external_validity_manifest(manifest)
 
-        evidence = {
-            "dataset_sha256": "d" * 64,
-            "config_sha256": "c" * 64,
-            "fixture": False,
-        }
         expected = {
             "unit-a": {
                 "unit_id": "unit-a",
                 "scene_index": 0,
+                "external_scene_index": 0,
+                "source_world": 0,
+                "target_world": 1,
+                "position": 0,
                 "bank_id": "bank-a",
                 "route": "active",
                 "primary_direction": 1,
@@ -244,6 +250,10 @@ class EvidenceIntegrityTests(unittest.TestCase):
             "unit-b": {
                 "unit_id": "unit-b",
                 "scene_index": 1,
+                "external_scene_index": 1,
+                "source_world": 0,
+                "target_world": 1,
+                "position": 0,
                 "bank_id": "bank-b",
                 "route": "null",
                 "primary_direction": -1,
@@ -255,33 +265,17 @@ class EvidenceIntegrityTests(unittest.TestCase):
                 "canonical_unit_id": "canonical-unit-b",
             },
         }
-        rows = [
-            {
-                "unit_id": unit,
-                "bank_id": values["bank_id"],
-                "route": values["route"],
-                "primary_direction": str(values["primary_direction"]),
-                "external_direction": str(values["primary_direction"]),
-                "primary_effect": str(values["primary_effect"]),
-                "external_effect": str(values["primary_effect"]),
-                "context_sha256": "a" * 64,
-                "dataset_sha256": evidence["dataset_sha256"],
-                "config_sha256": evidence["config_sha256"],
-                "fixture": "False",
-            }
-            for unit, values in expected.items()
-        ]
-        validate_external_validity_rows(rows, evidence, expected)
-        forged = [dict(row) for row in rows]
-        forged[0]["primary_effect"] = "99.0"
-        with self.assertRaisesRegex(RuntimeError, "outer recomputation"):
-            validate_external_validity_rows(forged, evidence, expected)
-        negative = [dict(row) for row in rows]
-        negative[0]["external_effect"] = "-1.0"
-        with self.assertRaisesRegex(RuntimeError, "nonnegative"):
-            validate_external_validity_rows(negative, evidence, expected)
-        with self.assertRaisesRegex(RuntimeError, "omitted"):
-            validate_external_validity_rows(rows[:1], evidence, expected)
+        external_csi = np.asarray(
+            [
+                [[[1.0, 0.0, 0.0, 0.0]], [[2.0, 0.0, 0.0, 0.0]]],
+                [[[2.0, 0.0, 0.0, 0.0]], [[1.0, 0.0, 0.0, 0.0]]],
+            ]
+        )
+        rows = _rows_from_external_csi(external_csi, expected)
+        self.assertEqual([row["unit_id"] for row in rows], ["unit-a", "unit-b"])
+        self.assertEqual(rows[0]["external_direction"], 1)
+        self.assertEqual(rows[1]["external_direction"], -1)
+        self.assertAlmostEqual(rows[0]["external_effect"], 1.0)
 
     def test_g8_direction_interval_ignores_copied_canonical_unit(self):
         rows = []

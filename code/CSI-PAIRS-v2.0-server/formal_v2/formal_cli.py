@@ -62,8 +62,8 @@ def build_parser() -> argparse.ArgumentParser:
     fixture.add_argument(
         "--source-banks-per-role",
         type=int,
-        default=1,
-        help="non-scientific fixture banks per source role; use 2 to exercise cross-source-city controls",
+        default=2,
+        help="non-scientific fixture banks per source role; two preserves the V6 source-city contract",
     )
     resources = subparsers.add_parser("verify-waibu-resources")
     resources.add_argument("--registry", required=True)
@@ -117,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
         if command == "verify-data":
             child.add_argument("--verifier-manifest", required=True)
         if command == "all":
+            child.add_argument(
+                "--approve-full-experiment",
+                action="store_true",
+                help="confirm that the non-fixture Response qualification received human stop/go approval",
+            )
             child.add_argument("--verifier-manifest", required=True)
             child.add_argument(
                 "--risk-feature-manifest",
@@ -182,7 +187,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .formal_evidence import configure_reproducible_runtime
+
+    configure_reproducible_runtime()
     args = build_parser().parse_args(argv)
+    if args.command == "all" and not args.approve_full_experiment:
+        print(
+            "error: the full experiment chain requires explicit Response-gate approval; "
+            "run verify-data and qualify first, review the stop/go rows, then pass "
+            "--approve-full-experiment",
+            file=sys.stderr,
+        )
+        return 2
     output_lock: Path | None = None
     try:
         if args.command == "make-fixture":
@@ -203,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             output_lock = _acquire_output_lock(output)
             result = verify_waibu_resources(args.registry, args.waibu_root, output)
             print(json.dumps({"status": result["status"], "output": str(output)}, sort_keys=True))
-            return 0
+            return 0 if result.get("passed") is True else 1
         if args.command == "export-sionna-scenes":
             from .sionna_scene_export import export_sionna_scenes
 
@@ -354,11 +370,13 @@ def main(argv: list[str] | None = None) -> int:
         else:
             from .formal_resources import verify_waibu_resources
 
-            verify_waibu_resources(
+            resource_gate = verify_waibu_resources(
                 Path(__file__).resolve().parent / "configs" / "waibu_resources_v1.json",
                 Path(__file__).resolve().parents[1] / "waibu",
                 output,
             )
+            if resource_gate.get("passed") is not True:
+                raise RuntimeError("formal run is blocked because waibu resource verification failed")
             from .formal_data_verification import run_data_verification
 
             verification = run_data_verification(config, dataset, args.verifier_manifest, output)

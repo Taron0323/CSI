@@ -75,7 +75,7 @@ This regeneration gate still does not establish RT calibration or legal sufficie
 
 ## Evidence propagation
 
-Every JSON, CSV row, checkpoint index, and manifest carries `dataset_sha256`, `config_sha256`, `fixture`, and `scientific_use`. Qualification requires an authenticated regeneration gate. Downstream stages require matching hashes, the exact frozen teacher checkpoint hash, an authenticated V6 qualification gate, and per-role regeneration PASS. Risk archives additionally bind the executed checkpoint index and evaluation manifest. A non-fixture archive marked `CANDIDATE` cannot start factorial training; it must earn `FORMAL_EXPERIMENT_ALLOWED` from G1/G2.
+Every JSON, CSV row, checkpoint index, and manifest carries `dataset_sha256`, `config_sha256`, `fixture`, and `scientific_use`. JSON gates and manifests also bind the source-tree digest, requirements-lock digest, and structured runtime provenance. Qualification requires an authenticated regeneration gate produced by the same code and runtime. Downstream stages require matching hashes, the exact frozen teacher checkpoint hash, an authenticated V6 qualification gate, and per-role regeneration PASS. Risk archives additionally bind the executed checkpoint index and evaluation manifest. A non-fixture archive marked `CANDIDATE` cannot start factorial training; it must earn `FORMAL_EXPERIMENT_ALLOWED` from G1/G2.
 
 G1 does not infer route noise tolerances from overall repeat NMSE. For each
 `source_method_selection` bank, all unordered pairs of independent repeats at the same

@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -290,9 +291,17 @@ def _validate_manifest(manifest):
         }
         if not isinstance(adapter, dict) or set(adapter) != required:
             raise ValueError("external adapter fields must be exact")
-        if adapter["adapter_id"] in seen:
+        adapter_id = adapter["adapter_id"]
+        if (
+            not isinstance(adapter_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", adapter_id)
+            is None
+            or adapter_id in {".", ".."}
+        ):
+            raise ValueError("external adapter_id must be a safe path component")
+        if adapter_id in seen:
             raise ValueError("external adapter IDs must be unique")
-        seen.add(adapter["adapter_id"])
+        seen.add(adapter_id)
         if adapter["implementation_status"] not in ALLOWED_IMPLEMENTATION_STATUS:
             raise ValueError("external adapter implementation status is inaccurate or unsupported")
         if adapter["map_conditioned"] is not True:

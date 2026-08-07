@@ -164,6 +164,8 @@ def run_formal_evaluation(
             mask = bank_mask & (evaluated["routes"] == "active")
             if not np.any(mask):
                 raise RuntimeError(f"evaluation bank {bank!r} has no active CGS quartet")
+            scene = int(evaluated["scene_indices"][mask][0])
+            evaluation_scope = _evaluation_scope(dataset, scene)
             cgs_rows.append(
                 {
                     "seed": seed,
@@ -179,6 +181,7 @@ def run_formal_evaluation(
                         dataset, int(evaluated["scene_indices"][mask][0])
                     ),
                     "city_id": str(evaluated["city_ids"][mask][0]),
+                    "evaluation_scope": evaluation_scope,
                     "route": "active",
                     "probe_family": selection_record["selected_family"],
                     "cgs_auroc": binary_auroc(evaluated["labels"][mask], probabilities[mask]),
@@ -202,6 +205,7 @@ def run_formal_evaluation(
                     seed,
                     arm,
                     bank,
+                    evaluation_scope,
                     probe_train,
                     probe_selection,
                     evaluated,
@@ -215,6 +219,7 @@ def run_formal_evaluation(
                     arm,
                     bank,
                     str(evaluated["city_ids"][mask][0]),
+                    evaluation_scope,
                     probabilities[mask],
                     evaluated["labels"][mask],
                     evaluated["pair_ids"][mask],
@@ -241,6 +246,7 @@ def run_formal_evaluation(
                                 dataset, int(evaluated["scene_indices"][bank_mask][0])
                             ),
                             "city_id": str(evaluated["city_ids"][bank_mask][0]),
+                            "evaluation_scope": evaluation_scope,
                             "route": route,
                             "condition_status": "MISSING",
                             "pair_count": 0,
@@ -274,6 +280,7 @@ def run_formal_evaluation(
                             dataset, int(evaluated["scene_indices"][route_mask][0])
                         ),
                         "city_id": str(evaluated["city_ids"][route_mask][0]),
+                        "evaluation_scope": evaluation_scope,
                         "route": route,
                         "condition_status": "ASSESSED",
                         "pair_count": int(differences.size),
@@ -425,6 +432,9 @@ def run_formal_evaluation(
                         dataset, int(response_eval["scene_indices"][mask][0])
                     ),
                     "city_id": str(response_eval["city_ids"][mask][0]),
+                    "evaluation_scope": _evaluation_scope(
+                        dataset, int(response_eval["scene_indices"][mask][0])
+                    ),
                     "unified_response_probe_active_patch_nmse": float(numerator / denominator),
                     "probe_copy_active_patch_nmse": float(copy_numerator / denominator),
                     "unified_response_probe_action_swap_exact_patch_nmse": (
@@ -885,6 +895,15 @@ def _eligible_evaluation_positions(dataset, scene):
     return np.arange(dataset.position_count, dtype=np.int64)
 
 
+def _evaluation_scope(dataset, scene):
+    role = str(dataset.scene_roles[int(scene)])
+    if role == "source_final_unseen_bank":
+        return role
+    if role == "target":
+        return f"target:{dataset.city_ids[int(scene)]}"
+    raise RuntimeError(f"unsupported evaluation scene role: {role}")
+
+
 def _paired_score_differences(scores, labels, pair_ids):
     values = np.asarray(scores, dtype=np.float64)
     targets = np.asarray(labels, dtype=np.int64)
@@ -900,7 +919,9 @@ def _paired_score_differences(scores, labels, pair_ids):
     return np.asarray(differences, dtype=np.float64)
 
 
-def _active_effect_bin_rows(seed, arm, bank, city, scores, labels, pair_ids, distances):
+def _active_effect_bin_rows(
+    seed, arm, bank, city, evaluation_scope, scores, labels, pair_ids, distances
+):
     identifiers = np.asarray(pair_ids).astype(str)
     pair_order = np.unique(identifiers)
     if pair_order.size < 4:
@@ -922,6 +943,7 @@ def _active_effect_bin_rows(seed, arm, bank, city, scores, labels, pair_ids, dis
                 "arm": str(arm),
                 "bank_id": str(bank),
                 "city_id": str(city),
+                "evaluation_scope": str(evaluation_scope),
                 "effect_bin": label,
                 "pair_count": int(selected_pairs.size),
                 "physical_distance_min": float(np.min(np.asarray(distances)[selected])),
@@ -936,6 +958,7 @@ def _alignment_shortcut_rows(
     seed,
     arm,
     bank,
+    evaluation_scope,
     source_train,
     source_selection,
     evaluated,
@@ -992,6 +1015,7 @@ def _alignment_shortcut_rows(
                     evaluated["canonical_bank_digests"][mask][0]
                 ),
                 "city_id": str(evaluated["city_ids"][mask][0]),
+                "evaluation_scope": str(evaluation_scope),
                 "baseline": name,
                 "input_class": input_class,
                 "source_train_auroc": source_auroc,
@@ -1359,12 +1383,17 @@ def _channel_summary(channel):
     }
 
 
-def _transition_metrics(prediction, source, target, normalization, spec):
+def _transition_metrics(
+    prediction, zero_action_prediction, source, target, normalization, spec
+):
     predicted = _complex_csi_from_patches(prediction, normalization, spec)
+    zero_action = _complex_csi_from_patches(
+        zero_action_prediction, normalization, spec
+    )
     source_csi = _complex_csi_from_patches(source, normalization, spec)
     target_csi = _complex_csi_from_patches(target, normalization, spec)
     true_delta = target_csi - source_csi
-    predicted_delta = predicted - source_csi
+    predicted_delta = predicted - zero_action
     flat_predicted_delta = predicted_delta.reshape(predicted_delta.shape[0], -1)
     flat_true_delta = true_delta.reshape(true_delta.shape[0], -1)
     numerator = np.abs(
@@ -1381,11 +1410,12 @@ def _transition_metrics(prediction, source, target, normalization, spec):
     directions = {name: [] for name in errors}
     for index in range(predicted.shape[0]):
         source_summary = _channel_summary(source_csi[index])
+        zero_action_summary = _channel_summary(zero_action[index])
         target_summary = _channel_summary(target_csi[index])
         prediction_summary = _channel_summary(predicted[index])
         for name in errors:
             true_change = target_summary[name] - source_summary[name]
-            predicted_change = prediction_summary[name] - source_summary[name]
+            predicted_change = prediction_summary[name] - zero_action_summary[name]
             errors[name].append(abs(predicted_change - true_change))
             directions[name].append(
                 1.0
@@ -1510,17 +1540,27 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
                 rkey = (scene, edge.source_world, edge.target_world, int(position), query)
                 if routed.response_route[rkey] == 0:
                     null_delta_norms.append(
-                        float(np.sqrt(np.mean((predicted[query] - source[query]) ** 2)))
+                        float(
+                            np.sqrt(
+                                np.mean(
+                                    (
+                                        predicted[query]
+                                        - predicted_no_action[query]
+                                    )
+                                    ** 2
+                                )
+                            )
+                        )
                     )
-                    source_latent_query = (
-                        routed.teacher_latent[scene][edge.source_world, position, query]
-                        - normalization.latent_mean
-                    ) / normalization.latent_scale
                     latent_null_delta_norms.append(
                         float(
                             np.sqrt(
                                 np.mean(
-                                    (predicted_latent[query] - source_latent_query) ** 2
+                                    (
+                                        predicted_latent[query]
+                                        - predicted_latent_no_action[query]
+                                    )
+                                    ** 2
                                 )
                             )
                         )
@@ -1545,7 +1585,7 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
             latent_targets.append(latent_target)
             wrong_action_statuses.append(swap_status)
             true_delta = (target - source).reshape(-1)
-            predicted_delta = (predicted - source).reshape(-1)
+            predicted_delta = (predicted - predicted_no_action).reshape(-1)
             denominator = float(np.linalg.norm(true_delta) * np.linalg.norm(predicted_delta))
             direction_cosines.append(
                 float(np.dot(true_delta, predicted_delta) / denominator) if denominator > 1e-12 else 0.0
@@ -1585,6 +1625,7 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
     null_threshold = float(config["qualification"]["response_physical_null_rms_max"])
     transition_metrics = _transition_metrics(
         prediction,
+        no_action_prediction,
         source,
         target,
         normalization,
@@ -1713,6 +1754,10 @@ def _evaluation_gate(
         <= float(config["evaluation"]["response_null_violation_rate_max"])
         and row["native_latent_null_violation_rate"]
         <= float(config["evaluation"]["response_null_violation_rate_max"])
+        and row["native_null_delta_rms_mean"]
+        <= float(config["evaluation"]["response_null_equivalence_margin"])
+        and row["native_latent_null_delta_rms_mean"]
+        <= float(config["evaluation"]["response_null_equivalence_margin"])
         for row in response_rows
         if row["arm"] in {"response", "full"}
     )
@@ -1805,6 +1850,15 @@ def _evaluation_gate(
     direction = _within_arm_level_interval(
         response_rows, "response", "native_delta_direction_cosine", resamples, 81105
     )
+    expected_scopes = ["source_final_unseen_bank"] + [
+        f"target:{city}"
+        for city in sorted(
+            set(dataset.city_ids[dataset.scene_roles == "target"].tolist())
+        )
+    ]
+    scope_intervals = _g3_primary_scope_intervals(
+        cgs_rows, response_rows, expected_scopes, resamples
+    )
     family = [
         alignment_superiority,
         response_superiority,
@@ -1817,11 +1871,36 @@ def _evaluation_gate(
         probe_response_swap,
         *shortcut_intervals.values(),
         direction,
+        *[
+            interval
+            for scope in expected_scopes
+            for interval in (
+                scope_intervals[scope]["alignment_superiority"],
+                scope_intervals[scope]["response_superiority"],
+            )
+        ],
     ]
     adjusted = holm_adjust([float(row["p_value_two_sided"]) for row in family])
     for row, value in zip(family, adjusted):
         row["holm_adjusted_p"] = float(value)
     alpha = float(config["evaluation"]["familywise_alpha"])
+    scope_primary_passed = all(
+        interval_decision(
+            scope_intervals[scope]["alignment_superiority"],
+            threshold=float(config["evaluation"]["minimum_alignment_superiority"]),
+            relation="superiority",
+        )
+        and scope_intervals[scope]["alignment_superiority"]["holm_adjusted_p"]
+        < alpha
+        and interval_decision(
+            scope_intervals[scope]["response_superiority"],
+            threshold=float(config["evaluation"]["minimum_response_superiority"]),
+            relation="superiority",
+        )
+        and scope_intervals[scope]["response_superiority"]["holm_adjusted_p"]
+        < alpha
+        for scope in expected_scopes
+    )
     effect_bins_complete = _effect_bins_complete(cgs_rows, effect_bin_rows)
     evaluation_scenes = np.concatenate(
         (
@@ -2024,6 +2103,9 @@ def _evaluation_gate(
         "8_native_probe_correlation": "PASS"
         if correlation_complete and shortcut_passed
         else "FAIL",
+        "9_unpooled_source_and_target_primary_metrics": "PASS"
+        if scope_primary_passed
+        else "FAIL",
     }
     c3_keys = (
         "1_alignment_active_cgs_superiority_ci",
@@ -2031,12 +2113,14 @@ def _evaluation_gate(
         "6_gray_distributions_reported",
         "7_null_equivalence_and_overclassification",
         "8_native_probe_correlation",
+        "9_unpooled_source_and_target_primary_metrics",
     )
     c5_keys = (
         "2_response_active_native_superiority_ci",
         "3_response_physical_and_latent_baselines_ci",
         "4_response_direction_and_magnitude",
         "7_null_equivalence_and_overclassification",
+        "9_unpooled_source_and_target_primary_metrics",
     )
     c3_complete = bool(
         not dataset.is_fixture
@@ -2126,6 +2210,7 @@ def _evaluation_gate(
             "shortcut_probe_intervals": shortcut_intervals,
             "response_direction": direction,
         },
+        "g3_scope_intervals": scope_intervals,
         "c3_evidence_complete": c3_complete,
         "c5_evidence_complete": c5_complete,
         "g4_subgates": g4,
@@ -2286,6 +2371,40 @@ def _paired_arm_comparison(
         seed + 1,
     )
     return {**result, "p_value_two_sided": test["p_value_two_sided"]}
+
+
+def _g3_primary_scope_intervals(cgs_rows, response_rows, scopes, resamples):
+    result = {}
+    for index, scope in enumerate(scopes):
+        scoped_cgs = [
+            row for row in cgs_rows if row.get("evaluation_scope") == scope
+        ]
+        scoped_response = [
+            row for row in response_rows if row.get("evaluation_scope") == scope
+        ]
+        if not scoped_cgs or not scoped_response:
+            raise RuntimeError(f"G3 evaluation scope is incomplete: {scope}")
+        result[str(scope)] = {
+            "alignment_superiority": _paired_arm_comparison(
+                scoped_cgs,
+                "cgs_auroc",
+                "alignment",
+                "endpoint",
+                higher_is_better=True,
+                resamples=resamples,
+                seed=81300 + 2 * index,
+            ),
+            "response_superiority": _paired_arm_comparison(
+                scoped_response,
+                "native_target_free_full_channel_nmse",
+                "response",
+                "endpoint",
+                higher_is_better=False,
+                resamples=resamples,
+                seed=81301 + 2 * index,
+            ),
+        }
+    return result
 
 
 def _within_arm_advantage_interval(

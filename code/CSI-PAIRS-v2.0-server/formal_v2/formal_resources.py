@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_csv, write_json
 
@@ -73,6 +74,9 @@ def validate_resource_registry(payload: dict, waibu_root: str | Path) -> list[di
         "integration_role",
         "implementation_status",
         "allowed_name",
+        "source_url",
+        "license_url",
+        "redistribution_allowed",
     }
     names = [row.get("file") for row in resources if isinstance(row, dict)]
     if len(names) != len(set(names)) or set(names) != REQUIRED_FILES:
@@ -92,8 +96,25 @@ def validate_resource_registry(payload: dict, waibu_root: str | Path) -> list[di
             raise ValueError("waibu resource kind is invalid")
         if row["implementation_status"] not in IMPLEMENTATION_STATUSES:
             raise ValueError("waibu implementation status is invalid")
-        if not all(isinstance(row[key], str) and row[key].strip() for key in expected_fields):
+        string_fields = expected_fields.difference({"redistribution_allowed"})
+        if not all(isinstance(row[key], str) and row[key].strip() for key in string_fields):
             raise ValueError("waibu resource string fields must be nonempty")
+        if type(row["redistribution_allowed"]) is not bool:
+            raise ValueError("waibu redistribution flag must be boolean")
+        for key in ("source_url", "license_url"):
+            parsed = urlparse(row[key])
+            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                raise ValueError(f"waibu {key} must be a credential-free HTTPS URL")
+        if row["kind"] == "paper":
+            redistributable_license = row["license_url"] in {
+                "https://creativecommons.org/licenses/by/4.0/",
+                "https://creativecommons.org/licenses/by-sa/4.0/",
+                "https://creativecommons.org/publicdomain/zero/1.0/",
+            }
+            if row["redistribution_allowed"] is not redistributable_license:
+                raise ValueError("waibu paper redistribution flag contradicts its recorded license")
+        if row["kind"] == "official-source-archive" and row["redistribution_allowed"] is not True:
+            raise ValueError("waibu official source archives must have a redistributable license")
         path = (root / row["file"]).resolve()
         if path.parent != root or not path.is_file():
             raise ValueError("waibu resource path escapes its frozen directory")

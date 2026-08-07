@@ -10,6 +10,13 @@ if [[ -e "${ENVIRONMENT_PATH}" ]]; then
   exit 2
 fi
 
+PYTHON_VERSION="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if [[ "${PYTHON_VERSION}" != "3.12" ]]; then
+  echo "Python 3.12 is required; ${PYTHON_BIN} reports ${PYTHON_VERSION}" >&2
+  exit 3
+fi
+
 "${PYTHON_BIN}" -m venv "${ENVIRONMENT_PATH}"
 "${ENVIRONMENT_PATH}/bin/python" -m pip install --requirement "${PROJECT_ROOT}/formal_v2/requirements-lock.txt"
+"${ENVIRONMENT_PATH}/bin/python" -m pip check
 "${ENVIRONMENT_PATH}/bin/python" -c 'import numpy, torch; print("numpy", numpy.__version__, "torch", torch.__version__)'

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from formal_v2.formal_evaluation import (
+    _g3_primary_scope_intervals,
     _gray_cells_complete,
     _native_probe_correlation_macro,
     _response_effect_rows,
@@ -52,6 +53,67 @@ from formal_v2.formal_risk import (
 
 
 class RiskPathEvaluationIntegrityTests(unittest.TestCase):
+    def test_g3_scope_intervals_cannot_hide_target_regression(self):
+        cgs_rows = []
+        response_rows = []
+        for scope, alignment_value, response_value in (
+            ("source_final_unseen_bank", 0.9, 0.1),
+            ("target:target-a", 0.4, 0.9),
+        ):
+            for index in range(6):
+                common = {
+                    "seed": 1,
+                    "base_map_cluster_id": f"{scope}-cluster-{index}",
+                    "canonical_base_map_digest": f"{scope}-cluster-{index}",
+                    "bank_id": f"{scope}-bank-{index}",
+                    "canonical_bank_digest": f"{scope}-bank-{index}",
+                    "evaluation_scope": scope,
+                }
+                cgs_rows.extend(
+                    (
+                        {**common, "arm": "endpoint", "cgs_auroc": 0.5},
+                        {**common, "arm": "alignment", "cgs_auroc": alignment_value},
+                    )
+                )
+                response_rows.extend(
+                    (
+                        {
+                            **common,
+                            "arm": "endpoint",
+                            "native_target_free_full_channel_nmse": 0.5,
+                        },
+                        {
+                            **common,
+                            "arm": "response",
+                            "native_target_free_full_channel_nmse": response_value,
+                        },
+                    )
+                )
+        intervals = _g3_primary_scope_intervals(
+            cgs_rows,
+            response_rows,
+            ["source_final_unseen_bank", "target:target-a"],
+            100,
+        )
+        self.assertGreater(
+            intervals["source_final_unseen_bank"]["alignment_superiority"][
+                "paired_mean_difference"
+            ],
+            0,
+        )
+        self.assertLess(
+            intervals["target:target-a"]["alignment_superiority"][
+                "paired_mean_difference"
+            ],
+            0,
+        )
+        self.assertLess(
+            intervals["target:target-a"]["response_superiority"][
+                "paired_mean_difference"
+            ],
+            0,
+        )
+
     def test_gray_completeness_requires_every_unique_canonical_cell(self):
         expected = {
             (seed, arm, bank)
@@ -859,7 +921,9 @@ class RiskPathEvaluationIntegrityTests(unittest.TestCase):
             patch_mean=np.zeros((spec.patch_count, spec.patch_dim)),
             patch_scale=np.ones((spec.patch_count, spec.patch_dim)),
         )
-        result = _transition_metrics(target, source, target, normalization, spec)
+        result = _transition_metrics(
+            target, source, source, target, normalization, spec
+        )
         self.assertAlmostEqual(result["native_sgcs"], 1.0)
         self.assertAlmostEqual(result["native_transition_skill"], 1.0)
         for name in ("path_loss", "delay_spread", "angular_spread"):
@@ -886,9 +950,36 @@ class RiskPathEvaluationIntegrityTests(unittest.TestCase):
             patch_mean=np.zeros((spec.patch_count, spec.patch_dim)),
             patch_scale=np.ones((spec.patch_count, spec.patch_dim)),
         )
-        result = _transition_metrics(source, source, target, normalization, spec)
+        result = _transition_metrics(
+            source, source, source, target, normalization, spec
+        )
         self.assertAlmostEqual(result["native_sgcs"], 0.0)
         self.assertAlmostEqual(result["native_transition_skill"], 0.0)
+
+    def test_transition_delta_uses_model_zero_action_not_source_truth(self):
+        spec = PatchSpec(
+            antennas=2,
+            subcarriers=2,
+            patch_complex_size=2,
+            patch_antenna_size=1,
+            patch_subcarrier_size=2,
+        )
+        source = patchify_csi(np.zeros((1, 8), dtype=np.float64), spec)
+        target = patchify_csi(np.ones((1, 8), dtype=np.float64), spec)
+        zero_action = patchify_csi(
+            np.full((1, 8), 10.0, dtype=np.float64), spec
+        )
+        action = patchify_csi(
+            np.full((1, 8), 11.0, dtype=np.float64), spec
+        )
+        normalization = SimpleNamespace(
+            patch_mean=np.zeros((spec.patch_count, spec.patch_dim)),
+            patch_scale=np.ones((spec.patch_count, spec.patch_dim)),
+        )
+        result = _transition_metrics(
+            action, zero_action, source, target, normalization, spec
+        )
+        self.assertAlmostEqual(result["native_transition_skill"], 1.0)
 
     def test_nonexact_action_swap_is_excluded_from_response_effect(self):
         evaluated = {

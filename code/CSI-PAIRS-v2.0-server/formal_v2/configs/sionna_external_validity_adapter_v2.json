@@ -1,10 +1,10 @@
 {
-  "schema_version": "csi-pairs-v6-external-validity-adapter-v2",
+  "schema_version": "csi-pairs-v6-external-validity-adapter-v3",
   "evidence_type": "independent_rt_engine",
   "source_revision": "sionna@04ddb9312116b408093b9d3ad363a3df355093a6+sionna-rt@1.2.1",
   "license_id": "Apache-2.0",
   "adapter_source_path": "formal_v2/external_adapters/sionna_external_validity.py",
-  "adapter_source_sha256": "dada73dbb88c9526be92e6304c21c71d51c892e083eb689dc505ce3f76959300",
+  "adapter_source_sha256": "d9d4e370904ea18f1ad02ad55ff954a81a54f622d8bb26d6c09aaf73cd80cdad",
   "command": [
     "{project_root}/formal_v2/external_adapters/.runtime-sionna/venv/bin/python",
     "{adapter_source}",
@@ -12,8 +12,6 @@
     "{dataset}",
     "--output",
     "{output}",
-    "--run-root",
-    "{run_root}",
     "--scene-manifest",
     "{run_root}/inputs/sionna_scene_manifest.json"
   ]

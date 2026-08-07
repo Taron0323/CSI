@@ -1,5 +1,8 @@
 # CSI-PAIRS V2.1 code verification record
 
+> Historical verification snapshot for an earlier commit. Test counts and bundle hashes below are
+> not evidence for the current tree; use the current PR validation record.
+
 Date: 2026-08-07 (Asia/Shanghai)
 
 Engineering status: `CODE_READY_FOR_FORMAL_INPUT`

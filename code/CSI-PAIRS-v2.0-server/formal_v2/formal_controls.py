@@ -444,7 +444,7 @@ def _read_localization(path, evidence):
         row["budget"] = int(row["budget"])
         row["draw"] = int(row["draw"])
         row["utility_neg_log_median"] = float(row["utility_neg_log_median"])
-        for key in ("artifact_label", "dataset_sha256", "config_sha256", "fixture", "scientific_use"):
+        for key in evidence:
             row.pop(key, None)
     return rows
 

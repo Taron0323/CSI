@@ -3,6 +3,11 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON_BIN="${CSI_PAIRS_PYTHON:-python3}"
+APPROVAL="${CSI_PAIRS_APPROVE_FULL_EXPERIMENT:-}"
+if [[ "${APPROVAL}" != "YES" ]]; then
+  echo "set CSI_PAIRS_APPROVE_FULL_EXPERIMENT=YES only after reviewing the non-fixture Response qualification" >&2
+  exit 5
+fi
 CONFIG="${CSI_PAIRS_FORMAL_CONFIG:-${PROJECT_ROOT}/formal_v2/configs/formal_v2.json}"
 OUTPUT="${CSI_PAIRS_FORMAL_OUTPUT:?set CSI_PAIRS_FORMAL_OUTPUT to an unused output directory}"
 VERIFIER_MANIFEST="${CSI_PAIRS_VERIFIER_MANIFEST:?set CSI_PAIRS_VERIFIER_MANIFEST to an independent RT verifier manifest}"
@@ -21,6 +26,7 @@ fi
 
 cd "${PROJECT_ROOT}"
 "${PYTHON_BIN}" -m formal_v2.formal_cli all \
+  --approve-full-experiment \
   --config "${CONFIG}" \
   --output "${OUTPUT}" \
   --verifier-manifest "${VERIFIER_MANIFEST}" \

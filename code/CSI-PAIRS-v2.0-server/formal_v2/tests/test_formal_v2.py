@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import inspect
 import json
+import subprocess
 import sys
 import tempfile
 import threading
@@ -17,6 +18,7 @@ import torch
 
 from formal_v2.formal_claims import (
     CLAIM_DEPENDENCIES,
+    _claim_state,
     _semantic_status,
     _validate_external_manifest_binding,
     _validate_stage_bound_input,
@@ -152,6 +154,20 @@ SMOKE_CONFIG = ROOT / "formal_v2" / "configs" / "formal_v2_smoke.json"
 
 
 class ConfigTests(unittest.TestCase):
+    def test_full_run_shell_requires_human_approval_before_other_inputs(self):
+        script = ROOT / "formal_v2" / "scripts" / "run_formal_v2.sh"
+        completed = subprocess.run(
+            ["/bin/bash", str(script)],
+            cwd=ROOT,
+            env={},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 5)
+        self.assertIn("CSI_PAIRS_APPROVE_FULL_EXPERIMENT=YES", completed.stderr)
+        self.assertNotIn("CSI_PAIRS_FORMAL_OUTPUT", completed.stderr)
+
     def test_config_is_v6_and_has_complete_sections(self):
         config = load_formal_config(SMOKE_CONFIG)
         self.assertEqual(config["schema_version"], "csi-pairs-formal-config-v2.2-v6")
@@ -356,7 +372,7 @@ class ConfigTests(unittest.TestCase):
                 started.set()
                 if not release.wait(timeout=5):
                     raise RuntimeError("test verifier release timed out")
-                return {"status": "PASS"}
+                return {"status": "PASS", "passed": True}
 
             resource_args = [
                 "verify-waibu-resources",
@@ -610,6 +626,43 @@ class DatasetTests(unittest.TestCase):
             )
             self.assertTrue(set(selected.tolist()).isdisjoint(support))
 
+    def test_target_position_identity_cannot_cross_support_and_query_banks(self):
+        arrays = _archive_arrays(self.fixture)
+        target_scenes = np.flatnonzero(arrays["scene_roles"] == "target")
+        first = int(target_scenes[0])
+        same_city = target_scenes[
+            arrays["city_ids"][target_scenes] == arrays["city_ids"][first]
+        ]
+        first, second = map(int, same_city[:2])
+        position_id = str(arrays["position_ids"][first, 0])
+        position = arrays["position_ids"].shape[1] - 1
+        arrays["position_ids"] = arrays["position_ids"].astype("<U64")
+        arrays["position_ids"][second, position] = position_id
+        arrays["positions"] = arrays["positions"].copy()
+        arrays["positions"][second, position] = arrays["positions"][first, 0]
+        arrays["position_roles"] = arrays["position_roles"].astype("<U32")
+        current = str(arrays["position_roles"][first, 0])
+        arrays["position_roles"][second, position] = (
+            "query" if current == "support_pool" else "support_pool"
+        )
+        malformed = self.root / "cross-bank-support-query-leak.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "cross support_pool/query"):
+            FormalDataset.load(malformed)
+
+    def test_source_encoder_train_itself_must_cover_two_source_cities(self):
+        arrays = _archive_arrays(self.fixture)
+        train_scenes = np.flatnonzero(
+            arrays["scene_roles"] == "source_encoder_train"
+        )
+        self.assertGreaterEqual(train_scenes.size, 2)
+        arrays["city_ids"] = arrays["city_ids"].astype("<U64")
+        arrays["city_ids"][train_scenes] = arrays["city_ids"][train_scenes[0]]
+        malformed = self.root / "single-training-city.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "source_encoder_train"):
+            FormalDataset.load(malformed)
+
     def test_embedded_metadata_duplicate_is_rejected(self):
         arrays = _archive_arrays(self.fixture)
         raw = str(arrays["metadata_json"].item())
@@ -653,7 +706,7 @@ class DatasetTests(unittest.TestCase):
     def test_base_map_cluster_cannot_cross_roles(self):
         arrays = _archive_arrays(self.fixture)
         arrays["base_map_cluster_ids"] = arrays["base_map_cluster_ids"].copy()
-        arrays["base_map_cluster_ids"][1] = arrays["base_map_cluster_ids"][0]
+        arrays["base_map_cluster_ids"][2] = arrays["base_map_cluster_ids"][0]
         malformed = self.root / "cluster_leak.npz"
         np.savez_compressed(malformed, **arrays)
         with self.assertRaisesRegex(FormalDatasetError, "cross scene roles"):
@@ -884,11 +937,35 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(set(CLAIM_DEPENDENCIES), set(CLAIM_IDS))
         self.assertEqual(set(complete_gate_vector()), set(GATE_IDS))
 
+    def test_resource_verification_failure_returns_nonzero(self):
+        output = self.root / "resource-failure"
+        with patch(
+            "formal_v2.formal_resources.verify_waibu_resources",
+            return_value={"status": "FAIL", "passed": False},
+        ):
+            return_code = formal_cli_main(
+                [
+                    "verify-waibu-resources",
+                    "--registry",
+                    str(self.root / "registry.json"),
+                    "--waibu-root",
+                    str(self.root / "waibu"),
+                    "--output",
+                    str(output),
+                ]
+            )
+        self.assertEqual(return_code, 1)
+
     def test_claim_semantics_recheck_g0_c2_c11_and_g8_evidence(self):
         g0 = {
             "status": "PASS",
             "passed": True,
             "input_manifest_sha256": "a" * 64,
+            "databases": ["Crossref", "OpenAlex", "Semantic Scholar"],
+            "query_count": 1,
+            "search_receipt_count": 3,
+            "search_receipts_verified": True,
+            "c13_requires_human_review": True,
             "decision": {
                 "no_direct_overlap": True,
                 "rt_path_ready": True,
@@ -932,8 +1009,15 @@ class EvidenceAndPathTests(unittest.TestCase):
             "input_manifest_sha256": "b" * 64,
             "adapter_source_sha256": "c" * 64,
             "fit_dataset_sha256": "d" * 64,
-            "validation_dataset_sha256": "e" * 64,
+            "validation_inputs_sha256": "e" * 64,
+            "validation_reference_sha256": "1" * 64,
             "fitted_parameters_sha256": "f" * 64,
+            "simulated_statistics_path": "simulated_statistics.csv",
+            "simulated_statistics_sha256": "2" * 64,
+            "validated_statistics_path": "validated_statistics.csv",
+            "validated_statistics_sha256": "3" * 64,
+            "validation_unit_count": 2,
+            "aggregation": "mean_per_unit",
             "statistics": {
                 name: {"passed": True}
                 for name in ("path_loss", "delay_spread", "angular_spread", "visible_path_count")
@@ -952,11 +1036,20 @@ class EvidenceAndPathTests(unittest.TestCase):
             "adapter_source_sha256": "a" * 64,
             "rt_scene_manifest_path": "rt_scene_manifest.json",
             "rt_scene_manifest_sha256": "b" * 64,
+            "external_csi_path": "external_csi.npz",
+            "external_csi_sha256": "c" * 64,
+            "external_csi_contract": "outer-recomputed-direction-and-effect-from-raw-csi-v1",
+            "external_scene_count": 2,
             "null_equivalence": {"passed": True, "base_map_cluster_count": 3},
         }
         self.assertEqual(_semantic_status("G8", g8), "PASS")
         g8["active_direction_agreement_ci95_low"] = 0.7
         self.assertEqual(_semantic_status("G8", g8), "FAIL")
+
+    def test_c13_cannot_be_automatically_promoted_by_a_manifest(self):
+        self.assertEqual(_claim_state("C13", ["PASS"], False), "REVIEW_REQUIRED")
+        self.assertEqual(_claim_state("C13", ["PASS"], True), "SOFTWARE_ONLY")
+        self.assertEqual(_claim_state("C12", ["PASS"], False), "SUPPORTED")
 
     def test_not_assessed_from_later_stage_cannot_erase_upstream_gate(self):
         (self.root / "qualification").mkdir()
@@ -1248,8 +1341,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "schema mismatch"):
             validate_control_manifest(controls)
-        validate_scene_id_manifest(
-            {
+        scene_manifest = {
                 "schema_version": "csi-pairs-v6-scene-id-adapters-v3",
                 "adapters": [
                     {
@@ -1266,10 +1358,20 @@ class EvidenceAndPathTests(unittest.TestCase):
                     }
                 ],
             }
+        validate_scene_id_manifest(scene_manifest)
+        unsafe_scene_manifest = json.loads(json.dumps(scene_manifest))
+        unsafe_scene_manifest["adapters"][0]["adapter_id"] = "../../../qualification"
+        with self.assertRaisesRegex(ValueError, "safe path component"):
+            validate_scene_id_manifest(unsafe_scene_manifest)
+        duplicate_scene_manifest = json.loads(json.dumps(scene_manifest))
+        duplicate_scene_manifest["adapters"].append(
+            dict(duplicate_scene_manifest["adapters"][0])
         )
+        with self.assertRaisesRegex(ValueError, "unique"):
+            validate_scene_id_manifest(duplicate_scene_manifest)
         validate_external_validity_manifest(
             {
-                "schema_version": "csi-pairs-v6-external-validity-adapter-v2",
+                "schema_version": "csi-pairs-v6-external-validity-adapter-v3",
                 "evidence_type": "independent_rt_engine",
                 "source_revision": "revision",
                 "license_id": "license",
@@ -1419,13 +1521,15 @@ class EvidenceAndPathTests(unittest.TestCase):
 
     def test_rt_calibration_manifest_requires_bound_input_and_source_paths(self):
         manifest = {
-            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v2",
+            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v3",
             "protocol_path": "protocol.json",
             "protocol_sha256": "a" * 64,
             "fit_dataset_path": "fit.bin",
             "fit_dataset_sha256": "b" * 64,
-            "validation_dataset_path": "validation.bin",
-            "validation_dataset_sha256": "c" * 64,
+            "validation_inputs_path": "validation-inputs.bin",
+            "validation_inputs_sha256": "c" * 64,
+            "validation_reference_path": "validation-reference.csv",
+            "validation_reference_sha256": "e" * 64,
             "adapter_source_path": "adapter.py",
             "adapter_source_sha256": "d" * 64,
             "command": [
@@ -1433,8 +1537,8 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "{adapter_source}",
                 "--fit",
                 "{fit_dataset}",
-                "--validation",
-                "{validation_dataset}",
+                "--validation-inputs",
+                "{validation_inputs}",
                 "--protocol",
                 "{protocol}",
                 "--output",
@@ -1452,14 +1556,28 @@ class EvidenceAndPathTests(unittest.TestCase):
 
     def test_rt_calibration_stage_executes_and_binds_fitted_artifacts_end_to_end(self):
         fit = self.root / "rt-fit.bin"
-        validation = self.root / "rt-validation.bin"
+        validation_inputs = self.root / "rt-validation-inputs.bin"
+        validation_reference = self.root / "rt-validation-reference.csv"
         fit.write_bytes(b"independent fit")
-        validation.write_bytes(b"independent validation")
+        validation_inputs.write_bytes(b"independent validation inputs")
+        write_csv(
+            validation_reference,
+            [
+                {
+                    "unit_id": unit_id,
+                    "path_loss": 1.0 + index,
+                    "delay_spread": 2.0 + index,
+                    "angular_spread": 3.0 + index,
+                    "visible_path_count": 4 + index,
+                }
+                for index, unit_id in enumerate(("unit-a", "unit-b"))
+            ],
+        )
         protocol = self.root / "rt-protocol.json"
         write_json(
             protocol,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-protocol-v1",
+                "schema_version": "csi-pairs-v6-rt-calibration-protocol-v2",
                 "frozen_utc": "2026-08-06T00:00:00Z",
                 "absolute_tolerances": {
                     "path_loss": 0.2,
@@ -1468,31 +1586,35 @@ class EvidenceAndPathTests(unittest.TestCase):
                     "visible_path_count": 0.2,
                 },
                 "exclusion_rules": [],
+                "minimum_validation_units": 2,
+                "aggregation": "mean_per_unit",
             },
         )
         adapter = self.root / "rt_adapter.py"
         adapter.write_text(
             "import argparse, hashlib, json\n"
             "from pathlib import Path\n"
-            "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation'); p.add_argument('--protocol'); a=p.parse_args()\n"
+            "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation-inputs'); p.add_argument('--protocol'); a=p.parse_args()\n"
             "out=Path(a.output); fitted=out/'fitted.json'; fitted.write_text('{\"gain\":1.0}', encoding='utf-8')\n"
             "sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
-            "stats={k:{'reference':1.0,'simulated':1.05} for k in ('path_loss','delay_spread','angular_spread','visible_path_count')}\n"
-            "payload={'schema_version':'csi-pairs-v6-rt-calibration-statistics-v2','fit_dataset_sha256':sha(a.fit),'validation_dataset_sha256':sha(a.validation),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'statistics':stats}\n"
-            "(out/'statistics.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
+            "sim=out/'simulated_statistics.csv'; sim.write_text('unit_id,path_loss,delay_spread,angular_spread,visible_path_count\\nunit-a,1.05,2.05,3.05,4\\nunit-b,2.05,3.05,4.05,5\\n',encoding='utf-8')\n"
+            "payload={'schema_version':'csi-pairs-v6-rt-calibration-adapter-result-v3','fit_dataset_sha256':sha(a.fit),'validation_inputs_sha256':sha(a.validation_inputs),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'simulated_statistics_path':sim.name,'simulated_statistics_sha256':sha(sim)}\n"
+            "(out/'adapter_result.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
             encoding="utf-8",
         )
         manifest = self.root / "rt-manifest.json"
         write_json(
             manifest,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v3",
                 "protocol_path": str(protocol),
                 "protocol_sha256": sha256_file(protocol),
                 "fit_dataset_path": str(fit),
                 "fit_dataset_sha256": sha256_file(fit),
-                "validation_dataset_path": str(validation),
-                "validation_dataset_sha256": sha256_file(validation),
+                "validation_inputs_path": str(validation_inputs),
+                "validation_inputs_sha256": sha256_file(validation_inputs),
+                "validation_reference_path": str(validation_reference),
+                "validation_reference_sha256": sha256_file(validation_reference),
                 "adapter_source_path": str(adapter),
                 "adapter_source_sha256": sha256_file(adapter),
                 "command": [
@@ -1502,8 +1624,8 @@ class EvidenceAndPathTests(unittest.TestCase):
                     "{output}",
                     "--fit",
                     "{fit_dataset}",
-                    "--validation",
-                    "{validation_dataset}",
+                    "--validation-inputs",
+                    "{validation_inputs}",
                     "--protocol",
                     "{protocol}",
                 ],
@@ -1513,14 +1635,15 @@ class EvidenceAndPathTests(unittest.TestCase):
         gate = run_rt_calibration_gate(self.config, self.dataset, manifest, output)
         self.assertTrue(gate["passed"])
         self.assertEqual(len(gate["statistics"]), 4)
+        self.assertEqual(gate["validation_unit_count"], 2)
         _validate_stage_bound_input(
             output / "qualification/rt_calibration/gate.json",
             gate,
             self.config,
             "rt_calibration",
         )
-        fit.write_bytes(b"tampered fit")
-        with self.assertRaisesRegex(RuntimeError, "fit dataset"):
+        validation_reference.write_text("changed", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "validation reference"):
             _validate_stage_bound_input(
                 output / "qualification/rt_calibration/gate.json",
                 gate,
@@ -1530,20 +1653,51 @@ class EvidenceAndPathTests(unittest.TestCase):
 
     def test_literature_gate_rejects_unbound_or_contradictory_novelty_records(self):
         content = self.root / "paper.pdf"
-        content.write_bytes(b"paper")
+        content.write_bytes(b"%PDF-1.4\n% test paper\n")
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        query = "map-conditioned CSI"
+        receipt_specs = {
+            "Crossref": (
+                "https://api.crossref.org/works?query=map-conditioned%20CSI",
+                {"message": {"items": [{"DOI": "10.1/test"}]}},
+            ),
+            "OpenAlex": (
+                "https://api.openalex.org/works?search=map-conditioned%20CSI",
+                {"results": [{"id": "https://openalex.org/W1"}]},
+            ),
+            "Semantic Scholar": (
+                "https://api.semanticscholar.org/graph/v1/paper/search?query=map-conditioned%20CSI",
+                {"data": [{"paperId": "paper-1"}]},
+            ),
+        }
+        receipts = []
+        for index, (database, (url, payload)) in enumerate(receipt_specs.items()):
+            receipt_path = self.root / f"receipt-{index}.json"
+            write_json(receipt_path, payload)
+            receipts.append(
+                {
+                    "database": database,
+                    "query": query,
+                    "searched_utc": now,
+                    "retrieval_url": url,
+                    "result_count": 1,
+                    "receipt_path": str(receipt_path),
+                    "receipt_sha256": sha256_file(receipt_path),
+                }
+            )
         manifest = {
-            "schema_version": "csi-pairs-v6-literature-resource-manifest-v2",
+            "schema_version": "csi-pairs-v6-literature-resource-manifest-v3",
             "search_completed_utc": now,
             "databases": list(self.config["literature"]["required_databases"]),
-            "queries": ["map-conditioned CSI"],
+            "queries": [query],
+            "search_receipts": receipts,
             "records": [
                 {
                     "citation_key": "paper",
                     "title": "Paper",
-                    "doi_or_url": "https://example.invalid/paper",
+                    "doi_or_url": "https://example.org/paper",
                     "verified_utc": now,
                     "content_path": str(content),
                     "content_sha256": sha256_file(content),
@@ -1568,6 +1722,13 @@ class EvidenceAndPathTests(unittest.TestCase):
             },
         }
         validate_literature_manifest(self.config, manifest, self.root)
+        original_url = manifest["search_receipts"][0]["retrieval_url"]
+        manifest["search_receipts"][0]["retrieval_url"] = (
+            "https://api.crossref.org/works?query=unrelated"
+        )
+        with self.assertRaisesRegex(ValueError, "bind the frozen query"):
+            validate_literature_manifest(self.config, manifest, self.root)
+        manifest["search_receipts"][0]["retrieval_url"] = original_url
         manifest["decision"]["no_direct_overlap"] = False
         with self.assertRaisesRegex(ValueError, "contradicts"):
             validate_literature_manifest(self.config, manifest, self.root)
@@ -1607,6 +1768,31 @@ class EvidenceAndPathTests(unittest.TestCase):
             "assemble-claims",
         ):
             self.assertIn(command, help_text)
+        parser = build_parser()
+        full_argv = [
+            "all",
+            "--config",
+            "config.json",
+            "--output",
+            "output",
+            "--verifier-manifest",
+            "verifier.json",
+            "--adapter-manifest",
+            "adapters.json",
+            "--external-validity-manifest",
+            "external-validity.json",
+            "--literature-resource-manifest",
+            "literature.json",
+            "--rt-calibration-manifest",
+            "rt-calibration.json",
+        ]
+        with patch("builtins.print") as denied_message:
+            self.assertEqual(formal_cli_main(full_argv), 2)
+        self.assertIn("explicit Response-gate approval", denied_message.call_args.args[0])
+        full_args = parser.parse_args(
+            [*full_argv, "--approve-full-experiment"]
+        )
+        self.assertTrue(full_args.approve_full_experiment)
 
     def test_cli_ships_first_party_claim_and_scene_id_defaults(self):
         parser = build_parser()
@@ -1956,6 +2142,15 @@ class WaibuIntegrationTests(unittest.TestCase):
         rows = validate_resource_registry(registry, ROOT / "waibu")
         self.assertEqual(len(rows), 10)
         self.assertTrue(all(row["status"] == "PASS" for row in rows))
+        self.assertEqual(
+            {row["file"] for row in rows if not row["redistribution_allowed"]},
+            {
+                "2502.11965v2.pdf",
+                "2505.09160v2.pdf",
+                "2601.03789v1.pdf",
+                "2604.07086v1.pdf",
+            },
+        )
         registry["resources"][0]["sha256"] = "0" * 64
         changed = validate_resource_registry(registry, ROOT / "waibu")
         self.assertEqual(changed[0]["status"], "FAIL")

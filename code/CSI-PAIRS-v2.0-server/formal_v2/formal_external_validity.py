@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 import os
@@ -58,12 +57,11 @@ def run_external_validity(config, dataset, manifest_path, output_root):
     )
     (output_dir / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
     (output_dir / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
-    result_path = output_dir / "paired_effects.csv"
+    result_path = output_dir / "external_csi.npz"
     if completed.returncode != 0 or not result_path.is_file():
         raise RuntimeError("external-validity adapter failed")
-    with result_path.open(newline="", encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
-    rows = _validate_rows(rows, evidence, expected_registry)
+    external_csi = _load_external_csi(result_path, dataset)
+    rows = _rows_from_external_csi(external_csi, expected_registry)
     active = [row for row in rows if row["route"] == "active"]
     null = [row for row in rows if row["route"] == "null"]
     if (
@@ -85,17 +83,9 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         >= float(config["external_validity"]["minimum_active_direction_agreement"])
         and equivalence["passed"]
     )
-    clean_rows = [
-        {
-            key: value
-            for key, value in row.items()
-            if key not in {"dataset_sha256", "config_sha256", "fixture"}
-        }
-        for row in rows
-    ]
-    write_csv(output_dir / "validated_paired_effects.csv", bind_rows(clean_rows, evidence))
+    write_csv(output_dir / "validated_paired_effects.csv", bind_rows(rows, evidence))
     gate = {
-        "schema_version": "csi-pairs-v6-external-validity-gate-v2",
+        "schema_version": "csi-pairs-v6-external-validity-gate-v3",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
@@ -109,6 +99,10 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         "input_manifest_sha256": sha256_file(bound_manifest),
         "rt_scene_manifest_path": rt_scene_manifest_path.name,
         "rt_scene_manifest_sha256": sha256_file(rt_scene_manifest_path),
+        "external_csi_path": result_path.name,
+        "external_csi_sha256": sha256_file(result_path),
+        "external_csi_contract": "outer-recomputed-direction-and-effect-from-raw-csi-v1",
+        "external_scene_count": int(external_csi.shape[0]),
         "active_direction_agreement": agreement["estimate"],
         "active_direction_agreement_ci95_low": agreement["ci95_low"],
         "active_direction_agreement_ci95_high": agreement["ci95_high"],
@@ -137,7 +131,7 @@ def _validate_manifest(manifest):
     }
     if not isinstance(manifest, dict) or set(manifest) != required:
         raise ValueError("external-validity manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-external-validity-adapter-v2":
+    if manifest["schema_version"] != "csi-pairs-v6-external-validity-adapter-v3":
         raise ValueError("external-validity manifest schema mismatch")
     if manifest["evidence_type"] != "independent_rt_engine":
         raise ValueError("external-validity evidence type is unsupported")
@@ -181,6 +175,8 @@ def _verify_adapter_source(manifest):
     path = Path(manifest["adapter_source_path"])
     if not path.is_absolute():
         path = Path(__file__).resolve().parents[1] / path
+    if path.is_symlink():
+        raise RuntimeError("external-validity adapter source must be a regular file")
     path = path.resolve()
     if not path.is_file() or sha256_file(path) != manifest["adapter_source_sha256"]:
         raise RuntimeError("external-validity adapter source is missing or hash-mismatched")
@@ -193,8 +189,11 @@ def _bind_rt_scene_manifest(command, dataset, output_dir):
     index = command.index("--scene-manifest")
     if index + 1 >= len(command):
         raise RuntimeError("G8 command omits the RT scene manifest path")
-    source = Path(command[index + 1]).resolve()
-    if not source.is_file() or source.is_symlink():
+    source_candidate = Path(command[index + 1])
+    if source_candidate.is_symlink():
+        raise RuntimeError("G8 RT scene manifest must be a regular file")
+    source = source_candidate.resolve()
+    if not source.is_file():
         raise RuntimeError("G8 RT scene manifest must be a regular file")
     from .external_adapters.sionna_external_validity import load_scene_manifest
 
@@ -227,7 +226,7 @@ def _expected_external_registry(config, dataset, output_root, rt_scene_manifest)
         for row in rt_scene_manifest["worlds"]
     }
     registry = {}
-    for scene_value in scenes:
+    for external_scene_index, scene_value in enumerate(scenes):
         scene = int(scene_value)
         canonical_bank = _canonical_bank_digest(dataset, scene)
         canonical_cluster = dataset.canonical_base_map_digest(scene)
@@ -278,6 +277,10 @@ def _expected_external_registry(config, dataset, output_root, rt_scene_manifest)
                 registry[unit_id] = {
                     "unit_id": unit_id,
                     "scene_index": scene,
+                    "external_scene_index": external_scene_index,
+                    "source_world": edge.source_world,
+                    "target_world": edge.target_world,
+                    "position": position,
                     "bank_id": str(dataset.bank_ids[scene]),
                     "route": "active" if route_code == 2 else "null",
                     "primary_direction": _power_direction(source, target),
@@ -321,59 +324,66 @@ def _power_direction(source, target):
     return 1 if target_power >= source_power else -1
 
 
-def _validate_rows(rows, evidence, expected_registry):
-    required = {
-        "unit_id", "bank_id", "route", "primary_direction", "external_direction",
-        "primary_effect", "external_effect", "context_sha256", "dataset_sha256",
-        "config_sha256", "fixture",
-    }
-    if not rows or any(set(row) != required for row in rows):
-        raise RuntimeError("external-validity row fields must be exact")
-    validated = {}
-    for row in rows:
-        unit_id = row["unit_id"]
-        if not unit_id or unit_id in validated:
-            raise RuntimeError("external-validity unit IDs must be nonempty and unique")
-        if unit_id not in expected_registry:
-            raise RuntimeError("external-validity row is outside the outer registry")
+def _load_external_csi(path, dataset):
+    source = Path(path)
+    if not source.is_file() or source.is_symlink():
+        raise RuntimeError("external-validity raw CSI must be a regular NPZ file")
+    with np.load(source, allow_pickle=False) as archive:
+        if set(archive.files) != {"scene_ids", "position_ids", "external_csi"}:
+            raise RuntimeError("external-validity raw CSI arrays must be exact")
+        scene_ids = np.asarray(archive["scene_ids"])
+        position_ids = np.asarray(archive["position_ids"])
+        values = np.asarray(archive["external_csi"])
+    scenes = np.asarray(dataset.indices_for_role("external_validation"), dtype=np.int64)
+    expected_shape = (
+        len(scenes),
+        dataset.world_count,
+        dataset.position_count,
+        dataset.channel_count,
+    )
+    if values.shape != expected_shape or values.dtype.kind not in {"f", "i", "u"}:
+        raise RuntimeError("external-validity raw CSI shape or dtype is invalid")
+    if scene_ids.dtype.kind not in {"U", "S"} or not np.array_equal(
+        scene_ids.astype(str), np.asarray(dataset.scene_ids[scenes], dtype=str)
+    ):
+        raise RuntimeError("external-validity raw CSI scene order is invalid")
+    if position_ids.dtype.kind not in {"U", "S"} or not np.array_equal(
+        position_ids.astype(str), np.asarray(dataset.position_ids[scenes], dtype=str)
+    ):
+        raise RuntimeError("external-validity raw CSI position order is invalid")
+    values = np.asarray(values, dtype=np.float64)
+    if not np.all(np.isfinite(values)):
+        raise RuntimeError("external-validity raw CSI contains nonfinite values")
+    if np.array_equal(values, np.asarray(dataset.csi_clean[scenes], dtype=np.float64)):
+        raise RuntimeError("external-validity raw CSI is an exact copy of the primary-engine CSI")
+    return values
+
+
+def _rows_from_external_csi(external_csi, expected_registry):
+    rows = []
+    for unit_id in sorted(expected_registry):
         expected = expected_registry[unit_id]
-        if row["route"] not in {"active", "null"}:
-            raise RuntimeError("external-validity rows may only use active/null frozen routes")
-        if int(row["primary_direction"]) not in {-1, 1} or int(row["external_direction"]) not in {-1, 1}:
-            raise RuntimeError("external-validity directions must be signed")
-        if (
-            not np.isfinite(float(row["primary_effect"]))
-            or not np.isfinite(float(row["external_effect"]))
-            or float(row["primary_effect"]) < 0.0
-            or float(row["external_effect"]) < 0.0
-        ):
-            raise RuntimeError("external-validity effects must be finite and nonnegative")
-        for key in ("dataset_sha256", "config_sha256"):
-            if row[key] != str(evidence[key]):
-                raise RuntimeError(f"external-validity {key} mismatch")
-        if row["fixture"] != ("True" if evidence["fixture"] else "False"):
-            raise RuntimeError("external-validity fixture mismatch")
-        if row["bank_id"] != expected["bank_id"] or row["route"] != expected["route"]:
-            raise RuntimeError("external-validity bank/route differs from outer recomputation")
-        if int(row["primary_direction"]) != expected["primary_direction"] or not np.isclose(
-            float(row["primary_effect"]), expected["primary_effect"], rtol=1e-10, atol=1e-12
-        ):
-            raise RuntimeError("external-validity primary effect differs from outer recomputation")
-        digest = row["context_sha256"]
-        if digest != expected["context_sha256"]:
-            raise RuntimeError(
-                "external-validity context hash differs from outer RT-scene binding"
-            )
-        validated[unit_id] = {
-            **row,
-            **expected,
-            "external_direction": int(row["external_direction"]),
-            "external_effect": float(row["external_effect"]),
-        }
-    if set(validated) != set(expected_registry):
-        raise RuntimeError("external-validity adapter omitted outer-registry units")
-    _deduplicate_canonical_rows(list(validated.values()))
-    return [validated[key] for key in sorted(validated)]
+        source = external_csi[
+            expected["external_scene_index"],
+            expected["source_world"],
+            expected["position"],
+        ]
+        target = external_csi[
+            expected["external_scene_index"],
+            expected["target_world"],
+            expected["position"],
+        ]
+        rows.append(
+            {
+                **expected,
+                "external_direction": _power_direction(source, target),
+                "external_effect": _relative_effect(source, target),
+            }
+        )
+    if not rows:
+        raise RuntimeError("external-validity outer registry is empty")
+    _deduplicate_canonical_rows(rows)
+    return rows
 
 
 def _cluster_direction_interval(rows, resamples):

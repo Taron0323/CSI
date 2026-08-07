@@ -59,11 +59,24 @@ so the controls are executable protocol surfaces rather than scientific evidence
 External evidence contracts are fail-closed. Scene-ID adapters must bind their implementation source
 and trained checkpoint, cover each held-out position with one exact four-condition unit, and pass
 base-map-cluster bootstrap intervals rather than row-level point estimates. RT calibration manifests
-must bind separate fit/validation files, the frozen protocol, adapter source, and fitted-parameter
-artifact. G8 direction agreement and null equivalence are both cluster-macro confidence-interval
-decisions. G0 literature records must bind locally readable content and explicitly reconcile the
-direct-overlap decision with the recorded search. Each validated input manifest is copied into its
-stage output and reauthenticated during claim assembly.
+bind separate fit data, validation inputs, and an independent per-unit validation-reference CSV.
+The adapter cannot receive the reference path; it emits per-unit simulated statistics and the outer
+runner joins and recomputes all four C11 assessments. G8 adapters emit raw independent-engine CSI in
+an exact NPZ contract; direction and effect are recomputed outside the adapter before cluster-macro
+confidence intervals are evaluated. G0 requires one raw API receipt for every frozen database/query
+pair plus authenticated PDF records. A G0 PASS never automatically proves C13: non-fixture C13
+remains `REVIEW_REQUIRED`. Each validated input manifest is copied into its stage output and
+reauthenticated during claim assembly.
+
+Every stage records and reauthenticates the formal source-tree digest, requirements-lock digest,
+Python/platform identity, installed-distribution RECORD digests, Torch/CUDA/GPU identity, and
+determinism settings. The CLI enables deterministic Torch algorithms, disables TF32 and cuDNN
+benchmarking, and refuses to combine gates produced by a different recorded runtime.
+
+`scripts/build_server_bundle.sh` creates a deterministic internal research-delivery ZIP. It contains
+delivery provenance and all locally supplied resources, so it is not an anonymous submission
+artifact. `scripts/build_anonymous_supplement.sh` creates the separate deterministic anonymous
+package and excludes `waibu/`, internal Git provenance, and identity-bearing delivery audits.
 
 C1 rows bind the exact supplied map and directed action by SHA-256; the outer runner recomputes both
 from the frozen unit registry and makes cluster-macro active-effect/null-equivalence decisions.

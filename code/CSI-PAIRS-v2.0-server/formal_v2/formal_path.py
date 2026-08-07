@@ -700,7 +700,7 @@ def _localization_rows(path, dataset, epsilon, power_coverage, evidence):
             clean_row = {
                 key: value
                 for key, value in row.items()
-                if key not in {"artifact_label", "dataset_sha256", "config_sha256", "fixture", "scientific_use"}
+                if key not in evidence
             }
             scenes = np.flatnonzero(dataset.bank_ids == row["bank_id"])
             if scenes.size != 1:
@@ -771,6 +771,7 @@ def _validate_row_evidence(row, evidence, path):
     expected = {
         key: ("True" if value else "False") if isinstance(value, bool) else str(value)
         for key, value in evidence.items()
+        if not isinstance(value, (dict, list))
     }
     for key, value in expected.items():
         if row.get(key) != value:

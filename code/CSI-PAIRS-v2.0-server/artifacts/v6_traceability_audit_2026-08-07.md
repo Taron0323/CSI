@@ -1,5 +1,10 @@
 # CSI-PAIRS V6 bidirectional traceability audit
 
+> Historical audit snapshot. Counts, hashes, and package verdicts below describe the earlier audited
+> commit and must not be presented as verification of the current tree. The current readiness repair
+> adds runtime reauthentication, raw-evidence C11/G8 contracts, API search receipts, conservative
+> redistribution metadata, and separate internal/anonymous bundle builders.
+
 Date: 2026-08-07 (Asia/Shanghai)
 
 `BASE_SHA`: `3e0eacf39244a957243018388a869d30e859a96d` (`origin/main` when work began).
