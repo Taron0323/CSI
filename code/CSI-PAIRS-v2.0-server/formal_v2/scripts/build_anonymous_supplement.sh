@@ -27,8 +27,10 @@ mkdir -p "${BUNDLE_ROOT}/paper/official_style"
     --exclude='formal_v2/external_adapters/.runtime-sionna' \
     --exclude='formal_v2/scripts/build_server_bundle.sh' \
     --exclude='formal_v2/scripts/build_anonymous_supplement.sh' \
+    --exclude='formal_v2/scripts/build_v6_requirement_matrix.py' \
     --exclude='formal_v2/anonymous_release.py' \
     --exclude='formal_v2/tests/test_anonymous_release.py' \
+    --exclude='formal_v2/tests/test_audit_artifacts.py' \
     -cf - formal_v2
 ) | (
   cd "${BUNDLE_ROOT}"

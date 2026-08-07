@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -132,6 +133,52 @@ class AnonymousReleaseTests(unittest.TestCase):
             }.issubset(tokens)
         )
         self.assertEqual(len(shas), 1)
+
+    def test_built_supplement_contains_a_runnable_public_test_suite(self):
+        project_root = Path(__file__).resolve().parents[2]
+        archive = self.root / "anonymous.zip"
+        builder = project_root / "formal_v2/scripts/build_anonymous_supplement.sh"
+        subprocess.run(
+            ["bash", str(builder), str(archive)],
+            cwd=project_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        extracted = self.root / "extracted"
+        with zipfile.ZipFile(archive) as package:
+            package.extractall(extracted)
+        release_root = extracted / "CSI-PAIRS-anonymous-supplement"
+
+        self.assertFalse(
+            (release_root / "formal_v2/scripts/build_v6_requirement_matrix.py").exists()
+        )
+        self.assertFalse(
+            (release_root / "formal_v2/tests/test_audit_artifacts.py").exists()
+        )
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "formal_v2/tests",
+                "-v",
+            ],
+            cwd=release_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=completed.stdout + completed.stderr,
+        )
 
 
 if __name__ == "__main__":
