@@ -134,6 +134,47 @@ class AnonymousReleaseTests(unittest.TestCase):
         )
         self.assertEqual(len(shas), 1)
 
+    def test_project_tokens_ignore_generic_github_merge_committer(self):
+        repository = self.root / "repository"
+        repository.mkdir()
+        subprocess.run(
+            ["git", "init", "--quiet"],
+            cwd=repository,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        (repository / "tracked.txt").write_text("content\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "tracked.txt"],
+            cwd=repository,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        environment = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "Project Author",
+            "GIT_AUTHOR_EMAIL": "project-author@example.org",
+            "GIT_COMMITTER_NAME": "GitHub",
+            "GIT_COMMITTER_EMAIL": "noreply@github.com",
+        }
+        subprocess.run(
+            ["git", "commit", "--quiet", "-m", "merge-ref identity"],
+            cwd=repository,
+            env=environment,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        tokens, _ = project_anonymity_tokens(repository)
+
+        self.assertIn("project author", tokens)
+        self.assertIn("project-author@example.org", tokens)
+        self.assertNotIn("github", tokens)
+        self.assertNotIn("noreply@github.com", tokens)
+
     def test_built_supplement_contains_a_runnable_public_test_suite(self):
         project_root = Path(__file__).resolve().parents[2]
         git_probe = subprocess.run(

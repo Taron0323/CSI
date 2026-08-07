@@ -20,6 +20,10 @@ STATIC_FORBIDDEN_TOKENS = {
     "audited_code_sha",
     "delivery_head_sha",
 }
+GENERIC_AUTOMATION_IDENTITY_TOKENS = {
+    "github",
+    "noreply@github.com",
+}
 FORBIDDEN_PATH_PARTS = {
     ".git",
     ".github",
@@ -61,7 +65,7 @@ def project_anonymity_tokens(repository: str | Path) -> tuple[set[str], set[str]
         raise ValueError("project Git history produced no commit identifiers")
 
     tokens = set(STATIC_FORBIDDEN_TOKENS)
-    tokens.update(
+    git_identity_tokens = {
         value.lower()
         for value in _git_lines(
             root,
@@ -69,7 +73,8 @@ def project_anonymity_tokens(repository: str | Path) -> tuple[set[str], set[str]
             "--all",
             "--format=%an%n%ae%n%cn%n%ce",
         )
-    )
+    }
+    tokens.update(git_identity_tokens - GENERIC_AUTOMATION_IDENTITY_TOKENS)
     remotes = _git_lines(root, "remote", "-v")
     for line in remotes:
         parts = line.split()
