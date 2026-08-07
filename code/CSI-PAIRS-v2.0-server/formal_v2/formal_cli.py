@@ -11,6 +11,28 @@ from .formal_fixture import write_nonscientific_fixture
 from .formal_io import artifact_manifest, read_strict_json, write_json
 
 
+COMMAND_OUTPUT_PATHS = {
+    "inspect-data": "data_contract.json",
+    "verify-data": "data_verification",
+    "qualify": "qualification",
+    "run-wrong-map": "wrong_map",
+    "run-factorial": "factorial",
+    "run-evaluation": "evaluation",
+    "run-risk": "risk",
+    "run-path": "path",
+    "run-external-baselines": "external_baselines",
+    "run-representation-baselines": "representation_baselines",
+    "run-resource-controls": "controls",
+    "run-scene-id-audit": "scene_id",
+    "run-external-validity": "external_validity",
+    "run-literature-resources": "literature_resources",
+    "run-rt-calibration": "qualification/rt_calibration",
+    "run-shuffled-pair-control": "controls/shuffled_pair",
+    "run-retention-audit": "evaluation/retention",
+    "assemble-claims": "claims",
+}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="CSI-PAIRS V2.1 V6 evidence-gated formal experiment runner"
@@ -121,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "make-fixture":
+            _require_absent(Path(args.output))
             path = write_nonscientific_fixture(args.output, seed=int(args.seed))
             print(json.dumps({"status": "success", "fixture": str(path.resolve()), "scientific_use": "FORBIDDEN"}))
             return 0
@@ -160,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             minimum_banks_per_source_role=int(config["data"]["minimum_banks_per_source_role"]),
         )
         output = Path(args.output)
+        _require_fresh_command_output(args.command, output)
         if args.command == "all" and output.exists():
             entries = list(output.iterdir()) if output.is_dir() else []
             if (
@@ -174,12 +198,10 @@ def main(argv: list[str] | None = None) -> int:
         output.mkdir(parents=True, exist_ok=True)
         if args.command == "inspect-data":
             target = output / "data_contract.json"
-            _require_absent(target)
             report = dataset.contract_report()
             write_json(target, report)
             result = report
         elif args.command == "qualify":
-            _require_absent(output / "qualification")
             from .formal_qualification import run_formal_qualification
 
             verification_path = Path(args.data_verification_gate) if args.data_verification_gate else output / "data_verification" / "gate.json"
@@ -191,18 +213,15 @@ def main(argv: list[str] | None = None) -> int:
                 data_verification_gate_path=verification_path,
             )
         elif args.command == "verify-data":
-            _require_absent(output / "data_verification")
             from .formal_data_verification import run_data_verification
 
             result = run_data_verification(config, dataset, args.verifier_manifest, output)
         elif args.command == "run-wrong-map":
-            _require_absent(output / "wrong_map")
             from .formal_wrong_map import run_formal_wrong_map
 
             gate_path = Path(args.qualification_gate) if args.qualification_gate else output / "qualification" / "gate.json"
             result = run_formal_wrong_map(config, dataset, output, read_strict_json(gate_path))
         elif args.command == "run-factorial":
-            _require_absent(output / "factorial")
             gate_path = Path(args.qualification_gate) if args.qualification_gate else output / "qualification" / "gate.json"
             gate = read_strict_json(gate_path)
             from .formal_factorial import run_formal_factorial
@@ -390,6 +409,12 @@ def main(argv: list[str] | None = None) -> int:
 def _require_absent(path: Path) -> None:
     if path.exists():
         raise FileExistsError(f"refusing to overwrite V2 output: {path}")
+
+
+def _require_fresh_command_output(command: str, output_root: Path) -> None:
+    relative_path = COMMAND_OUTPUT_PATHS.get(command)
+    if relative_path is not None:
+        _require_absent(output_root / relative_path)
 
 
 if __name__ == "__main__":

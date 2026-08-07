@@ -10,6 +10,10 @@ from torch import Tensor, nn
 from .formal_protocol import MaskQuery, PatchSpec, frozen_mask_query_bank, patchify_csi
 
 
+TEACHER_CHECKPOINT_SCHEMA = "csi-pairs-stage0-teacher-v2.3-v6"
+PRETRAINING_MASK_SAMPLER = "independent_per_sample_without_replacement"
+
+
 class CSIMaskedTeacher(nn.Module):
     """CSI-only asymmetric 2D masked autoencoder."""
 
@@ -113,6 +117,31 @@ class TeacherBundle:
     readout_nmse: float
 
 
+def random_teacher_pretraining_masks(
+    rng: np.random.Generator,
+    batch_size: int,
+    patch_count: int,
+    fraction: float,
+) -> np.ndarray:
+    """Sample an independent exact-cardinality random mask for every example."""
+    batch = int(batch_size)
+    patches = int(patch_count)
+    if batch < 1:
+        raise ValueError("teacher mask batch_size must be positive")
+    if patches < 2:
+        raise ValueError("teacher masking requires at least two patches")
+    hidden_exact = float(fraction) * patches
+    if not hidden_exact.is_integer():
+        raise ValueError("teacher masking requires an exact mask cardinality")
+    hidden = int(hidden_exact)
+    if hidden < 1 or hidden >= patches:
+        raise ValueError("teacher mask fraction must leave at least one visible patch")
+    masks = np.zeros((batch, patches), dtype=np.bool_)
+    for index in range(batch):
+        masks[index, rng.choice(patches, size=hidden, replace=False)] = True
+    return masks
+
+
 def train_teacher_bundle(
     csi: np.ndarray,
     patch_spec: PatchSpec,
@@ -155,13 +184,11 @@ def train_teacher_bundle(
     for step in range(int(teacher_config["steps"])):
         indices = rng.integers(0, tensor.shape[0], size=batch_size)
         batch = tensor[indices]
-        masks = np.stack(
-            [
-                pretrain_mask_bank[
-                    (step * batch_size + index) % len(pretrain_mask_bank)
-                ].mask
-                for index in range(batch_size)
-            ]
+        masks = random_teacher_pretraining_masks(
+            rng,
+            batch_size,
+            patch_spec.patch_count,
+            float(teacher_config["mask_fraction"]),
         )
         mask_tensor = torch.as_tensor(masks, dtype=torch.bool)
         _, prediction = teacher(batch, mask_tensor)
@@ -218,7 +245,7 @@ def save_teacher_bundle(path: str | Path, bundle: TeacherBundle, config: dict, s
     target.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "schema_version": "csi-pairs-stage0-teacher-v2.2-v6",
+            "schema_version": TEACHER_CHECKPOINT_SCHEMA,
             "seed": int(seed),
             "patch_spec": {
                 "antennas": bundle.patch_spec.antennas,
@@ -229,6 +256,14 @@ def save_teacher_bundle(path: str | Path, bundle: TeacherBundle, config: dict, s
             },
             "teacher_config": dict(config["teacher"]),
             "model_attention_heads": int(config["model"]["attention_heads"]),
+            "pretraining_mask_sampler": {
+                "sampler": PRETRAINING_MASK_SAMPLER,
+                "fraction": float(config["teacher"]["mask_fraction"]),
+                "hidden_patch_count_rule": "exact_integer(fraction * patch_count)",
+                "rng": "numpy.default_rng",
+                "rng_seed": int(seed) + 43001,
+                "resampled_each_optimization_step": True,
+            },
             "teacher_state": bundle.teacher.state_dict(),
             "readout_state": bundle.readout.state_dict(),
             "reconstruction_nmse": bundle.reconstruction_nmse,
@@ -240,8 +275,19 @@ def save_teacher_bundle(path: str | Path, bundle: TeacherBundle, config: dict, s
 
 def load_teacher_bundle(path: str | Path, config: dict) -> TeacherBundle:
     payload = torch.load(Path(path), map_location="cpu", weights_only=False)
-    if payload.get("schema_version") != "csi-pairs-stage0-teacher-v2.2-v6":
+    if payload.get("schema_version") != TEACHER_CHECKPOINT_SCHEMA:
         raise RuntimeError("teacher checkpoint schema is not V6-compatible")
+    sampler = payload.get("pretraining_mask_sampler")
+    expected_sampler = {
+        "sampler": PRETRAINING_MASK_SAMPLER,
+        "fraction": float(config["teacher"]["mask_fraction"]),
+        "hidden_patch_count_rule": "exact_integer(fraction * patch_count)",
+        "rng": "numpy.default_rng",
+        "rng_seed": int(payload["seed"]) + 43001,
+        "resampled_each_optimization_step": True,
+    }
+    if sampler != expected_sampler:
+        raise RuntimeError("teacher checkpoint lacks the exact V6 pretraining mask contract")
     spec = PatchSpec(**payload["patch_spec"])
     latent_dim = int(payload["teacher_config"]["latent_dim"])
     heads = _compatible_heads(latent_dim, int(payload["model_attention_heads"]))

@@ -1,14 +1,41 @@
 # CSI-PAIRS V2.1 code verification record
 
-Date: 2026-08-06 UTC
+Date: 2026-08-07 (Asia/Shanghai)
 
-Engineering status: `CODE_COMPILES_AND_PURE_SEMANTIC_TESTS_PASS`
+Engineering status: `CODE_READY_FOR_FORMAL_INPUT`
 
 Scientific status: `NO_GO_EVIDENCE_NOT_RUN`
 
 This record supersedes the previous V2.0 dry-run report. Archived V1/V1.26 fixture outputs and numbers are traceability material only; they do not prove that the current `formal_v2` implementation executes correctly and cannot support a V6 claim.
 
-## Checks actually run
+## 2026-08-07 readiness repair
+
+The latest audit closed four code-resolvable protocol/evidence-integrity gaps:
+
+1. Stage-0 now resamples an independent exact-cardinality 75% mask for every sample and every
+   optimization step. The sampler contract is checkpoint-bound as schema v2.3.
+2. Formal patch grids must have a patch count divisible by four; 75% masking is never rounded.
+3. G1 now checks four same-unit per-bank repeat-pair noise floors against the corresponding
+   alignment/response and physical/latent null thresholds.
+4. Every evidence-producing single-stage CLI command and `make-fixture` refuse to overwrite their
+   registered output.
+
+Follow-up checks on the current tree:
+
+| Check | Result |
+|---|---|
+| Full `unittest` discovery | 175/175 PASS |
+| Python compilation and CLI help | PASS |
+| Shell syntax | PASS |
+| Repository and vendored SHA-256 inventories | PASS after regeneration |
+| Non-scientific `make-fixture -> verify-data -> qualify` | verifier PASS; qualification `DRY_RUN_FAIL_NOT_EVIDENCE` on route coverage; native route noise-floor component PASS; `scientific_use=FORBIDDEN` |
+| Reproducible paper build and visual inspection | PASS; 7 main-text pages before statements/references, 10 PDF pages total, anonymous metadata, four explicit `NOT A RESULT` placeholders |
+| ICLR 2027 Author/Reviewer/AI policy live recheck | PASS; Author Guidelines retain September 25, 2026 AOE and the reviewer FAQ still contains the stale September 16 sentence |
+
+The complete traceability matrices and five-layer verdict are in
+`artifacts/v6_traceability_audit_2026-08-07.md`.
+
+## Checks retained from the 2026-08-06 audit
 
 | Check | Command | Result |
 |---|---|---|

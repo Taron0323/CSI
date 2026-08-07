@@ -1,7 +1,7 @@
 {
-  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.2",
+  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.3",
   "artifact_label": "csi-pairs-formal-v2.1-v6",
-  "status": "CODE_READY_EVIDENCE_NOT_RUN",
+  "status": "CODE_READY_FOR_FORMAL_INPUT",
   "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
   "inherited_frozen_evidence": {
     "status": "POST_AUDIT_NO_GO",
@@ -16,6 +16,24 @@
       "oracle_x_not_helpful",
       "beam_readout_insensitive_to_copy"
     ]
+  },
+  "readiness_repairs": [
+    "Stage-0 independent exact-cardinality 75% masks resampled per sample and optimization step",
+    "teacher checkpoint schema v2.3 binds the pretraining mask sampler",
+    "G1 audits four same-unit per-bank repeat-pair route noise floors",
+    "all evidence-producing single-stage commands refuse output overwrite"
+  ],
+  "qualification_gate_additions": {
+    "noise_floor_source_role": "source_method_selection",
+    "normalization_source_role": "source_encoder_train",
+    "default_quantile": 0.95,
+    "required_metrics": [
+      "alignment_physical",
+      "alignment_latent",
+      "response_physical",
+      "response_latent"
+    ],
+    "rule": "Every configured route null threshold must cover its same-unit per-bank repeat-pair noise quantile or G1 fails."
   },
   "gate_sequence": [
     "G0_LITERATURE_AND_RESOURCES",

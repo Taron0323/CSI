@@ -126,10 +126,12 @@ class MaskQuery:
 
 def frozen_mask_query_bank(spec: PatchSpec, seed: int) -> tuple[MaskQuery, ...]:
     """Build the three V6 mask families with every patch covered as a query."""
+    if spec.patch_count % 4:
+        raise ValueError("V6 random masks require exact 75% mask cardinality")
     rng = np.random.default_rng(int(seed))
     output: list[MaskQuery] = []
     for query in range(spec.patch_count):
-        random_count = max(1, int(round(FROZEN_RANDOM_MASK_FRACTION * spec.patch_count)))
+        random_count = int(FROZEN_RANDOM_MASK_FRACTION * spec.patch_count)
         candidates = np.asarray([index for index in range(spec.patch_count) if index != query])
         selected = rng.choice(candidates, size=max(0, random_count - 1), replace=False)
         random_mask = np.zeros(spec.patch_count, dtype=np.bool_)

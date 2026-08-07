@@ -6,7 +6,8 @@ Implemented code surfaces:
 
 - seven-way source permission ledger and city/bank/base-map-cluster validation;
 - strict embedded JSON, independent data regeneration, engine/config/license binding, typed maps/radio/path/no-op data;
-- CSI-only 2D asymmetric MAE Stage-0 teacher, independent B_audit_hold, and frozen physical readout;
+- CSI-only 2D asymmetric MAE Stage-0 teacher with exact per-sample 75% masks resampled every step,
+  independent B_audit_hold, sampler-bound checkpoints, and frozen physical readout;
 - patch-level mask/query banks, separate full-channel Alignment and patch Response routes;
 - shared F/P with complete teacher-encoder initialization, map/radio/BS-pose fusion, typed signed actions, latent and physical patch outputs;
 - bank/route-stratified Endpoint, Alignment quartet, and Response objectives;
@@ -25,8 +26,14 @@ python3 -m formal_v2.formal_cli --help
 ```
 
 `all` is the complete evidence-chain orchestrator. It authenticates every local `waibu/` resource and runs the five representation baselines in addition to the verifier, first-party risk replay, external-baseline, resource-control, scene-ID, external-validity, literature, RT-calibration, shuffled-pair, and retention stages. Missing inputs fail at argument parsing; no independent stage is silently skipped. Fixtures remain `FORBIDDEN` at every artifact layer. Code and tests do not constitute scientific evidence.
+G1 also writes a per-bank `route_noise_floor.csv` and requires all four route null thresholds to
+cover the registered quantile of independent repeat-pair noise in their native alignment/response
+and physical/latent norms. Overall repeat NMSE cannot substitute for this test.
+
 The full-run root must be new, except that a single pre-staged `inputs/` directory is allowed for
 authenticated Sionna scenes and other immutable run inputs; any existing result/stage file is rejected.
+Individual stage commands use the same rule for their registered output path, so an interrupted or
+completed evidence directory cannot be silently overwritten.
 
 `external_adapters/all_map_adapters_v1.json` registers SigMap, Wi-GATr, WiSER, and RFIR for the
 same internally generated six-condition unit registry. `configs/representation_baselines_v1.json`

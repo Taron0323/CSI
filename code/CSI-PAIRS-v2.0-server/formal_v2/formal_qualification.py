@@ -11,9 +11,15 @@ from .formal_dataset import FormalDataset
 from .formal_evidence import QUALIFICATION_SCHEMA, bind_rows, complete_gate_vector, evidence_context
 from .formal_features import protocol_response_features, variant_features
 from .formal_io import artifact_manifest, sha256_file, write_csv, write_json
-from .formal_protocol import PatchSpec, typed_signed_edit, zero_typed_edit
-from .formal_routing import fit_route_normalization, route_coverage, route_dataset
-from .formal_teacher import masked_reconstruction_nmse, save_teacher_bundle, train_teacher_bundle
+from .formal_protocol import PatchSpec, delay_angle_power, patchify_csi, typed_signed_edit, zero_typed_edit
+from .formal_routing import RouteNormalization, fit_route_normalization, route_coverage, route_dataset
+from .formal_teacher import (
+    TeacherBundle,
+    masked_reconstruction_nmse,
+    save_teacher_bundle,
+    teacher_targets,
+    train_teacher_bundle,
+)
 
 
 QUALIFICATION_METHODS = (
@@ -86,6 +92,13 @@ def run_formal_qualification(
     )
 
     repeat_rows = _repeat_rows(dataset, selection_scenes, route_normalization.channel_scale, config)
+    route_noise_floor_rows = _route_noise_floor_rows(
+        dataset,
+        teacher_bundle,
+        selection_scenes,
+        route_normalization,
+        config,
+    )
     selection_coverage_rows = route_coverage(dataset, routed_selection, selection_scenes)
     branch_rows = {
         row["scene_id"]: row
@@ -149,10 +162,11 @@ def run_formal_qualification(
     warnings = _shortcut_warnings(selection_records, selection_target, predictions, qualification)
 
     repeat_passed = all(bool(row["passed"]) for row in repeat_rows)
+    route_noise_floor_passed = all(bool(row["passed"]) for row in route_noise_floor_rows)
     coverage_passed = all(bool(row["passed"]) for row in coverage_rows)
     response_passed = all(bool(row["passed"]) for row in response_gate_rows)
     randomization_passed = bool(warnings["shortcut_gate_passed"])
-    g1_passed = bool(repeat_passed and coverage_passed)
+    g1_passed = bool(repeat_passed and route_noise_floor_passed and coverage_passed)
     g2_passed = bool(teacher_passed and response_passed and randomization_passed)
     passed = bool(g1_passed and g2_passed)
     scientific_use = (
@@ -163,6 +177,7 @@ def run_formal_qualification(
     evidence = evidence_context(config, dataset, scientific_use)
     for path, rows in (
         ("repeat_noise.csv", repeat_rows),
+        ("route_noise_floor.csv", route_noise_floor_rows),
         ("route_coverage.csv", coverage_rows),
         ("teacher_qualification.csv", teacher_rows),
         ("response_scene_metrics.csv", response_rows),
@@ -203,7 +218,19 @@ def run_formal_qualification(
         },
         "data_verification_gate_schema": data_verification_gate["schema_version"],
         "data_verification_blocking_roles": data_verification_gate["blocking_roles"],
-        "decision_rule": "Source-encoder-train banks determine per-bank train-route coverage; source-method-selection banks determine repeat, branch, teacher, and response qualification. Target, external, probe, calibration, and final-unseen banks are unread.",
+        "g1_components": {
+            "repeat_noise": "PASS" if repeat_passed else "FAIL",
+            "native_route_noise_floor": "PASS" if route_noise_floor_passed else "FAIL",
+            "route_coverage": "PASS" if coverage_passed else "FAIL",
+        },
+        "route_noise_floor_contract": {
+            "source_role": "source_method_selection",
+            "quantile": float(qualification["noise_floor_quantile"]),
+            "replicate_contrast": "all unordered pairs of independent repeats for the same scene/world/position",
+            "normalization_source_role": "source_encoder_train",
+            "threshold_rule": "each configured null threshold must cover its same-unit per-bank repeat-pair quantile",
+        },
+        "decision_rule": "Source-encoder-train banks determine route normalization and per-bank train-route coverage; source-method-selection banks determine repeat noise, same-unit route noise floors, branch, teacher, and response qualification. Target, external, probe, calibration, and final-unseen banks are unread.",
         "config": public_formal_config(config),
     }
     write_json(output_dir / "gate.json", gate)
@@ -245,6 +272,117 @@ def _repeat_rows(
                 "passed": passed,
             }
         )
+    return rows
+
+
+def _route_noise_floor_rows(
+    dataset: FormalDataset,
+    bundle: TeacherBundle,
+    scenes: np.ndarray,
+    normalization: RouteNormalization,
+    config: dict,
+) -> list[dict]:
+    """Audit every route null threshold against repeat noise in the same norm."""
+    spec = PatchSpec.from_metadata(dataset.metadata)
+    patch_scale = patchify_csi(normalization.channel_scale, spec)
+    by_bank: dict[str, dict[str, object]] = {}
+    for scene_value in np.asarray(scenes):
+        scene = int(scene_value)
+        role = str(dataset.scene_roles[scene])
+        if role != "source_method_selection":
+            raise ValueError("route noise floors may only read source_method_selection banks")
+        bank_id = str(dataset.bank_ids[scene])
+        values = by_bank.setdefault(
+            bank_id,
+            {
+                "scene_ids": [],
+                "alignment_physical": [],
+                "alignment_latent": [],
+                "response_physical": [],
+                "response_latent": [],
+            },
+        )
+        values["scene_ids"].append(str(dataset.scene_ids[scene]))
+        repeats = dataset.csi_repeat[scene]
+        repeat_patches = patchify_csi(repeats, spec)
+        repeat_latent = teacher_targets(bundle, repeats)
+        repeat_delay_angle = delay_angle_power(repeats, spec)
+        for first in range(dataset.repeat_count):
+            for second in range(first + 1, dataset.repeat_count):
+                complex_difference = (
+                    repeats[:, :, second] - repeats[:, :, first]
+                ) / normalization.channel_scale
+                delay_angle_difference = (
+                    repeat_delay_angle[:, :, second]
+                    - repeat_delay_angle[:, :, first]
+                ) / normalization.delay_angle_scale
+                alignment_physical = np.sqrt(
+                    np.mean(
+                        np.concatenate(
+                            (complex_difference, delay_angle_difference), axis=-1
+                        )
+                        ** 2,
+                        axis=-1,
+                    )
+                )
+                latent_difference = (
+                    repeat_latent[:, :, second] - repeat_latent[:, :, first]
+                ) / normalization.latent_scale
+                alignment_latent = np.sqrt(
+                    np.mean(latent_difference**2, axis=(-2, -1))
+                )
+                response_physical = np.sqrt(
+                    np.mean(
+                        (
+                            (repeat_patches[:, :, second] - repeat_patches[:, :, first])
+                            / patch_scale
+                        )
+                        ** 2,
+                        axis=-1,
+                    )
+                )
+                response_latent = np.sqrt(np.mean(latent_difference**2, axis=-1))
+                values["alignment_physical"].extend(alignment_physical.ravel().tolist())
+                values["alignment_latent"].extend(alignment_latent.ravel().tolist())
+                values["response_physical"].extend(response_physical.ravel().tolist())
+                values["response_latent"].extend(response_latent.ravel().tolist())
+
+    qualification = config["qualification"]
+    quantile = float(qualification["noise_floor_quantile"])
+    metric_thresholds = {
+        "alignment_physical": "physical_null_rms_max",
+        "alignment_latent": "latent_null_rms_max",
+        "response_physical": "response_physical_null_rms_max",
+        "response_latent": "response_latent_null_rms_max",
+    }
+    rows = []
+    for bank_id in sorted(by_bank):
+        values = by_bank[bank_id]
+        row: dict[str, object] = {
+            "bank_id": bank_id,
+            "scene_ids": ";".join(sorted(values["scene_ids"])),
+            "source_role": "source_method_selection",
+            "quantile": quantile,
+            "quantile_method": "higher",
+            "repeat_pair_count": len(values["alignment_physical"]),
+            "response_pair_patch_count": len(values["response_physical"]),
+        }
+        metric_passes = []
+        for metric, threshold_key in metric_thresholds.items():
+            samples = np.asarray(values[metric], dtype=np.float64)
+            if samples.size == 0 or not np.all(np.isfinite(samples)):
+                raise ValueError(f"route noise floor {metric} is empty or nonfinite")
+            floor = float(np.quantile(samples, quantile, method="higher"))
+            threshold = float(qualification[threshold_key])
+            prefix = f"{metric}_noise_floor_rms"
+            row[prefix] = floor
+            row[f"{metric}_null_threshold_rms"] = threshold
+            row[f"{metric}_threshold_covers_noise"] = bool(floor <= threshold)
+            metric_passes.append(bool(floor <= threshold))
+        row["passed"] = bool(all(metric_passes))
+        rows.append(row)
+    if not rows:
+        raise ValueError("route noise floor audit requires source_method_selection banks")
     return rows
 
 

@@ -1,6 +1,6 @@
 # ICLR 2027 官方投稿政策复核
 
-复核日期：2026-08-05（Asia/Shanghai）。本记录位于冻结 V1.26 ZIP 外部，不改变匿名发布包内容或哈希。
+最近复核日期：2026-08-07（Asia/Shanghai）。
 
 ## 官方来源与核对结果
 
@@ -15,12 +15,17 @@
 - AI Policy for Authors：<https://iclr.cc/Conferences/2027/AIPolicyForAuthors>
   - 作者必须在论文和投稿表中披露生成式 AI 使用情况。
   - 论文中的披露节为必需内容且不计页数；作者对所有提交内容承担最终责任。
+- Reviewer Guidelines：<https://iclr.cc/Conferences/2027/ReviewerGuidelines>
+  - 审稿围绕具体问题、动机和文献定位、证据严谨性、以及对社区的新知识价值四问展开。
+  - FAQ 仍有一处把全文截止写成 9 月 16 日的陈旧句子；它与 Author Guidelines、Call for
+    Papers 和 Dates 的 9 月 25 日冲突。作者截止日期继续以 Author Guidelines 为准。
 
 ## 与冻结交付物的一致性
 
-- `paper/main.pdf` 为 9 页 US Letter，符合初投稿主文页数上限。
-- `paper/main.tex` 保持匿名投稿模式，并已填写 AI Use Statement。
-- 本次复核未发现需要修改冻结 V1.26 的官方规则变化，因此不创建 V1.27。
+- `output/pdf/CSI-PAIRS-paper-v2.1-draft.pdf` 为 10 页 US Letter，其中主文在参考文献前为
+  7 页，符合初投稿主文最多 9 页的限制；总 PDF 页数不能替代主文页数检查。
+- `paper_v2/main.tex` 保持匿名投稿模式，并已填写 AI Use Statement。
+- 本次复核未发现需要修改匿名模板或声明的官方规则变化。
 - Ethics Statement 是否适用仍须作者在正式数据、部署场景和最终 claims 确定后人工复核。
 
 官方页面可能继续更新；实际提交前应再次核验以上三个页面。

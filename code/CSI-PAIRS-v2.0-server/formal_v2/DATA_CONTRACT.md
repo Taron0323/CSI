@@ -58,6 +58,8 @@ The exact source ledger is:
 - P0 sets `alignment_physical_representation=complex_csi_plus_delay_angle_power`; its source-train normalization is frozen and Response remains patch-local in the physical dead-zone units.
 - `coordinate_system` is exactly `bs_centered_right_handed_meters`; map and position units are `m`.
 - Antenna count, subcarrier count, `patch_antenna_size`, `patch_subcarrier_size`, and complex patch area must define an exact 2D tiling of the real-then-imag CSI grid.
+- The resulting patch count must be a multiple of four. Stage-0 and the frozen model mask bank use
+  an exact 75% hidden-patch cardinality; rounding to a nearby count is not admissible.
 - `map_resolution_m` and `map_origin_xy_m` bind raster cells to the BS-centered meter frame used by path matching.
 - Material values are categorical integers bounded by `assets.material_category_count`; model actions use explicit from/to planes, never category subtraction.
 - `external_reference.available` must agree with actual external banks, but external validity remains `NOT_ASSESSED` until G8 evidence is run.
@@ -74,3 +76,11 @@ This regeneration gate still does not establish RT calibration or legal sufficie
 ## Evidence propagation
 
 Every JSON, CSV row, checkpoint index, and manifest carries `dataset_sha256`, `config_sha256`, `fixture`, and `scientific_use`. Qualification requires an authenticated regeneration gate. Downstream stages require matching hashes, the exact frozen teacher checkpoint hash, an authenticated V6 qualification gate, and per-role regeneration PASS. Risk archives additionally bind the executed checkpoint index and evaluation manifest. A non-fixture archive marked `CANDIDATE` cannot start factorial training; it must earn `FORMAL_EXPERIMENT_ALLOWED` from G1/G2.
+
+G1 does not infer route noise tolerances from overall repeat NMSE. For each
+`source_method_selection` bank, all unordered pairs of independent repeats at the same
+scene/world/position are transformed with the source-encoder-train route normalization. The 0.95
+quantile by default is computed separately for full-channel physical, full-channel teacher latent,
+patch-local physical, and patch-local teacher latent RMS. Each configured route null threshold must
+cover its corresponding value or G1 fails. The rows and exact thresholds are bound in
+`qualification/route_noise_floor.csv`.

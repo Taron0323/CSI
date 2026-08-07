@@ -5,8 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
+import torch
 
 from formal_v2.formal_config import load_formal_config, validate_formal_config
 from formal_v2.formal_dataset import FormalDataset, FormalDatasetError
@@ -19,9 +21,18 @@ from formal_v2.formal_protocol import (
 from formal_v2.formal_qualification import (
     _action_geometry_profile,
     _response_gate_rows,
+    _route_noise_floor_rows,
     _route_coverage_passed,
     _select_wrong_action,
     _wrong_action_distance,
+    qualification_blocking_scenes,
+)
+from formal_v2.formal_routing import fit_route_normalization
+from formal_v2.formal_teacher import (
+    load_teacher_bundle,
+    random_teacher_pretraining_masks,
+    save_teacher_bundle,
+    train_teacher_bundle,
 )
 
 
@@ -103,8 +114,75 @@ class DatasetIdentityAndNoiseTests(unittest.TestCase):
         with self.assertRaisesRegex(FormalDatasetError, "phase-invariant targets are not implemented"):
             FormalDataset.load(malformed)
 
+    def test_formal_patch_grid_must_support_exact_seventy_five_percent_masks(self) -> None:
+        arrays = _archive_arrays(self.path)
+        metadata = json.loads(str(arrays["metadata_json"].item()))
+        metadata["representation"]["patch_complex_size"] = 4
+        metadata["representation"]["patch_antenna_size"] = 1
+        metadata["representation"]["patch_subcarrier_size"] = 4
+        arrays["metadata_json"] = np.asarray(
+            json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+        )
+        malformed = self.root / "inexact-mask-cardinality.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "exact 75% masking"):
+            FormalDataset.load(malformed)
+
 
 class FrozenMaskContractTests(unittest.TestCase):
+    def test_teacher_pretraining_masks_are_random_per_sample_and_reproducible(self) -> None:
+        first = random_teacher_pretraining_masks(
+            np.random.default_rng(9182),
+            batch_size=32,
+            patch_count=8,
+            fraction=0.75,
+        )
+        second = random_teacher_pretraining_masks(
+            np.random.default_rng(9182),
+            batch_size=32,
+            patch_count=8,
+            fraction=0.75,
+        )
+        np.testing.assert_array_equal(first, second)
+        self.assertEqual(first.shape, (32, 8))
+        np.testing.assert_array_equal(first.sum(axis=1), np.full(32, 6))
+        self.assertGreater(np.unique(first, axis=0).shape[0], 1)
+        with self.assertRaisesRegex(ValueError, "exact mask cardinality"):
+            random_teacher_pretraining_masks(
+                np.random.default_rng(1),
+                batch_size=2,
+                patch_count=6,
+                fraction=0.75,
+            )
+
+    def test_teacher_training_resamples_masks_at_every_step(self) -> None:
+        config = load_formal_config(SMOKE_CONFIG)
+        spec = PatchSpec(2, 4, 1)
+        csi = np.arange(4 * 16, dtype=np.float64).reshape(4, 16) / 100.0
+        with patch(
+            "formal_v2.formal_teacher.random_teacher_pretraining_masks",
+            wraps=random_teacher_pretraining_masks,
+        ) as sampler:
+            train_teacher_bundle(csi, spec, config, seed=33)
+        self.assertEqual(sampler.call_count, config["teacher"]["steps"])
+
+    def test_teacher_checkpoint_authenticates_the_complete_mask_contract(self) -> None:
+        config = load_formal_config(SMOKE_CONFIG)
+        spec = PatchSpec(2, 4, 1)
+        csi = np.arange(4 * 16, dtype=np.float64).reshape(4, 16) / 100.0
+        bundle = train_teacher_bundle(csi, spec, config, seed=34)
+        with tempfile.TemporaryDirectory() as temporary:
+            checkpoint = Path(temporary) / "teacher.pt"
+            save_teacher_bundle(checkpoint, bundle, config, seed=34)
+            load_teacher_bundle(checkpoint, config)
+            payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+            payload["pretraining_mask_sampler"][
+                "resampled_each_optimization_step"
+            ] = False
+            torch.save(payload, checkpoint)
+            with self.assertRaisesRegex(RuntimeError, "exact V6 pretraining mask contract"):
+                load_teacher_bundle(checkpoint, config)
+
     def test_teacher_and_model_mask_configuration_cannot_be_silently_ignored(self) -> None:
         teacher = load_formal_config(SMOKE_CONFIG)
         teacher["teacher"]["mask_fraction"] = 0.6
@@ -134,6 +212,57 @@ class FrozenMaskContractTests(unittest.TestCase):
 
 
 class QualificationCoverageTests(unittest.TestCase):
+    def test_route_low_thresholds_are_audited_in_their_native_noise_units(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = write_nonscientific_fixture(Path(temporary) / "fixture.npz")
+            dataset = FormalDataset.load(fixture)
+            config = load_formal_config(SMOKE_CONFIG)
+            blocking = qualification_blocking_scenes(dataset)
+            spec = PatchSpec.from_metadata(dataset.metadata)
+            teacher = train_teacher_bundle(
+                dataset.csi[blocking["teacher_train"]],
+                spec,
+                config,
+                seed=121,
+            )
+            normalization = fit_route_normalization(dataset, teacher)
+            rows = _route_noise_floor_rows(
+                dataset,
+                teacher,
+                blocking["method_selection"],
+                normalization,
+                config,
+            )
+
+        self.assertTrue(rows)
+        expected = {
+            "alignment_physical_noise_floor_rms",
+            "alignment_latent_noise_floor_rms",
+            "response_physical_noise_floor_rms",
+            "response_latent_noise_floor_rms",
+        }
+        self.assertTrue(expected.issubset(rows[0]))
+        self.assertTrue(all(row["source_role"] == "source_method_selection" for row in rows))
+        self.assertTrue(all(row["quantile"] == config["qualification"]["noise_floor_quantile"] for row in rows))
+        self.assertTrue(all(row["passed"] for row in rows))
+
+        zero_thresholds = load_formal_config(SMOKE_CONFIG)
+        for key in (
+            "physical_null_rms_max",
+            "latent_null_rms_max",
+            "response_physical_null_rms_max",
+            "response_latent_null_rms_max",
+        ):
+            zero_thresholds["qualification"][key] = 0.0
+        failed = _route_noise_floor_rows(
+            dataset,
+            teacher,
+            blocking["method_selection"],
+            normalization,
+            zero_thresholds,
+        )
+        self.assertTrue(all(not row["passed"] for row in failed))
+
     def test_per_bank_train_route_coverage_requires_all_four_denominators(self) -> None:
         qualification = {
             "minimum_active_units_per_bank": 2,

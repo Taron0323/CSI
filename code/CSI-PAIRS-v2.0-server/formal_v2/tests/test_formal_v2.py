@@ -19,7 +19,12 @@ from formal_v2.formal_claims import (
     _validate_stage_bound_input,
     assemble_claim_evidence,
 )
-from formal_v2.formal_cli import build_parser
+from formal_v2.formal_cli import (
+    COMMAND_OUTPUT_PATHS,
+    _require_fresh_command_output,
+    build_parser,
+    main as formal_cli_main,
+)
 from formal_v2.formal_controls import CONTROL_IDS, _validate_manifest as validate_control_manifest
 from formal_v2.formal_config import load_formal_config, validate_formal_config
 from formal_v2.formal_data_verification import (
@@ -187,6 +192,49 @@ class ConfigTests(unittest.TestCase):
         config["path"]["power_coverage"] = 1.0
         with self.assertRaisesRegex(ValueError, "strictly between"):
             validate_formal_config(config)
+
+    def test_individual_cli_stages_refuse_to_overwrite_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            for command, relative_path in COMMAND_OUTPUT_PATHS.items():
+                with self.subTest(command=command):
+                    target = output / relative_path
+                    target.mkdir(parents=True, exist_ok=True)
+                    with self.assertRaisesRegex(FileExistsError, "refusing to overwrite"):
+                        _require_fresh_command_output(command, output)
+                    target.rmdir()
+                    _require_fresh_command_output(command, output)
+            _require_fresh_command_output("all", output)
+
+    def test_cli_calls_the_overwrite_guard_before_running_a_stage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = write_nonscientific_fixture(root / "fixture.npz")
+            output = root / "run"
+            marker = output / "risk" / "keep.txt"
+            marker.parent.mkdir(parents=True)
+            marker.write_text("existing evidence\n", encoding="utf-8")
+            status = formal_cli_main(
+                [
+                    "run-risk",
+                    "--config",
+                    str(SMOKE_CONFIG),
+                    "--dataset",
+                    str(dataset),
+                    "--output",
+                    str(output),
+                ]
+            )
+            self.assertEqual(status, 2)
+            self.assertEqual(marker.read_text(encoding="utf-8"), "existing evidence\n")
+
+    def test_make_fixture_refuses_to_overwrite_an_existing_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "fixture.npz"
+            target.write_bytes(b"existing fixture bytes")
+            status = formal_cli_main(["make-fixture", "--output", str(target)])
+            self.assertEqual(status, 2)
+            self.assertEqual(target.read_bytes(), b"existing fixture bytes")
 
 
 class StrictJsonTests(unittest.TestCase):

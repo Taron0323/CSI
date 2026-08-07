@@ -12,6 +12,7 @@
     "minimum_banks_per_source_role": 1
   },
   "qualification": {
+    "noise_floor_quantile": 0.95,
     "repeat_noise_nmse_max": 0.001,
     "clean_repeat_nmse_max": 0.001,
     "physical_null_rms_max": 0.018,

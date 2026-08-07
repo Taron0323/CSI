@@ -37,6 +37,11 @@ Expected software outcome:
 - no teacher, qualification, four-arm, localization, RT, or external-model experiment is run;
 - no scientific gate changes state.
 
+Stage-0 samples an independent, without-replacement 75% patch mask for every example at every
+optimization step. Formal patch grids must contain a multiple of four patches so the mask
+cardinality is exact. The checkpoint records this sampler contract and old fixed-bank Stage-0
+checkpoints are rejected.
+
 ## 3.1 External papers, baselines, and Sionna facilities
 
 Authenticate all ten supplied resources before any external experiment:
@@ -117,7 +122,13 @@ Review the generated `data_contract.json`, the engine/config hash, license recor
   --output "$PWD/runs/formal-001"
 ```
 
-Only a non-fixture `qualification/gate.json` with `passed=true` permits the four-arm experiment. After approval, run the complete chain into another unused directory:
+Only a non-fixture `qualification/gate.json` with `passed=true` permits the four-arm experiment.
+Qualification writes `route_noise_floor.csv`. For every `source_method_selection` bank, G1 requires
+the registered alignment-physical, alignment-latent, response-physical, and response-latent null
+thresholds to cover the configured quantile of independent repeat-pair noise measured in exactly
+the same normalized units as the corresponding route. A repeat NMSE PASS alone is insufficient.
+
+After approval, run the complete chain into another unused directory:
 
 ```bash
 CSI_PAIRS_PYTHON="$PWD/.venv/bin/python" \
@@ -135,4 +146,11 @@ CSI_PAIRS_RETENTION_MANIFEST=/absolute/path/retention.json \
   formal_v2/scripts/run_formal_v2.sh
 ```
 
-Never reuse an output directory. Never replace paper placeholders with fixture output. The inherited No-X failures and four warning names remain binding until new untouched non-fixture banks pass the registered gates.
+Never reuse an output directory. Every individual evidence-producing CLI stage also refuses to
+overwrite its registered output subdirectory. Incremental execution may share one run root only
+while each next stage output is absent and all upstream manifests remain authenticated. Never
+replace paper placeholders with fixture output. The inherited No-X failures and four warning names
+remain binding until new untouched non-fixture banks pass the registered gates.
+
+The current bidirectional paper/code audit and five-layer readiness verdict are recorded in
+`artifacts/v6_traceability_audit_2026-08-07.md`.

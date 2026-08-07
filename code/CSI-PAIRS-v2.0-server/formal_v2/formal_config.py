@@ -36,6 +36,7 @@ DATA_KEYS = {
     "minimum_banks_per_source_role",
 }
 QUALIFICATION_KEYS = {
+    "noise_floor_quantile",
     "repeat_noise_nmse_max",
     "clean_repeat_nmse_max",
     "physical_null_rms_max",
@@ -237,6 +238,14 @@ def validate_formal_config(config: object) -> None:
     )
 
     qualification = config["qualification"]
+    _finite_number(
+        qualification["noise_floor_quantile"],
+        "qualification.noise_floor_quantile",
+        minimum=0.0,
+        maximum=1.0,
+    )
+    if not 0.0 < float(qualification["noise_floor_quantile"]) < 1.0:
+        raise ValueError("qualification.noise_floor_quantile must be strictly between 0 and 1")
     for key in (
         "repeat_noise_nmse_max",
         "clean_repeat_nmse_max",

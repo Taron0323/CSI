@@ -718,6 +718,15 @@ class FormalDataset:
             raise FormalDatasetError("patch_complex_size must equal the 2D patch area")
         if int(representation["antenna_count"]) % patch_a or int(representation["subcarrier_count"]) % patch_s:
             raise FormalDatasetError("2D patches must tile the antenna x subcarrier grid")
+        patch_count = (
+            int(representation["antenna_count"]) // patch_a
+        ) * (
+            int(representation["subcarrier_count"]) // patch_s
+        )
+        if patch_count % 4:
+            raise FormalDatasetError(
+                "formal patch grid must support exact 75% masking"
+            )
         if not isinstance(representation["map_resolution_m"], (int, float)) or float(
             representation["map_resolution_m"]
         ) <= 0:
