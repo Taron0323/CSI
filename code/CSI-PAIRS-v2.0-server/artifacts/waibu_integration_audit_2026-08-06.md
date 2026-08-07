@@ -18,8 +18,9 @@ execution, and Sionna RT tracing. It is not an independent cross-model review.
   three controlled map models, Wi-GATr's official environment/adapter, and Sionna RT/LRM facilities are
   reachable. Wi-GATr formal forward requires CUDA and was not run on this CPU-only host.
 - Faithful upstream reproduction: **not claimed for paper-only methods**. WWM and RFIR are explicitly
-  style/inspired controls; CSI-MAE, CSI-CLIP, ContraWiMAE, and WiSER are paper-spec controlled
-  implementations; Wi-GATr is an official-code adaptation over CSI-PAIRS data.
+  style/inspired controls; CSI-MAE, CSI-CLIP, and ContraWiMAE are paper-spec controlled
+  implementations; WiSER is style-controlled because the shipped 2D surrogate omits core paper
+  modalities/objectives; Wi-GATr is an official-code adaptation over CSI-PAIRS data.
 - Formal comparison evidence: **NOT RUN**. No paper-dose non-fixture training or G8 effect experiment
   exists, so no G0-G8 gate or C1-C13 claim is promoted.
 
@@ -33,7 +34,7 @@ execution, and Sionna RT tracing. It is not an independent cross-model review.
 | `2601.03789v1.pdf` | CSI-MAE specification | `CSIMAE` | independent 75% masks, fixed 2D positions, asymmetric decoder, finite backward, CLI checkpoint | paper-spec controlled |
 | `2603.25216v1.pdf` | wireless world-model specification | `WWMJEPA` | finite JEPA backward, EMA target path, CLI checkpoint | WWM-inspired; 2.5D maps replace original 3D point clouds |
 | `2604.07086v1.pdf` | RFIR specification | `RFIRForward`, `rfir_controlled_v1.json` | finite gradients through visibility, anisotropic primitives, and alpha transmittance | RFIR-inspired; no visual 3DGS reconstruction stage |
-| `2606.04770v1.pdf` | WiSER specification | `WiSERForward`, `wiser_controlled_v1.json` | finite radiomap/CIR gradients, learned queries, Hungarian matching, staged task schedule | paper-spec controlled; CSI-PAIRS 2.5D tokens replace ScanNet++ sparse voxels |
+| `2606.04770v1.pdf` | WiSER specification | `WiSERForward`, `wiser_controlled_v1.json` | finite radiomap/CIR gradients, learned queries, Hungarian matching, staged task schedule | style-controlled and C1-ineligible; omits the paper's sparse 3D scene model and original targets/warm starts |
 | `Wi-GATr-main.zip` | official source at `6daa5bd...` | vendored snapshot, isolated Python 3.10 adapter | ZIP commit and 45-file vendor hash PASS; imports PASS; CUDA prerequisite is explicit | official-code adaptation; 200k-step run pending |
 | `sionna-main.zip` | official Sionna source at `04ddb931...` | setup, scene exporter, G8 adapter | Sionna 2.0.1 / RT 1.2.1, dependency check, scene load and CFR trace PASS | official-source RT facility |
 | `sionna-large-radio-maps-main.zip` | official LRM source at `1ba19ae...` | setup and `sionna_facility.py` tiling/scene/radio-map commands | all three official script CLIs start; source import and output schema audit reachable | official facility; optional infrastructure, not the default G8 trace algorithm |
@@ -52,7 +53,8 @@ available:
 
 The external-baseline runner authenticates the resource registry before launching adapters, generates
 one common six-condition unit registry, validates every result row and execution manifest, and permits
-only Wi-GATr plus WiSER to count toward C1. Style-controlled SigMap/RFIR results cannot satisfy C1.
+only explicitly eligible official-code or paper-spec models to count toward C1. The shipped set has
+only Wi-GATr in that class; style-controlled SigMap, WiSER, and RFIR cannot satisfy C1.
 
 ## Dynamic checks performed
 
@@ -65,8 +67,10 @@ only Wi-GATr plus WiSER to count toward C1. Style-controlled SigMap/RFIR results
 - SigMap, WiSER, RFIR: real differentiable losses and nonzero parameter gradients.
 - Sionna: package dependency check PASS; exact source/RT/Torch/h5py versions authenticated; official LRM
   script help paths execute; exported four-world fixture scene traced to four finite `(16, 16)` CFR arrays.
-- Unit suite: 85/85 PASS, including cluster-level external-evidence, RT end-to-end, and claim mutation coverage.
-- Clean extracted server bundle: 147/147 package hashes and 85/85 tests after this report is included.
+- Current full unit suite: 198/198 PASS, including cluster-level external-evidence, RT end-to-end,
+  claim mutation coverage, and first-party control authentication.
+- Historical 2026-08-06 extracted server bundle: 147/147 package hashes and 85/85 tests. These are
+  snapshot totals, not the current 198-test or final-package totals.
 
 ## Defects found and corrected during this audit
 
@@ -87,8 +91,8 @@ only Wi-GATr plus WiSER to count toward C1. Style-controlled SigMap/RFIR results
 
 - A qualified non-fixture V6 dataset is not present.
 - This host exposes no NVIDIA CUDA device, so the official Wi-GATr paper-dose run cannot execute here.
-- Wi-GATr 200k-step and WiSER 100k-step training, common six-condition evaluation, and resource controls
-  have not run.
+- Wi-GATr 200k-step, controlled WiSER training, common six-condition evaluation, and non-fixture
+  first-party controls have not run.
 - Licensed independent external-validation scenes and a completed non-fixture Sionna G8 retrace are absent.
 - Paper-only methods cannot be upgraded to `official reproduction` without released source and original
   data modalities. Their weaker labels are intentional and enforced.

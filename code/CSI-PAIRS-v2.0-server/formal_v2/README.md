@@ -48,12 +48,13 @@ faithful official-code or paper-spec adapter is supplied. The shipped
 `configs/sionna_external_validity_adapter_v2.json` is the standard G8 adapter manifest.
 See `WAIBU_INTEGRATION.md` and `external_adapters/README.md` for provenance and execution limits.
 
-The repository does not ship the shuffled-pair adapter, retention adapter, or the five trained
-resource-control adapters/architecture manifests. Those contracts are fail-closed extension points,
-not executable evidence already present in `waibu/`. Consequently, a reviewer-grade `all` run is
-currently `BLOCKED` until reviewed implementations and their authenticated manifests are supplied.
-Their commands must execute the exact hashed source directly; aggregate or self-reported substitutes
-are rejected.
+The repository ships first-party shuffled-pair, retention, scene-ID, and five resource-control
+adapters with authenticated default manifests. Shuffled Alignment and Response models are trained
+independently from deranged pair registries; retention probes are source-only and bind the frozen
+Full checkpoint; scene-ID reuses the source-trained SigMap checkpoint and evaluates unseen source
+banks; resource controls emit one checkpoint, log, loss trace, profiler summary, and replay record
+per seed. Aggregate or self-reported substitutes remain rejected. Formal results are still absent,
+so the controls are executable protocol surfaces rather than scientific evidence.
 
 External evidence contracts are fail-closed. Scene-ID adapters must bind their implementation source
 and trained checkpoint, cover each held-out position with one exact four-condition unit, and pass
@@ -67,6 +68,13 @@ stage output and reauthenticated during claim assembly.
 C1 rows bind the exact supplied map and directed action by SHA-256; the outer runner recomputes both
 from the frozen unit registry and makes cluster-macro active-effect/null-equivalence decisions.
 Shuffled-pair and retention controls use complete per-pair rows bound to the evaluation registry,
-adapter source, and exact formal checkpoints; aggregate self-reported effects are rejected. Resource
-controls additionally require a frozen architecture/state-key spec, per-step loss trace, operator-level
-profiler events, and a source-bound replay. `generous_2x_concat` is report-only, not G4 subgate 7.
+adapter source, independently trained control checkpoints, and exact formal checkpoints; aggregate
+self-reported effects are rejected. Resource controls require frozen architecture/state specs,
+per-step loss traces, operator-level profiler events, complete seed coverage, and a source-bound
+replay. The resource scope excludes the common localization head from both main and control totals,
+but includes concat bottleneck parameters and its measured training/inference FLOPs.
+`generous_2x_concat` is report-only, not G4 subgate 7.
+
+Use `make-fixture --source-banks-per-role 2` only when a software smoke must exercise the
+cross-source-city scene-ID path. The generated data and every derivative remain permanently
+`scientific_use=FORBIDDEN`.

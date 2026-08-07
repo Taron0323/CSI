@@ -19,11 +19,11 @@ or scientific support.
 SigMap is required by frozen V6 but has no paper/source file in `waibu/`. Its implementation is
 therefore named only `style-controlled-implementation`; it cannot be upgraded by documentation.
 
-`waibu/` also contains no executable shuffled-pair, retention, equal-FLOP, parameter-matched, or
-FLOP-matched control implementation. The corresponding V6 runners validate external manifests and
-artifacts but are not themselves the missing experiments. G4, C4, and C6 therefore remain blocked
-until reviewed source implementations are added and executed; resource authentication alone cannot
-promote them.
+`waibu/` contains no implementation for the shuffled-pair, retention, or resource controls because
+those are CSI-PAIRS protocol controls rather than external prior work. Their first-party
+implementations and authenticated manifests are shipped under `external_adapters/`. G4, C4, and C6
+remain scientifically blocked until the controls run on qualified non-fixture data and their
+upstream dependencies pass; resource authentication or source presence alone cannot promote them.
 
 ## Commands
 
@@ -56,6 +56,25 @@ python3 -m formal_v2.formal_cli run-external-baselines \
   --output /absolute/path/formal-run
 ```
 
+Run the shipped CSI-PAIRS protocol controls after factorial/evaluation artifacts exist:
+
+```bash
+python3 -m formal_v2.formal_cli run-resource-controls \
+  --config formal_v2/configs/formal_v2.json \
+  --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
+  --output /absolute/path/formal-run
+
+python3 -m formal_v2.formal_cli run-shuffled-pair-control \
+  --config formal_v2/configs/formal_v2.json \
+  --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
+  --output /absolute/path/formal-run
+
+python3 -m formal_v2.formal_cli run-retention-audit \
+  --config formal_v2/configs/formal_v2.json \
+  --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
+  --output /absolute/path/formal-run
+```
+
 Install and inspect Sionna facilities:
 
 ```bash
@@ -81,6 +100,7 @@ python3 -m formal_v2.formal_cli export-sionna-scenes \
   recomputes, and each eligible model must pass cluster-macro active-effect and null-equivalence gates.
   The shipped manifest has only Wi-GATr in that class, so it intentionally leaves C1 blocked.
 - G8 requires actual independent Sionna scene XML/assets, hashes, licenses, and retraced CFRs.
+- Shipped first-party control code closes the implementation gap, not the formal-execution gap.
 - Formal profile execution on real, independently regenerated data is required for scientific use.
 - Fixture, smoke profile, unavailable dependency, missing asset, or hash mismatch remains permanently
   non-scientific/fail-closed downstream.

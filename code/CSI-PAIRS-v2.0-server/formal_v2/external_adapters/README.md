@@ -117,3 +117,35 @@ command hash and scene bundle inside the formal run tree.
 per-asset license/hash records, and emits the complete scene manifest. The command does not invent
 an asset license: `--license-id` must match `metadata.assets.license_ids`; carrier frequency and
 subcarrier spacing are also mandatory inputs.
+
+## First-party V6 claim controls
+
+`shuffled_pair_control.py` trains fresh Alignment and Response controls from independently
+deranged pairing registries. It never reuses a matched factorial checkpoint as the shuffled model,
+and the outer gate authenticates both checkpoint families, every active pair, both permutation
+directions, training provenance, and per-unit Alignment/Response metrics.
+
+`retention_control.py` freezes the Full retained encoder, fits source-only probes for compatibility,
+response, and localization, and evaluates correct-map, map-swap, and map-removed conditions. Probe
+checkpoints bind the Full checkpoint and reject target-trained or target-selected probes.
+
+`scene_id_sigmap.py` reuses the source-trained, source-selected SigMap checkpoint from the external
+baseline stage. The built-in V3 manifest constructs city prompts from `source_encoder_train` only
+and evaluates map/prompt parity plus map-swap/ID-swap displacement-direction agreement on
+`source_final_unseen_bank`. It requires at least two source cities. For software smoke only,
+`make-fixture --source-banks-per-role 2` supplies that reachability; fixture output remains
+scientifically forbidden.
+
+## First-party V6 resource controls
+
+`resource_control.py` implements equal-FLOP Alignment, equal-FLOP Response, parameter-matched
+independent concat, FLOP-matched independent concat, and generous 2x concat. The shipped
+`resource_controls_v3.json` authenticates the runner and five architecture specs. Every configured
+seed produces a control checkpoint, component and localization loss traces, a training log,
+operator-level profiler evidence, localization rows, a resource index, and a replay artifact.
+
+The frozen accounting scope is
+`representation_training_and_retained_inference_excluding_common_localization_head`. The same
+localization head is excluded on both sides. Concat bottleneck parameters and measured bottleneck
+training/inference FLOPs are included. Parameter/FLOP match errors are reported and must remain
+within the preregistered tolerance; thresholds are never relaxed for a smoke run.

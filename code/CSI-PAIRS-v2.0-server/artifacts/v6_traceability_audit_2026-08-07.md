@@ -2,7 +2,14 @@
 
 Date: 2026-08-07 (Asia/Shanghai)
 
-Audited baseline: `origin/main` at `2e30621c4d44f57345adfe822992c778126443e1`.
+`BASE_SHA`: `3e0eacf39244a957243018388a869d30e859a96d` (`origin/main` when work began).
+
+`AUDITED_CODE_SHA`: `83d0cd9e7bb20d25994308e33e4e76bbdadb0ff8` (code and tests only).
+
+`DELIVERY_HEAD_SHA`: the Git commit containing this audit and package metadata; resolve it from the
+delivered branch with `git rev-parse HEAD`. The exact immutable value is also recorded in the Draft
+PR because a commit cannot include its own SHA in its tracked content.
+
 The GitHub checkout is the only code baseline. The two frozen V6 research documents are
 protocol authorities only; no implementation was copied from an older local tree.
 
@@ -23,11 +30,28 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 
 | Layer | Verdict | Evidence and boundary |
 |---|---|---|
-| `PACKAGE_INTEGRITY` | `PASS` | Repository SHA inventory is regenerated and verified after the change; no private path, secret, cache, or run output is included. |
-| `SOFTWARE_EXECUTION` | `PASS` | 180 unit tests, Python compilation, shell syntax, CLI help, resource hashes, and the non-scientific verifier/qualification smoke complete. |
-| `V6_PROTOCOL_FIDELITY` | `PASS_WITH_EXTERNAL_CONTRACTS` | All code-resolvable P0/P1 findings in this audit are closed. External controls and evidence remain fail-closed interfaces. |
+| `PACKAGE_INTEGRITY` | `PASS` | Repository SHA inventory and all 166 clean-package entries verify; ZIP structure passes; no private path, secret, cache, or run output is included. |
+| `SOFTWARE_EXECUTION` | `PASS` | 198 unit tests in both the repository and clean extraction, Python compilation, 22 CLI help paths, strict configs, shell syntax, dependency health, resource hashes, extracted dry run, resource-control smoke, and cross-source-city scene-ID smoke complete. |
+| `V6_PROTOCOL_FIDELITY` | `PASS_WITH_EXTERNAL_INPUT_BOUNDARIES` | All code-resolvable P0/P1 findings in this audit are closed. Missing formal inputs and truly independent evidence remain fail-closed. |
 | `FORMAL_EXPERIMENT_READINESS` | `CODE_READY_FOR_FORMAL_INPUT` | The runner can start formal qualification when admissible inputs exist, but the complete reviewer-grade `all` run is externally blocked. |
 | `SCIENTIFIC_EVIDENCE` | `NOT_ASSESSED` | No qualified non-fixture Stage-0, four-arm, target-city, calibration, or external-validity result has been run. |
+
+## Collaborator-code invariant ledger
+
+| Invariant | Preserved boundary | Audit result |
+|---|---|---|
+| Module ownership | Dataset/teacher/model/factorial/evaluation/statistics/claims remain separate modules; new adapters call the existing training and evidence APIs | Preserved |
+| Dependency direction | External adapters depend on `formal_v2`; core model/data modules do not depend on adapter-specific implementations | Preserved |
+| Public CLI | Existing commands and arguments retain their meaning; new manifests are optional defaults and fixture cross-city coverage is opt-in | Backward-compatible extension |
+| Data/config schemas | Formal NPZ and frozen formal/smoke config schemas are unchanged; fixture generation only adds an optional non-scientific multiplicity parameter | Preserved |
+| Checkpoint semantics | Teacher/factorial checkpoints remain unchanged; new control checkpoints are separately versioned and source/config/dataset/seed bound | Preserved |
+| F/P/teacher/route semantics | No allowed model input, estimand, route definition, loss definition, or retained-module rule was changed | Preserved |
+| Four-arm semantics | Common plan, initialization, teacher, optimization budget, downstream head, and evidence gates remain shared | Preserved |
+| Resource fairness | Common localization head is excluded symmetrically; independently trained concat bottleneck parameters and FLOPs are included | V6-aligned clarification |
+| Vendored/official code | Vendored Wi-GATr bytes are unmodified; controlled implementations retain accurate non-official labels | Preserved |
+| Evidence promotion | Fixture, smoke, missing, hash-mismatched, and `NOT_ASSESSED` artifacts remain unable to promote G0--G8 or C1--C13 | Preserved and strengthened |
+
+No principle-level collaborator architecture or public scientific semantics was changed.
 
 ## Paper-to-code traceability
 
@@ -43,7 +67,7 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | V6-S7 | Section 7 | Strict 2x2 arms differ only by Alignment/Response switches; common plans and seven synergy gates | `formal_factorial.py`, `formal_statistics.py`, `formal_claims.py` | factorial mutation, synchronized-bootstrap, resource-control tests | `EXACT` |
 | V6-S8 | Section 8 | RQ1-RQ5 use registered estimands and untouched target units | `formal_cli.py` complete chain plus evaluation/risk stages | CLI reachability and downstream authentication tests | `EXACT` for execution; all RQs scientifically unassessed |
 | V6-S9 | Section 9 | Registered path incidence, no-op epsilon, balanced matching, bank-level inference | `formal_path.py` | path provenance, matching, duplicate, zero-path tests | `EXACT` |
-| V6-S10 | Section 10 | Leakage audit, shuffled-pair control, and retention audit | `formal_claim_controls.py`, `formal_evidence.py` | source-binding, row-completeness, claim dependency tests | `PARTIAL/PROXY`; reviewed external control implementations/manifests are absent |
+| V6-S10 | Section 10 | Leakage audit, shuffled-pair control, and retention audit | `formal_claim_controls.py`, first-party control adapters | independent-training, source-binding, checkpoint, row-completeness, and claim dependency tests | `EXACT` for execution; non-fixture results absent |
 | V6-S11 | Section 11 | Internal factorial baselines plus faithful, resource-matched external models | `formal_external.py`, `formal_representation_baselines.py`, `external_adapters/` | model gradients, registry, C1 eligibility and six-condition tests | `PARTIAL/PROXY`; only one external map model is currently C1-eligible |
 | V6-S12 | Section 12 | City/bank/foundation/seed/draw hierarchy, paired bootstrap, Holm, superiority, noninferiority, equivalence | `formal_statistics.py`, `formal_evaluation.py`, `formal_risk.py` | hierarchy, duplicate invariance, simultaneous-bound and Holm tests | `EXACT` |
 | V6-S13 | Section 13 | Main figures and tables show only formal results with traceable denominators | `paper_v2/main.tex` explicit placeholders | PDF/page inspection | `MISSING` by design until formal evidence exists; placeholders must remain |
@@ -55,7 +79,7 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | ID | Registered question and discriminator | Main code/evidence path | Software status | Scientific status |
 |---|---|---|---|---|
 | RQ1 | Counterfactual map use under the six-condition paired wrong-map audit | `formal_wrong_map.py`, `formal_external.py`, `formal_scene_id.py` | `PARTIAL/PROXY` because a second faithful external model is absent | `NOT_ASSESSED` |
-| RQ2 | Restricted relative compatibility from Alignment, including shortcut controls | `formal_factorial.py`, `formal_evaluation.py`, `formal_claim_controls.py` | `PARTIAL/PROXY` because shuffled-pair execution is external | `NOT_ASSESSED` |
+| RQ2 | Restricted relative compatibility from Alignment, including shortcut controls | `formal_factorial.py`, `formal_evaluation.py`, `formal_claim_controls.py`, shuffled-pair adapter | `EXACT` for execution | `NOT_ASSESSED` |
 | RQ3 | Target-free response direction and magnitude against RT rerendered targets | `formal_factorial.py`, `formal_evaluation.py` | `EXACT` | `NOT_ASSESSED` |
 | RQ4 | Strict unseen-city localization at k=0 and city-level k=8 | `formal_localization.py`, `formal_evaluation.py`, `formal_statistics.py` | `EXACT` | `NOT_ASSESSED` |
 | RQ5 | Paired compatibility to calibrated localization risk on common support | `formal_risk.py` | `EXACT` | `NOT_ASSESSED` |
@@ -68,7 +92,7 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | G1 | Verified world banks, repeat quality, per-bank route coverage, and all four same-unit route noise floors | `formal_data_verification.py`, `formal_qualification.py`; verifier, coverage, and native noise-floor tests | `EXACT`; no formal bank has passed |
 | G2 | Frozen teacher/readout, no-X/oracle/action controls, null safety, shortcut audit | `formal_teacher.py`, `formal_qualification.py` | `EXACT`; no formal teacher has passed |
 | G3 | Each single branch performs its registered job | `formal_factorial.py`, `formal_evaluation.py`, `formal_claims.py` | `EXACT`; not run formally |
-| G4 | Full arm passes all seven synchronized synergy/resource subgates | `formal_statistics.py`, `formal_controls.py`, `formal_claims.py` | `PARTIAL/PROXY`; resource-control executions are external |
+| G4 | Full arm passes all seven synchronized synergy/resource subgates | `formal_statistics.py`, `formal_controls.py`, first-party resource adapter, `formal_claims.py` | `EXACT` for execution; no non-fixture control result exists |
 | G5 | Two-city localization and no reversal beyond tolerance | `formal_evaluation.py`, `formal_statistics.py` | `EXACT`; not run formally |
 | G6 | Separate `q_comp`/`p_fail`, common support, calibration, AURC and coverage | `formal_risk.py` | `EXACT`; not run formally |
 | G7 | Registered path provenance, matched mechanism strata, zero-path equivalence | `formal_path.py` | `EXACT`; not run formally |
@@ -79,12 +103,12 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | Claim | Required evidence dependency | Enforcement location | Software status | Current claim state |
 |---|---|---|---|---|
 | C1 | At least two faithful external map models and complete six-condition paired rows | `formal_external.py`, `formal_claims.py` | `PARTIAL/PROXY` | `BLOCKED` |
-| C2 | Held-out scene-ID mechanism with exact four-condition joins | `formal_scene_id.py`, `formal_claims.py` | `PARTIAL/PROXY` external execution | `BLOCKED` |
+| C2 | Held-out scene-ID mechanism with exact four-condition joins | `formal_scene_id.py`, built-in SigMap scene-ID adapter, `formal_claims.py` | `EXACT` for execution | `BLOCKED` |
 | C3 | Single-branch target-free metrics, active/null controls, unseen banks/cities | evaluation plus G3 dependency | `EXACT` | `BLOCKED` |
-| C4 | Alignment gain plus shortcut and shuffled-pair discriminator | evaluation, `formal_claim_controls.py` | `PARTIAL/PROXY` external control | `BLOCKED` |
+| C4 | Alignment gain plus shortcut and shuffled-pair discriminator | evaluation, `formal_claim_controls.py`, first-party shuffled adapter | `EXACT` for execution | `BLOCKED` |
 | C5 | Target-free response under all mask families and simple controls | evaluation response probes | `EXACT` | `BLOCKED` |
-| C6 | Map/action retention and F-only downstream audit | evaluation, retention control | `PARTIAL/PROXY` external control | `BLOCKED` |
-| C7 | Every G4 synergy gate and G5 city result | factorial/statistics/claims | `PARTIAL/PROXY` resource controls external | `BLOCKED` |
+| C6 | Map/action retention and F-only downstream audit | evaluation, first-party retention adapter | `EXACT` for execution | `BLOCKED` |
+| C7 | Every G4 synergy gate and G5 city result | factorial/statistics/first-party resources/claims | `EXACT` for execution | `BLOCKED` |
 | C8 | Two target cities at strict k=0 and city-level k=8 | localization/statistics | `EXACT` | `BLOCKED` |
 | C9 | All four risk-gate families | risk/claims | `EXACT` | `BLOCKED` |
 | C10 | Path mechanism and zero-path equivalence | path/claims | `EXACT` | `BLOCKED` |
@@ -101,8 +125,8 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | C7.3 | Full native response is noninferior to Response-only | response bound and common units | `EXACT` |
 | C7.4 | Interaction lower bound exceeds zero and the practical threshold | hierarchical synchronized bootstrap | `EXACT` |
 | C7.5 | No target city reverses beyond tolerance at k=0 or k=8 | per-city reversal gate | `EXACT` |
-| C7.6 | Full exceeds both equal-FLOP single branches | dispatch FLOP/resource controls | `PARTIAL/PROXY`; external runs absent |
-| C7.7 | Full exceeds parameter- and FLOP-matched independent concat | authenticated architecture/operator controls | `PARTIAL/PROXY`; external runs absent |
+| C7.6 | Full exceeds both equal-FLOP single branches | dispatch FLOP plus first-party equal-FLOP controls | `EXACT` for execution; non-fixture results absent |
+| C7.7 | Full exceeds parameter- and FLOP-matched independent concat | authenticated first-party architecture/operator controls | `EXACT` for execution; non-fixture results absent |
 
 ### C9 four risk gates
 
@@ -132,7 +156,8 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | Evaluation/probes | V6 5, 8 | Frozen F, target-free masked inputs, common budgets and support-sibling exclusion | `EXACT` |
 | Statistics | V6 7, 12 | City, canonical foundation, bank, seed and draw hierarchy; synchronized contrasts and Holm | `EXACT` |
 | Risk outputs | V6 5.3-5.4 | `q_comp` and `p_fail` remain distinct; target route is never an online input | `EXACT` |
-| External adapters | V6 10-11, G8 | Hash-bound code/config/checkpoint/unit rows; style controls cannot self-promote | `PARTIAL/PROXY` until external implementations/results exist |
+| First-party claim/resource adapters | V6 10-11 | Hash-bound code/config/checkpoint/unit rows, complete seeds and replay; style controls cannot self-promote | `EXACT` for execution; formal results absent |
+| Independent external evidence | V6 1, 11, G8 | Two C1-eligible map models, independent RT calibration, licensed second-engine/real-intervention rows | `PARTIAL/PROXY`; inputs/results absent |
 | Gate and claim outputs | V6 14-15 | Missing, fixture, `NOT_ASSESSED`, hash mismatch and incomplete dependencies never auto-PASS | `EXACT` |
 | CLI output policy | V6 reproducibility/evidence integrity | Every evidence-producing stage atomically reserves its registered output under an exclusive run-root operation lock; fixture writers normalize `.npz` before exclusive creation | `EXACT` |
 
@@ -153,13 +178,13 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | `run-path` | `path/` | endogenous | registered path absent |
 | `run-external-baselines` | `external_baselines/` | authenticated adapter contracts | registered path absent |
 | `run-representation-baselines` | `representation_baselines/` | endogenous controlled implementations | registered path absent |
-| `run-resource-controls` | `controls/` | authenticated external control contracts | registered path absent |
-| `run-scene-id-audit` | `scene_id/` | authenticated external contract | registered path absent |
+| `run-resource-controls` | `controls/` | first-party execution plus authenticated V3 contract | registered path absent |
+| `run-scene-id-audit` | `scene_id/` | built-in first-party SigMap path or authenticated V3 adapter | registered path absent |
 | `run-external-validity` | `external_validity/` | authenticated independent-engine contract | registered path absent |
 | `run-literature-resources` | `literature_resources/` | authenticated external input contract | registered path absent |
 | `run-rt-calibration` | `qualification/rt_calibration/` | authenticated fit/validation contract | registered path absent |
-| `run-shuffled-pair-control` | `controls/shuffled_pair/` | authenticated external control contract | registered path absent |
-| `run-retention-audit` | `evaluation/retention/` | authenticated external control contract | registered path absent |
+| `run-shuffled-pair-control` | `controls/shuffled_pair/` | first-party execution plus authenticated V3 contract | registered path absent |
+| `run-retention-audit` | `evaluation/retention/` | first-party execution plus authenticated V3 contract | registered path absent |
 | `assemble-claims` | `claims/` | endogenous dependency assembly | registered path absent |
 | `all` | complete chain above | orchestrator | unused root, except one non-symlink `inputs/` directory |
 
@@ -185,6 +210,7 @@ claim assembly. No required stage is silently skipped.
 | Stage-0 reuses a small fixed mask bank | `CONFIRMED_AND_FIXED` | independent exact-cardinality sampler plus per-step integration test |
 | Route null thresholds lack same-unit noise-floor proof | `CONFIRMED_AND_FIXED` | `route_noise_floor.csv` and G1 four-metric coverage requirement |
 | Single-stage commands can overwrite evidence | `CONFIRMED_AND_FIXED` | atomic output reservation, exclusive run-root operation locks, normalized fixture paths, and sequential/concurrent overwrite mutation tests |
+| Built-in scene-ID is unreachable on the default one-bank-per-role fixture | `CONFIRMED_AND_FIXED` | opt-in two-bank-per-role fixture preserves source roles and exercises both source cities end to end |
 
 ## External blockers
 
@@ -193,7 +219,7 @@ The code must not substitute fixtures or self-reported JSON for the following:
 - a qualified non-fixture RT dataset with the exact V6 NPZ schema and asset licenses;
 - an independently authenticated regeneration command and RT calibration fit/validation inputs;
 - enough independent source banks, target banks in two cities, and external-validation banks;
-- reviewed shuffled-pair, retention, scene-ID and five resource-control implementations/manifests;
+- non-fixture executions of the shipped shuffled-pair, retention, scene-ID and five resource controls;
 - a second C1-eligible faithful external map model and its formal checkpoint/results;
 - licensed Sionna/second-engine scene assets and completed G8 paired rerender rows;
 - NVIDIA CUDA and an approved compute budget for formal Wi-GATr and full training.

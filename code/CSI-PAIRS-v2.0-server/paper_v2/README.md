@@ -1,6 +1,6 @@
 # CSI-PAIRS V2.1 V6 paper draft
 
-This directory is independent of the frozen V1.26 paper. `main.tex` preserves the evidence-gated manuscript and adds four visible `DRAFT PLACEHOLDER / NOT A RESULT` figures plus `NOT RUN` result-table cells.
+This directory is independent of the frozen V1.26 paper. `main.tex` preserves the evidence-gated manuscript and adds four visible `DRAFT PLACEHOLDER / NOT A RESULT` figures plus `NOT RUN` result-table cells. It states all five frozen research questions and uses the current G0--G8 meanings.
 
 The placeholders specify:
 

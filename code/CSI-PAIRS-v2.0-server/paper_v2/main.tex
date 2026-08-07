@@ -121,7 +121,7 @@ it is not paper evidence.
 \begin{figure}[t]
 \centering
 \draftplaceholder{Paired intervention audit. Replace with six-condition results
-for at least two named external models: active and null paired alternatives,
+for at least two C1-eligible external models: active and null paired alternatives,
 wrong city, geometry-destroyed, and empty map. Show paired bank-level intervals.}
 \caption{Planned paired-intervention audit. The final caption must state model
 information budgets, independent scene banks, seeds, paired interval, and the
@@ -381,10 +381,12 @@ experiments are therefore required.
 
 \begin{figure}[t]
 \centering
-\draftplaceholder{Split and gate flow. Show immutable bank roles:
-source-encoder train $\rightarrow$ method selection $\rightarrow$ calibration
-$\rightarrow$ target support/query in two cities. Show G0 data, G1 RT,
-G2 readout/oracle, G3 No-X/null, G4 four-arm, and G8 external validity exits.}
+\draftplaceholder{Split and gate flow. Show seven disjoint source roles:
+encoder-train, method-select, probe-train/select, calibration-fit/select, and
+final-unseen; then target support/query in two cities. Show G0 literature/resources,
+G1 world-bank/RT qualification, G2 teacher and No-X qualification, G3
+single-branch, G4 seven-part joint-value, G5 two-city localization, G6 risk,
+G7 path-mechanism, and G8 external-validity exits.}
 \caption{Planned split, gate, and claim flow. The highest independent unit is
 the scene bank. A failed upstream gate removes downstream claims rather than
 triggering threshold changes on held-out target data.}
@@ -393,14 +395,17 @@ triggering threshold changes on held-out target data.}
 
 \subsection{Questions and independent units}
 
-The experiment answers four questions in order.  RQ1 asks whether at least two
-runnable map-conditioned models exhibit an active/null wrong-map pattern.  RQ2
+The experiment answers five questions in order.  RQ1 asks whether at least two
+C1-eligible map-conditioned models exhibit an active/null wrong-map pattern.  RQ2
 asks whether Alignment learns paired compatibility without null
 over-discrimination.  RQ3 asks whether masked no-position Response predicts
 retraced targets better than copy, no-action, and action-swap in each held-out
 selection scene.  RQ4, reached only after the earlier gates, asks whether Full
 improves localization in two unseen cities beyond both single branches and
-resource-matched controls.
+resource-matched controls.  RQ5 asks whether, on a frozen paired-proposal set
+and strict $k=0$ common support, separately calibrated localization-failure
+risk improves AURC over random and compatibility-only baselines while retaining
+registered calibration, coverage, and monotonicity properties.
 
 The highest independent unit is the scene tile/world bank.  All positions,
 worlds, edges, directions, masks, and augmentations from a bank remain in one
@@ -500,9 +505,9 @@ qualification only unless explicitly stated.}
 \toprule
 Gate & Status & Consequence \\
 \midrule
-Official format/policy & Passed & Anonymous official style; AI statement present \\
+Official format/policy & Rechecked & Anonymous official style; AI statement present \\
 Canonical world-bank code & Smoke passed & Formal RT qualification still required \\
-Six-condition pipeline & Smoke passed & No domain claim; external models unavailable \\
+Six-condition pipeline & Smoke passed & No domain claim; formal checkpoints/results absent \\
 Teacher/route plumbing & Smoke passed & Synthetic teacher is not a final teacher \\
 Masked no-$x$ Response & Post-audit No-Go & Do not launch or claim deterministic Response \\
 Strict four arms & Not run & No Alignment, Full, or interaction claim \\
@@ -555,18 +560,16 @@ distinction is central to the proposed study.
 
 \section*{AI Use Statement}
 
-In this work, we used generative AI tools to assist in developing and refining
-the conceptual framework and hypotheses, obtaining feedback on research
-methodology and experimental design, drafting and debugging software code,
-discovering and summarizing related literature, organizing the manuscript, and
-improving translation and readability.  We did not treat AI-generated
-suggestions as evidence.  The authors checked related-work claims against the
-original papers, manually reviewed the mathematical statements and proof
-arguments, audited the experimental protocol for leakage and post-hoc
-selection, and tested AI-assisted code using unit tests and controlled
-baselines.  No experimental result was generated or accepted solely on the
-basis of an AI response.  We take responsibility for the final content,
-claims, code, and artifacts of this work.
+In this work, we used OpenAI Codex to assist with refining the conceptual
+framework and hypotheses, critiquing research methodology and experimental
+design, drafting and debugging software, searching and summarizing related
+literature, organizing the manuscript, and improving translation and
+readability.  We treated its outputs as suggestions rather than evidence.
+AI-assisted material was checked, as applicable, against the frozen protocol,
+repository source, unit and mutation tests, original cited papers, and official
+ICLR policy pages.  No scientific result was generated or accepted solely on
+the basis of an AI response.  The authors take responsibility for the final
+text, claims, code, and artifacts.
 
 \section*{Reproducibility Statement}
 

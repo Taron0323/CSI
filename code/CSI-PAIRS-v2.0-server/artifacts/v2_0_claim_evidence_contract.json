@@ -1,8 +1,9 @@
 {
-  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.3",
+  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.4",
   "artifact_label": "csi-pairs-formal-v2.1-v6",
   "status": "CODE_READY_FOR_FORMAL_INPUT",
   "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
+  "audited_code_sha": "83d0cd9e7bb20d25994308e33e4e76bbdadb0ff8",
   "inherited_frozen_evidence": {
     "status": "POST_AUDIT_NO_GO",
     "scientific_use": "FORBIDDEN",
@@ -21,8 +22,20 @@
     "Stage-0 independent exact-cardinality 75% masks resampled per sample and optimization step",
     "teacher checkpoint schema v2.3 binds the pretraining mask sampler",
     "G1 audits four same-unit per-bank repeat-pair route noise floors",
-    "all evidence-producing single-stage commands atomically reserve outputs under an exclusive run-root operation lock"
+    "all evidence-producing single-stage commands atomically reserve outputs under an exclusive run-root operation lock",
+    "first-party independently trained shuffled-pair and source-only retention controls",
+    "built-in source-only SigMap scene-ID runner with checkpoint and training-provenance binding",
+    "five first-party resource controls with complete seed checkpoints, loss traces, profiler events, and replay",
+    "common localization head excluded symmetrically while concat bottleneck parameters and FLOPs remain counted"
   ],
+  "implementation_inventory": {
+    "shuffled_pair": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
+    "retention": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
+    "scene_id": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
+    "resource_controls": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
+    "second_c1_eligible_map_model": "EXTERNAL_MODEL_OR_LICENSE_ACCESS_REQUIRED",
+    "independent_rt_and_g8": "EXTERNAL_DATA_AND_LICENSE_REQUIRED"
+  },
   "qualification_gate_additions": {
     "noise_floor_source_role": "source_method_selection",
     "normalization_source_role": "source_encoder_train",
@@ -47,8 +60,8 @@
     "G8_EXTERNAL_VALIDITY"
   ],
   "claims": [
-    {"claim_id":"C1","status":"BLOCKED","requires":["authenticated Wi-GATr official-code and WiSER paper-spec checkpoints","active/null six-condition audit","adapter manifest hash and exact common unit registry"]},
-    {"claim_id":"C2","status":"BLOCKED","requires":["held-out-position scene-ID prompt parity","map-swap/ID-swap response agreement"]},
+    {"claim_id":"C1","status":"BLOCKED","requires":["at least two distinct C1-eligible official-code or paper-spec map-conditioned models","active/null six-condition audit","adapter manifest hash and exact common unit registry"]},
+    {"claim_id":"C2","status":"BLOCKED","requires":["source-city held-out-position scene-ID prompt parity","map-swap/ID-swap two-dimensional displacement-direction agreement"]},
     {"claim_id":"C3","status":"BLOCKED","requires":["unified probes","active quartet marginal audit","null equivalence","unseen bank/city"]},
     {"claim_id":"C4","status":"BLOCKED","requires":["Alignment beats Endpoint","shortcut controls","shuffled-pair gain disappears"]},
     {"claim_id":"C5","status":"BLOCKED","requires":["target-free mask cover","latent and physical metrics","copy/no-action/action-swap","teacher/readout"]},

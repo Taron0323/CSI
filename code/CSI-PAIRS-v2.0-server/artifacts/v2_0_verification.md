@@ -10,7 +10,7 @@ This record supersedes the previous V2.0 dry-run report. Archived V1/V1.26 fixtu
 
 ## 2026-08-07 readiness repair
 
-The latest audit closed four code-resolvable protocol/evidence-integrity gaps:
+The latest audit closed the following code-resolvable protocol/evidence-integrity gaps:
 
 1. Stage-0 now resamples an independent exact-cardinality 75% mask for every sample and every
    optimization step. The sampler contract is checkpoint-bound as schema v2.3.
@@ -20,23 +20,44 @@ The latest audit closed four code-resolvable protocol/evidence-integrity gaps:
 4. Every evidence-producing single-stage CLI command atomically reserves its registered output
    under an exclusive run-root operation lock. `make-fixture` normalizes `.npz` before exclusive
    creation, so suffix aliases and concurrent writers cannot overwrite an archive.
+5. Shuffled-pair and retention controls now train and bind independent source-only checkpoints
+   instead of accepting aggregate or reused-checkpoint claims.
+6. The built-in SigMap scene-ID control binds source-only training provenance and compares actual
+   two-dimensional output displacement directions on unseen source banks.
+7. Five first-party resource controls provide complete per-seed checkpoints, training/loss logs,
+   profiler events, replay, and symmetric accounting that retains concat bottleneck cost.
+8. The fixture generator can opt into two banks per source role to exercise cross-source-city
+   controls without changing the formal schema or scientific-use prohibition.
 
 Follow-up checks on the current tree:
 
+Locked audit environment: Python 3.12.10. The host-specific interpreter path is recorded in the
+delivery PR, not embedded in runtime configuration or the release bundle.
+
 | Check | Result |
 |---|---|
-| Full `unittest` discovery | 180/180 PASS |
-| Python compilation and CLI help | PASS |
+| Full `unittest` discovery | 198/198 PASS |
+| Python compilation and CLI help | PASS; top-level parser and all 22 subcommand help paths returned exit 0 |
+| Formal/smoke config schema | PASS through strict `load_formal_config`; all shipped JSON also parsed strictly |
+| Locked dependency health | `pip check` PASS |
 | Shell syntax | PASS |
+| Current locked lint | NOT AVAILABLE: `ruff` is not present or version-pinned in `formal_v2/requirements-lock.txt`; the historical 2026-08-06 ruff result below is not promoted to a current reproducible check |
+| Secret/path/cache/large-file scan | PASS with declared assets: no credential or personal absolute path; ignored test bytecode removed; large tracked files are authenticated papers/source archives and the draft PDF |
 | Repository and vendored SHA-256 inventories | PASS after regeneration |
+| Fresh server ZIP and extraction | 166/166 package hashes PASS; ZIP structure PASS; extracted 198/198 tests PASS; extracted dry run PASS with `scientific_use=FORBIDDEN` |
 | Non-scientific `make-fixture -> verify-data -> qualify` | verifier PASS; qualification `DRY_RUN_FAIL_NOT_EVIDENCE` on route coverage; native route noise-floor component PASS; `scientific_use=FORBIDDEN` |
+| Non-scientific five-resource-control chain | all five adapters emitted three authenticated seeds, checkpoints, traces and replay; scientific gates retained fixture FAIL/FORBIDDEN boundaries |
+| Non-scientific cross-source-city scene-ID chain | built-in SigMap adapter executed to its software gate; `fixture=true`, `scientific_use=FORBIDDEN`, and no claim promotion |
 | Reproducible paper build and visual inspection | PASS; 7 main-text pages before statements/references, 10 PDF pages total, anonymous metadata, four explicit `NOT A RESULT` placeholders |
 | ICLR 2027 Author/Reviewer/AI policy live recheck | PASS; Author Guidelines retain September 25, 2026 AOE and the reviewer FAQ still contains the stale September 16 sentence |
 
 The complete traceability matrices and five-layer verdict are in
 `artifacts/v6_traceability_audit_2026-08-07.md`.
 
-## Checks retained from the 2026-08-06 audit
+## Historical checks retained from the 2026-08-06 audit
+
+The counts in this section describe the immutable 2026-08-06 package snapshot. They are not the
+current 198-test or final-package totals recorded above.
 
 | Check | Command | Result |
 |---|---|---|
@@ -74,12 +95,12 @@ An earlier pre-final test-only revision reached evaluation and path and failed G
 - non-fixture compatibility/response probes;
 - q_comp or p_fail fitting;
 - path mechanism analysis;
-- equal-FLOP/concat controls;
-- formal Wi-GATr 200k-step or WiSER 100k-step training/evaluation, scene-ID, shuffled-pair, retention, resource-control, RT-calibration, literature-resource, or external-validity effect adapters;
+- non-fixture equal-FLOP/concat, scene-ID, shuffled-pair, retention, or resource-control executions;
+- formal Wi-GATr 200k-step or controlled WiSER training/evaluation, RT-calibration, literature-resource, or external-validity effect adapters;
 - any non-fixture result-producing experiment.
 
 Therefore no G0-G8 gate and no C1-C13 claim is promoted by this record. `NOT_ASSESSED` remains distinct from PASS.
 
 ## Remaining external inputs
 
-Formal execution still requires a qualified non-fixture dataset, independent regeneration and RT calibration evidence, actual Wi-GATr and WiSER checkpoints/six-condition rows, resource-control executions, licensed external-validation scene assets, and a completed Sionna G8 retrace. The inherited No-X/null failures and the four named warnings remain binding until untouched non-fixture evidence replaces them through the registered gates.
+Formal execution still requires a qualified non-fixture dataset, independent regeneration and RT calibration evidence, actual Wi-GATr plus a second C1-eligible model's checkpoints/six-condition rows, non-fixture executions of the shipped controls, licensed external-validation scene assets, and a completed Sionna G8 retrace. The inherited No-X/null failures and the four named warnings remain binding until untouched non-fixture evidence replaces them through the registered gates.

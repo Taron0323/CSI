@@ -9,8 +9,9 @@ The executable server package is under
 
 Current status:
 
-- engineering: `READY_FOR_DATA`;
+- package/software: verified on the audited code commit, with final bundle verification recorded in the traceability audit;
 - protocol implementation: V2.1 frozen-V6 path;
+- formal experiment readiness: `CODE_READY_FOR_FORMAL_INPUT`;
 - scientific claims: blocked until all required non-fixture gates and independent adapters pass;
 - fixture outputs: permanently `scientific_use=FORBIDDEN`.
 
@@ -27,4 +28,9 @@ Historical V1 code, local experiment runs, external reference downloads, environ
 The current tree includes an authenticated official-code adaptation of Wi-GATr under
 `code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters`. It is implemented but not yet formally trained or evaluated; C1
 remains blocked until Wi-GATr and at least one second map-conditioned model execute on the same
-non-fixture six-condition unit registry.
+non-fixture six-condition unit registry and both satisfy the frozen C1 eligibility and gate rules.
+
+The tree also ships executable, source-authenticated shuffled-pair, retained-representation,
+scene-ID, equal-FLOP, parameter-matched concat, FLOP-matched concat, and generous 2x concat
+controls. Their presence and fixture smoke runs establish software reachability only; no control
+can support a claim until its non-fixture prerequisites and downstream gates pass.

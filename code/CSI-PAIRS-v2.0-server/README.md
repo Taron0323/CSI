@@ -1,8 +1,12 @@
 # CSI-PAIRS V2.1 V6 server bundle
 
-Status: engineering `READY_FOR_DATA`; scientific `POST_AUDIT_NO_GO` until non-fixture gates pass.
+Status: formal code `CODE_READY_FOR_FORMAL_INPUT`; scientific evidence `NOT_ASSESSED` until
+required non-fixture gates pass. Archived V1 fixture failures remain non-scientific history.
 
 This bundle is self-contained for the V2.1 runtime. It does not require the frozen V1 `experiments/` tree. It includes the formal code, tests, configs, data contract, paper source, official LaTeX style files, draft PDF, claim contract, verification report, supplied external papers, and authenticated official source archives. It intentionally contains no formal dataset, external model checkpoint, licensed scene asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain `v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated bundle root are V2.1.
+
+The collaborator's GitHub tree is the sole implementation baseline. Historical local ICLR2027
+code is not imported, copied, or required by this bundle.
 
 ## 1. Server requirements
 
@@ -55,7 +59,7 @@ Authenticate all ten supplied resources before any external experiment:
 
 The core environment runs CSI-MAE, CSI-CLIP, CSI-CLIP++, ContraWiMAE, WWM, SigMap, WiSER, and RFIR
 controlled implementations. WWM and RFIR retain explicit inspired/style-controlled labels; WiSER is
-a paper-spec controlled adaptation over CSI-PAIRS-derived sparse scene tokens.
+a style-controlled 2D map/CSI diagnostic and is not C1-eligible.
 Wi-GATr retains its separate Python 3.10
 environment:
 
@@ -90,8 +94,16 @@ Use `formal_cli export-sionna-scenes` to generate the hashed PLY/XML/assets mani
 `formal_v2/configs/sionna_external_validity_adapter_v2.json` G8 adapter.
 G8 PASS uses the lower cluster-bootstrap confidence bound for active direction agreement and a
 cluster-level null-equivalence interval; repeated rows from one base map cannot increase its weight.
-Scene-ID, RT-calibration, and literature manifests use the V2 evidence schemas documented in
-`formal_v2/README.md`; legacy aggregate-only manifests are rejected.
+The built-in source-only SigMap scene-ID runner uses the V3 adapter/provenance contract and is
+selected by default. RT-calibration and literature manifests use the evidence schemas documented
+in `formal_v2/README.md`; legacy aggregate-only manifests are rejected.
+
+Shuffled-pair, retention, and all five resource controls are first-party executable adapters under
+`formal_v2/external_adapters/`. Each run binds source, config, dataset, checkpoints, per-unit rows,
+training traces, and replay artifacts. Resource accounting covers representation training and
+retained inference while excluding the common localization head on both sides; concat bottleneck
+parameters and measured training/inference FLOPs remain included. `generous_2x_concat` is
+report-only.
 
 ## 4. Inspect formal data
 
@@ -136,15 +148,16 @@ CSI_PAIRS_FORMAL_DATASET=/absolute/path/csi_pairs_formal_v2_1_v6.npz \
 CSI_PAIRS_FORMAL_OUTPUT="$PWD/runs/formal-all-001" \
 CSI_PAIRS_VERIFIER_MANIFEST=/absolute/path/independent_rt_verifier.json \
 CSI_PAIRS_EXTERNAL_ADAPTER_MANIFEST=/absolute/path/external_adapters.json \
-CSI_PAIRS_RESOURCE_CONTROL_MANIFEST=/absolute/path/resource_controls.json \
-CSI_PAIRS_SCENE_ID_MANIFEST=/absolute/path/scene_id.json \
 CSI_PAIRS_EXTERNAL_VALIDITY_MANIFEST=/absolute/path/external_validity.json \
 CSI_PAIRS_LITERATURE_RESOURCE_MANIFEST=/absolute/path/literature.json \
 CSI_PAIRS_RT_CALIBRATION_MANIFEST=/absolute/path/rt_calibration.json \
-CSI_PAIRS_SHUFFLED_PAIR_MANIFEST=/absolute/path/shuffled_pair.json \
-CSI_PAIRS_RETENTION_MANIFEST=/absolute/path/retention.json \
   formal_v2/scripts/run_formal_v2.sh
 ```
+
+The script defaults to the shipped resource V3, shuffled-pair V3, retention V3, and built-in
+scene-ID manifests. Override those environment variables only with reviewed, hash-authenticated
+alternatives. The verifier, external map baselines, external validity, literature, and independent
+RT-calibration inputs remain external and mandatory.
 
 Never reuse an output directory. Every individual evidence-producing CLI stage atomically reserves
 its registered output under an exclusive run-root operation lock. Incremental execution may share
