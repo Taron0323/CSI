@@ -96,7 +96,7 @@ def run_scene_id_audit(config, dataset, manifest_path, output_root):
     write_csv(output_dir / "per_unit.csv", bind_rows(all_rows, evidence))
     write_csv(output_dir / "per_model.csv", bind_rows(model_rows, evidence))
     gate = {
-        "schema_version": "csi-pairs-v6-scene-id-gate-v2",
+        "schema_version": "csi-pairs-v6-scene-id-gate-v3",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
@@ -440,10 +440,12 @@ def _model_assessment(config, adapter, rows):
         86002,
     )
     margin = float(config["evaluation"]["scene_id_error_noninferiority_m"])
-    minimum_correlation = float(config["evaluation"]["scene_id_swap_correlation_min"])
+    minimum_direction_cosine = float(
+        config["evaluation"]["scene_id_swap_direction_cosine_min"]
+    )
     passed = bool(
         noninferiority["ci95_high"] <= margin
-        and direction["ci95_low"] >= minimum_correlation
+        and direction["ci95_low"] >= minimum_direction_cosine
     )
     return {
         "adapter_id": adapter["adapter_id"],
@@ -459,7 +461,7 @@ def _model_assessment(config, adapter, rows):
         "map_swap_id_swap_direction_cosine": direction["paired_mean_difference"],
         "map_swap_id_swap_direction_cosine_ci95_low": direction["ci95_low"],
         "map_swap_id_swap_direction_cosine_ci95_high": direction["ci95_high"],
-        "minimum_swap_direction_cosine": minimum_correlation,
+        "minimum_swap_direction_cosine": minimum_direction_cosine,
         "passed": passed,
     }
 

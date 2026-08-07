@@ -138,7 +138,9 @@ def run_retention_audit(config, dataset, manifest_path, output_root):
     if result["adapter_source_sha256"] != source_hash:
         raise RuntimeError("retention result is not bound to the authenticated adapter source")
     checkpoints = _verify_checkpoint_index_binding(config, dataset, output_root, result)
-    probes = _verify_retention_probe_binding(config, dataset, output_dir, result)
+    probes = _verify_retention_probe_binding(
+        config, dataset, output_dir, result, checkpoints
+    )
     registry = _read_active_pair_registry(output_root, result, evidence, dataset)
     rows = _read_bound_rows(output_dir, result, "per_unit_results", _retention_columns())
     _validate_retention_rows(rows, registry, checkpoints, probes)
@@ -499,7 +501,9 @@ def _validate_shuffled_checkpoint(path, row, evidence, provenance_sha256):
         raise RuntimeError("shuffled checkpoint state is not the frozen formal model") from error
 
 
-def _verify_retention_probe_binding(config, dataset, output_dir, result):
+def _verify_retention_probe_binding(
+    config, dataset, output_dir, result, full_checkpoints
+):
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
@@ -562,7 +566,12 @@ def _verify_retention_probe_binding(config, dataset, output_dir, result):
             raise RuntimeError("retention probe index has a duplicate or unknown probe")
         path = _bound_output_file(output_dir, row["path"], row["sha256"], "retention probe")
         _validate_retention_probe_checkpoint(
-            path, seed, kind, evidence, result["probe_training_provenance_sha256"]
+            path,
+            seed,
+            kind,
+            evidence,
+            result["probe_training_provenance_sha256"],
+            full_checkpoints.get(seed),
         )
         probes[seed][kind] = row["sha256"]
     if set(probes) != set(map(int, config["seeds"])) or any(
@@ -572,7 +581,14 @@ def _verify_retention_probe_binding(config, dataset, output_dir, result):
     return probes
 
 
-def _validate_retention_probe_checkpoint(path, seed, kind, evidence, provenance_sha256):
+def _validate_retention_probe_checkpoint(
+    path,
+    seed,
+    kind,
+    evidence,
+    provenance_sha256,
+    full_checkpoint_sha256,
+):
     try:
         import torch
 
@@ -593,7 +609,8 @@ def _validate_retention_probe_checkpoint(path, seed, kind, evidence, provenance_
         or payload["fit_role"] != "source_probe_train"
         or payload["selection_role"] != "source_probe_selection"
         or payload["training_provenance_sha256"] != provenance_sha256
-        or not _lower_sha256(payload["full_checkpoint_sha256"])
+        or not _lower_sha256(full_checkpoint_sha256)
+        or payload["full_checkpoint_sha256"] != full_checkpoint_sha256
         or not isinstance(payload["state_dict"], dict)
         or not payload["state_dict"]
     ):

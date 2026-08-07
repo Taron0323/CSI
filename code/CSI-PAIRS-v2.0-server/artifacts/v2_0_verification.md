@@ -44,7 +44,7 @@ delivery PR, not embedded in runtime configuration or the release bundle.
 | Current locked lint | NOT AVAILABLE: `ruff` is not present or version-pinned in `formal_v2/requirements-lock.txt`; the historical 2026-08-06 ruff result below is not promoted to a current reproducible check |
 | Secret/path/cache/large-file scan | PASS with declared assets: no credential or personal absolute path; ignored test bytecode removed; large tracked files are authenticated papers/source archives and the draft PDF |
 | Repository and vendored SHA-256 inventories | PASS after regeneration |
-| Fresh server ZIP and extraction | 166/166 package hashes PASS; ZIP structure PASS; extracted 198/198 tests PASS; extracted dry run PASS with `scientific_use=FORBIDDEN` |
+| Fresh server ZIP and extraction | 166/166 package hashes PASS; ZIP structure PASS; extracted 199/199 tests PASS; extracted dry run PASS with `scientific_use=FORBIDDEN` |
 | Non-scientific `make-fixture -> verify-data -> qualify` | verifier PASS; qualification `DRY_RUN_FAIL_NOT_EVIDENCE` on route coverage; native route noise-floor component PASS; `scientific_use=FORBIDDEN` |
 | Non-scientific five-resource-control chain | all five adapters emitted three authenticated seeds, checkpoints, traces and replay; scientific gates retained fixture FAIL/FORBIDDEN boundaries |
 | Non-scientific cross-source-city scene-ID chain | built-in SigMap adapter executed to its software gate; `fixture=true`, `scientific_use=FORBIDDEN`, and no claim promotion |

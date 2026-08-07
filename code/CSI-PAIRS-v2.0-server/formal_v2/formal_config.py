@@ -8,7 +8,7 @@ from .formal_io import read_strict_json
 from .formal_protocol import FROZEN_RANDOM_MASK_FRACTION
 
 
-SCHEMA_VERSION = "csi-pairs-formal-config-v2.1-v6"
+SCHEMA_VERSION = "csi-pairs-formal-config-v2.2-v6"
 ARMS = ("endpoint", "alignment", "response", "full")
 TOP_LEVEL_KEYS = {
     "schema_version",
@@ -130,7 +130,7 @@ EVALUATION_KEYS = {
     "c1_null_error_equivalence_margin_m",
     "resource_match_relative_tolerance",
     "scene_id_error_noninferiority_m",
-    "scene_id_swap_correlation_min",
+    "scene_id_swap_direction_cosine_min",
     "shuffled_gain_fraction_max",
     "retention_minimum_effect",
     "bootstrap_resamples",
@@ -421,8 +421,8 @@ def validate_formal_config(config: object) -> None:
         minimum=0.0,
     )
     _finite_number(
-        evaluation["scene_id_swap_correlation_min"],
-        "evaluation.scene_id_swap_correlation_min",
+        evaluation["scene_id_swap_direction_cosine_min"],
+        "evaluation.scene_id_swap_direction_cosine_min",
         minimum=-1.0,
         maximum=1.0,
     )

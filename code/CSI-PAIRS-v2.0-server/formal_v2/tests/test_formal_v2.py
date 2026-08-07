@@ -154,7 +154,7 @@ SMOKE_CONFIG = ROOT / "formal_v2" / "configs" / "formal_v2_smoke.json"
 class ConfigTests(unittest.TestCase):
     def test_config_is_v6_and_has_complete_sections(self):
         config = load_formal_config(SMOKE_CONFIG)
-        self.assertEqual(config["schema_version"], "csi-pairs-formal-config-v2.1-v6")
+        self.assertEqual(config["schema_version"], "csi-pairs-formal-config-v2.2-v6")
         self.assertEqual(len(config["seeds"]), 3)
         self.assertEqual(config["factorial"]["arms"], ["endpoint", "alignment", "response", "full"])
         self.assertEqual(set(("teacher", "evaluation", "risk", "path")).difference(config), set())

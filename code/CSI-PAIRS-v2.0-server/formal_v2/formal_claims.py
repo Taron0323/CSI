@@ -44,7 +44,7 @@ STAGE_SPECS = {
         "external_baselines/gate.json",
         "csi-pairs-v6-external-baseline-gate-v2",
     ),
-    "scene_id_mechanism": ("scene_id/gate.json", "csi-pairs-v6-scene-id-gate-v2"),
+    "scene_id_mechanism": ("scene_id/gate.json", "csi-pairs-v6-scene-id-gate-v3"),
     "shuffled_pair": (
         "controls/shuffled_pair/gate.json",
         "csi-pairs-v6-shuffled-pair-gate-v3",

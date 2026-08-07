@@ -31,7 +31,7 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | Layer | Verdict | Evidence and boundary |
 |---|---|---|
 | `PACKAGE_INTEGRITY` | `PASS` | Repository SHA inventory and all 166 clean-package entries verify; ZIP structure passes; no private path, secret, cache, or run output is included. |
-| `SOFTWARE_EXECUTION` | `PASS` | 198 unit tests in both the repository and clean extraction, Python compilation, 22 CLI help paths, strict configs, shell syntax, dependency health, resource hashes, extracted dry run, resource-control smoke, and cross-source-city scene-ID smoke complete. |
+| `SOFTWARE_EXECUTION` | `PASS` | 199 unit tests in both the repository and clean extraction, Python compilation, 22 CLI help paths, strict configs, shell syntax, dependency health, resource hashes, extracted dry run, resource-control smoke, and cross-source-city scene-ID smoke complete. |
 | `V6_PROTOCOL_FIDELITY` | `PASS_WITH_EXTERNAL_INPUT_BOUNDARIES` | All code-resolvable P0/P1 findings in this audit are closed. Missing formal inputs and truly independent evidence remain fail-closed. |
 | `FORMAL_EXPERIMENT_READINESS` | `CODE_READY_FOR_FORMAL_INPUT` | The runner can start formal qualification when admissible inputs exist, but the complete reviewer-grade `all` run is externally blocked. |
 | `SCIENTIFIC_EVIDENCE` | `NOT_ASSESSED` | No qualified non-fixture Stage-0, four-arm, target-city, calibration, or external-validity result has been run. |
@@ -43,15 +43,17 @@ Fixture and smoke results remain permanently inadmissible as scientific evidence
 | Module ownership | Dataset/teacher/model/factorial/evaluation/statistics/claims remain separate modules; new adapters call the existing training and evidence APIs | Preserved |
 | Dependency direction | External adapters depend on `formal_v2`; core model/data modules do not depend on adapter-specific implementations | Preserved |
 | Public CLI | Existing commands and arguments retain their meaning; new manifests are optional defaults and fixture cross-city coverage is opt-in | Backward-compatible extension |
-| Data/config schemas | Formal NPZ and frozen formal/smoke config schemas are unchanged; fixture generation only adds an optional non-scientific multiplicity parameter | Preserved |
+| Data/config schemas | Formal NPZ is unchanged; formal/smoke configs move to V2.2 to name the scene-ID direction-cosine threshold explicitly; fixture generation only adds an optional non-scientific multiplicity parameter | Explicit config-schema revision; data schema preserved |
 | Checkpoint semantics | Teacher/factorial checkpoints remain unchanged; new control checkpoints are separately versioned and source/config/dataset/seed bound | Preserved |
-| F/P/teacher/route semantics | No allowed model input, estimand, route definition, loss definition, or retained-module rule was changed | Preserved |
+| F/P/teacher/route semantics | F/P inputs, routes, losses, and retained-module rules are unchanged; the scene-ID swap statistic is explicitly versioned as a V3 displacement-direction cosine estimand | Preserved except for the declared scene-ID V3 estimand revision |
 | Four-arm semantics | Common plan, initialization, teacher, optimization budget, downstream head, and evidence gates remain shared | Preserved |
 | Resource fairness | Common localization head is excluded symmetrically; independently trained concat bottleneck parameters and FLOPs are included | V6-aligned clarification |
 | Vendored/official code | Vendored Wi-GATr bytes are unmodified; controlled implementations retain accurate non-official labels | Preserved |
 | Evidence promotion | Fixture, smoke, missing, hash-mismatched, and `NOT_ASSESSED` artifacts remain unable to promote G0--G8 or C1--C13 | Preserved and strengthened |
 
-No principle-level collaborator architecture or public scientific semantics was changed.
+No principle-level collaborator architecture was changed. The scene-ID V3 gate makes its revised
+displacement-direction estimand explicit in the schema and configuration key rather than silently
+reusing the earlier correlation contract.
 
 ## Paper-to-code traceability
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": "csi-pairs-formal-config-v2.1-v6",
+  "schema_version": "csi-pairs-formal-config-v2.2-v6",
   "artifact_label": "csi-pairs-v6-software-fixture",
   "seeds": [17, 23, 31],
   "data": {
@@ -106,7 +106,7 @@
     "c1_null_error_equivalence_margin_m": 0.05,
     "resource_match_relative_tolerance": 0.05,
     "scene_id_error_noninferiority_m": 0.25,
-    "scene_id_swap_correlation_min": 0.8,
+    "scene_id_swap_direction_cosine_min": 0.8,
     "shuffled_gain_fraction_max": 0.1,
     "retention_minimum_effect": 1e-09,
     "bootstrap_resamples": 100,

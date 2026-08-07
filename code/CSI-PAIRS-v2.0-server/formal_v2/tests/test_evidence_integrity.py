@@ -622,6 +622,43 @@ class EvidenceIntegrityTests(unittest.TestCase):
                     "compatibility",
                     evidence,
                     "c" * 64,
+                    "d" * 64,
+                )
+
+    def test_retention_probe_must_bind_its_seed_full_checkpoint(self):
+        try:
+            import torch
+        except ImportError:
+            self.skipTest("PyTorch unavailable")
+        with tempfile.TemporaryDirectory() as temporary:
+            checkpoint = Path(temporary) / "probe.pt"
+            evidence = {
+                "dataset_sha256": "a" * 64,
+                "config_sha256": "b" * 64,
+                "fixture": False,
+            }
+            torch.save(
+                {
+                    "schema_version": "csi-pairs-v6-retention-probe-checkpoint-v1",
+                    "seed": 7,
+                    "kind": "compatibility",
+                    **evidence,
+                    "fit_role": "source_probe_train",
+                    "selection_role": "source_probe_selection",
+                    "training_provenance_sha256": "c" * 64,
+                    "full_checkpoint_sha256": "d" * 64,
+                    "state_dict": {"weight": torch.ones(1)},
+                },
+                checkpoint,
+            )
+            with self.assertRaisesRegex(RuntimeError, "identity mismatch"):
+                _validate_retention_probe_checkpoint(
+                    checkpoint,
+                    7,
+                    "compatibility",
+                    evidence,
+                    "c" * 64,
+                    "e" * 64,
                 )
 
     def test_resource_control_commands_must_execute_bound_source_and_spec(self):
