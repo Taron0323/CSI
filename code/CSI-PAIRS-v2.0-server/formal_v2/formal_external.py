@@ -232,7 +232,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
     }
     passed = len(c1_eligible_models) >= 2
     gate = {
-        "schema_version": "csi-pairs-v6-external-baseline-gate-v2",
+        "schema_version": "csi-pairs-v6-external-baseline-gate-v3",
         "status": "PASS" if passed else "BLOCKED",
         "passed": passed,
         **evidence,
@@ -243,6 +243,7 @@ def run_external_baselines(config, dataset, manifest_path, output_root):
         "c1_eligible_model_count": len(c1_eligible_models),
         "c1_eligible_models": sorted(c1_eligible_models),
         "c1_required_eligible_model_count": 2,
+        "c1_city_gate_contract": "all-evaluation-cities-must-pass-v1",
         "model_assessments": model_assessments,
         "condition_input_contract": "outer-recomputed-map-and-action-sha256-v1",
         "condition_registry_path": condition_registry_path.name,
@@ -646,97 +647,137 @@ def _c1_model_assessment(config, adapter, rows, dataset, *, expected_unit_contra
             else str(dataset.bank_ids[scene])
         )
         key = (
+            str(dataset.city_ids[scene]),
             foundation,
             bank,
         )
         grouped_units.setdefault(key, []).append(unit)
     cells = sorted(grouped_units)
-    clusters = np.asarray([key[0] for key in cells])
-
-    def collapsed(condition):
-        return np.asarray(
-            [
-                np.mean(
-                    [
-                        float(lookup[(unit, condition)]["localization_error_m"])
-                        for unit in grouped_units[key]
-                    ]
-                )
-                for key in cells
-            ],
-            dtype=np.float64,
-        )
-
-    correct = collapsed("correct")
-    active = collapsed("paired_active_alternative")
-    null = collapsed("paired_null_alternative")
-    cluster_count = int(np.unique(clusters).size)
-    if cluster_count < 2:
-        return {
-            "adapter_id": adapter["adapter_id"],
-            "model_name": adapter["model_name"],
-            "c1_eligible": adapter["c1_eligible"],
-            "base_map_cluster_count": cluster_count,
-            "passed": False,
-            "reason": "fewer than two independent base-map clusters",
-        }
     resamples = int(config["evaluation"]["bootstrap_resamples"])
-    active_interval = paired_cluster_interval(clusters, active, correct, resamples, 86101)
-    null_interval = paired_cluster_interval(clusters, null, correct, resamples, 86102)
-    stress_intervals = {
-        condition: paired_cluster_interval(
-            clusters,
-            collapsed(condition),
-            correct,
-            resamples,
-            86110 + index,
-        )
-        for index, condition in enumerate(("wrong_city", "geometry_destroyed", "empty"))
-    }
     active_minimum = float(config["evaluation"]["c1_active_error_minimum_m"])
     margin = float(config["evaluation"]["c1_null_error_equivalence_margin_m"])
     maximum_rate = float(config["evaluation"]["null_overclassification_rate_max"])
-    cluster_rates = []
-    for cluster in sorted(set(clusters.tolist())):
-        selected = clusters == cluster
-        cluster_rates.append(float(np.mean((null[selected] - correct[selected]) > margin)))
-    overclassification_rate = float(np.mean(cluster_rates))
-    rate_rng = np.random.default_rng(86103)
-    rate_samples = np.asarray(
-        [
-            np.mean(
-                np.asarray(cluster_rates)[
-                    rate_rng.integers(0, len(cluster_rates), size=len(cluster_rates))
-                ]
+
+    def assess(selected_cells, seed):
+        selected_cells = sorted(selected_cells)
+        clusters = np.asarray([key[1] for key in selected_cells])
+        cluster_count = int(np.unique(clusters).size)
+        if cluster_count < 2:
+            return {
+                "base_map_cluster_count": cluster_count,
+                "active_effect_passed": False,
+                "null_safety_passed": False,
+                "passed": False,
+                "reason": "fewer than two independent base-map clusters",
+            }
+
+        def collapsed(condition):
+            return np.asarray(
+                [
+                    np.mean(
+                        [
+                            float(
+                                lookup[(unit, condition)]["localization_error_m"]
+                            )
+                            for unit in grouped_units[key]
+                        ]
+                    )
+                    for key in selected_cells
+                ],
+                dtype=np.float64,
             )
-            for _ in range(resamples)
-        ],
-        dtype=np.float64,
-    )
-    overclassification_rate_high = float(np.percentile(rate_samples, 97.5))
-    active_passed = interval_decision(
-        active_interval, threshold=active_minimum, relation="superiority"
-    )
-    null_passed = bool(
-        interval_decision(null_interval, threshold=margin, relation="equivalence")
-        and overclassification_rate_high <= maximum_rate
+
+        correct = collapsed("correct")
+        active = collapsed("paired_active_alternative")
+        null = collapsed("paired_null_alternative")
+        active_interval = paired_cluster_interval(
+            clusters, active, correct, resamples, seed
+        )
+        null_interval = paired_cluster_interval(
+            clusters, null, correct, resamples, seed + 1
+        )
+        stress_intervals = {
+            condition: paired_cluster_interval(
+                clusters,
+                collapsed(condition),
+                correct,
+                resamples,
+                seed + 10 + index,
+            )
+            for index, condition in enumerate(
+                ("wrong_city", "geometry_destroyed", "empty")
+            )
+        }
+        cluster_rates = []
+        for cluster in sorted(set(clusters.tolist())):
+            selected = clusters == cluster
+            cluster_rates.append(
+                float(np.mean((null[selected] - correct[selected]) > margin))
+            )
+        overclassification_rate = float(np.mean(cluster_rates))
+        rate_rng = np.random.default_rng(seed + 2)
+        rates = np.asarray(cluster_rates)
+        rate_samples = np.asarray(
+            [
+                np.mean(
+                    rates[
+                        rate_rng.integers(0, len(cluster_rates), size=len(cluster_rates))
+                    ]
+                )
+                for _ in range(resamples)
+            ],
+            dtype=np.float64,
+        )
+        overclassification_rate_high = float(np.percentile(rate_samples, 97.5))
+        active_passed = interval_decision(
+            active_interval, threshold=active_minimum, relation="superiority"
+        )
+        null_passed = bool(
+            interval_decision(null_interval, threshold=margin, relation="equivalence")
+            and overclassification_rate_high <= maximum_rate
+        )
+        return {
+            "base_map_cluster_count": cluster_count,
+            "active_error_minus_correct": active_interval,
+            "active_error_minimum_m": active_minimum,
+            "active_effect_passed": active_passed,
+            "null_error_minus_correct": null_interval,
+            "null_equivalence_margin_m": margin,
+            "null_overclassification_rate": overclassification_rate,
+            "null_overclassification_rate_ci95_high": overclassification_rate_high,
+            "null_overclassification_rate_max": maximum_rate,
+            "null_safety_passed": null_passed,
+            "stress_condition_error_minus_correct": stress_intervals,
+            "passed": bool(active_passed and null_passed),
+        }
+
+    pooled = assess(cells, 86101)
+    cities = sorted({key[0] for key in cells})
+    city_assessments = {
+        city: {
+            "city_id": city,
+            **assess(
+                [key for key in cells if key[0] == city],
+                86201 + 20 * index,
+            ),
+        }
+        for index, city in enumerate(cities)
+    }
+    all_cities_passed = bool(
+        city_assessments
+        and all(row["passed"] is True for row in city_assessments.values())
     )
     return {
         "adapter_id": adapter["adapter_id"],
         "model_name": adapter["model_name"],
         "c1_eligible": adapter["c1_eligible"],
-        "base_map_cluster_count": cluster_count,
-        "active_error_minus_correct": active_interval,
-        "active_error_minimum_m": active_minimum,
-        "active_effect_passed": active_passed,
-        "null_error_minus_correct": null_interval,
-        "null_equivalence_margin_m": margin,
-        "null_overclassification_rate": overclassification_rate,
-        "null_overclassification_rate_ci95_high": overclassification_rate_high,
-        "null_overclassification_rate_max": maximum_rate,
-        "null_safety_passed": null_passed,
-        "stress_condition_error_minus_correct": stress_intervals,
-        "passed": bool(active_passed and null_passed),
+        **pooled,
+        "aggregation": "pooled-report-plus-simultaneous-per-city-gate",
+        "evaluation_city_count": len(cities),
+        "evaluation_cities": cities,
+        "city_assessments": city_assessments,
+        "all_cities_passed": all_cities_passed,
+        "passed": bool(pooled["passed"] and all_cities_passed),
     }
 
 
@@ -761,9 +802,23 @@ def _validate_execution_manifest(adapter, output_dir, result_path, dataset):
         "command_sha256",
         "results_sha256",
     }
+    external_wigatr_runtime = ".venv-wigatr" in adapter["command"][0]
+    if external_wigatr_runtime:
+        required.update(
+            {
+                "runtime_provenance_path",
+                "runtime_provenance_sha256",
+                "runtime_environment_sha256",
+            }
+        )
     if not isinstance(payload, dict) or set(payload) != required:
         raise RuntimeError("external execution manifest fields must be exact")
-    if payload["schema_version"] != "csi-pairs-v6-external-execution-v2":
+    expected_schema = (
+        "csi-pairs-v6-external-execution-v3"
+        if external_wigatr_runtime
+        else "csi-pairs-v6-external-execution-v2"
+    )
+    if payload["schema_version"] != expected_schema:
         raise RuntimeError("external execution manifest schema mismatch")
     for key in (
         "adapter_id",
@@ -802,6 +857,42 @@ def _validate_execution_manifest(adapter, output_dir, result_path, dataset):
         raise RuntimeError("external training record violates the source-only role ledger")
     if sha256_file(result_path) != payload["results_sha256"]:
         raise RuntimeError("external result hash mismatch")
+    if external_wigatr_runtime:
+        from .formal_external_runtime import (
+            probe_external_runtime,
+            validate_external_runtime,
+        )
+
+        runtime_path = (output_dir / payload["runtime_provenance_path"]).resolve()
+        if output_dir.resolve() not in runtime_path.parents or not runtime_path.is_file():
+            raise RuntimeError(
+                "external runtime provenance is missing or escapes adapter output"
+            )
+        if sha256_file(runtime_path) != payload["runtime_provenance_sha256"]:
+            raise RuntimeError("external runtime provenance hash mismatch")
+        runtime_record = read_strict_json(runtime_path)
+        project_root = Path(__file__).resolve().parents[1]
+        executable = adapter["command"][0].replace(
+            "{project_root}", str(project_root)
+        )
+        validate_external_runtime(
+            runtime_record,
+            profile="wigatr",
+            executable=executable,
+            require_execution_ready=True,
+        )
+        independently_probed = probe_external_runtime(
+            executable,
+            "wigatr",
+            project_root,
+            require_execution_ready=True,
+        )
+        if runtime_record != independently_probed:
+            raise RuntimeError(
+                "external runtime provenance differs from the independently probed interpreter"
+            )
+        if payload["runtime_environment_sha256"] != runtime_record["environment_sha256"]:
+            raise RuntimeError("external runtime environment digest mismatch")
 
 
 def _expected_six_condition_units(config, dataset, output_root):

@@ -8,7 +8,11 @@ import sys
 import numpy as np
 
 from formal_v2.formal_dataset import FormalDataset
-from formal_v2.formal_io import read_strict_json, sha256_file
+from formal_v2.formal_external_runtime import (
+    collect_external_runtime,
+    validate_external_runtime,
+)
+from formal_v2.formal_io import read_strict_json, sha256_file, write_json
 from formal_v2.formal_protocol import PatchSpec
 from formal_v2.formal_resources import validate_resource_registry
 
@@ -40,6 +44,20 @@ def run(args):
     dataset = FormalDataset.load(args.dataset)
     manifest = load_scene_manifest(args.scene_manifest, dataset)
     _require_sionna_version(manifest["sionna_rt_version"])
+    output = Path(args.output).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    for name in ("external_csi.npz", "runtime_provenance.json"):
+        if (output / name).exists() or (output / name).is_symlink():
+            raise FileExistsError(f"refusing to overwrite Sionna output: {name}")
+    runtime_provenance = collect_external_runtime(
+        "sionna", Path(__file__).resolve().parents[2]
+    )
+    validate_external_runtime(
+        runtime_provenance,
+        profile="sionna",
+        executable=sys.executable,
+        require_execution_ready=True,
+    )
     scenes = dataset.indices_for_role("external_validation")
     cfr = _trace_all(dataset, manifest, scenes)
     external_csi = np.stack(
@@ -54,14 +72,13 @@ def run(args):
     )
     if not np.all(np.isfinite(external_csi)):
         raise RuntimeError("Sionna external-validity adapter produced nonfinite CSI")
-    output = Path(args.output).resolve()
-    output.mkdir(parents=True, exist_ok=True)
     np.savez(
         output / "external_csi.npz",
         scene_ids=np.asarray(dataset.scene_ids[scenes], dtype=str),
         position_ids=np.asarray(dataset.position_ids[scenes], dtype=str),
         external_csi=np.asarray(external_csi, dtype=np.float64),
     )
+    write_json(output / "runtime_provenance.json", runtime_provenance)
 
 
 def load_scene_manifest(path: str | Path, dataset) -> dict:

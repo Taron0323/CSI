@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import sys
 from pathlib import Path
 
@@ -78,6 +79,15 @@ def build_parser() -> argparse.ArgumentParser:
     sionna_export.add_argument("--receiver-z-m", type=float, default=1.5)
     sionna_export.add_argument("--max-depth", type=int, default=5)
     sionna_export.add_argument("--refraction", action="store_true")
+    approval = subparsers.add_parser(
+        "create-run-approval",
+        help="create an external approval after manually reviewing a prepared request",
+    )
+    approval.add_argument("--request", required=True)
+    approval.add_argument("--output", required=True)
+    approval.add_argument("--approver", required=True)
+    approval.add_argument("--expires-utc", required=True)
+    approval.add_argument("--attest-reviewed", action="store_true")
 
     for command in (
         "inspect-data",
@@ -98,13 +108,14 @@ def build_parser() -> argparse.ArgumentParser:
         "run-shuffled-pair-control",
         "run-retention-audit",
         "assemble-claims",
+        "prepare-full-run",
         "all",
     ):
         child = subparsers.add_parser(command)
         child.add_argument("--config", required=True)
         child.add_argument("--output", required=True)
         child.add_argument("--dataset", help="optional dataset override; does not mutate the config")
-        if command in {"run-factorial", "all"}:
+        if command in {"run-factorial", "prepare-full-run", "all"}:
             child.add_argument(
                 "--allow-nonscientific-fixture",
                 action="store_true",
@@ -116,16 +127,15 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("--data-verification-gate", help="defaults to OUTPUT/data_verification/gate.json")
         if command == "verify-data":
             child.add_argument("--verifier-manifest", required=True)
-        if command == "all":
+        if command in {"prepare-full-run", "all"}:
             child.add_argument(
-                "--approve-full-experiment",
-                action="store_true",
-                help="confirm that the non-fixture Response qualification received human stop/go approval",
+                "--compute-plan",
+                help="strict external disk/GPU/time/license budget manifest",
             )
             child.add_argument("--verifier-manifest", required=True)
             child.add_argument(
                 "--risk-feature-manifest",
-                help="deprecated; all replays risk features in first-party code",
+                help="deprecated; the full chain replays risk features in first-party code",
             )
             child.add_argument("--adapter-manifest", required=True)
             child.add_argument(
@@ -146,6 +156,16 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument(
                 "--representation-baseline-config",
                 default=str(Path(__file__).resolve().parent / "configs" / "representation_baselines_v1.json"),
+            )
+        if command == "all":
+            child.add_argument(
+                "--approval-manifest",
+                help="external human approval bound to OUTPUT/approval/request.json",
+            )
+            child.add_argument(
+                "--approve-full-experiment",
+                action="store_true",
+                help="deprecated compatibility flag; it has no authorization power",
             )
         if command == "run-wrong-map":
             child.add_argument("--qualification-gate", help="defaults to OUTPUT/qualification/gate.json")
@@ -191,11 +211,16 @@ def main(argv: list[str] | None = None) -> int:
 
     configure_reproducible_runtime()
     args = build_parser().parse_args(argv)
-    if args.command == "all" and not args.approve_full_experiment:
+    if args.command == "all" and not args.approval_manifest:
         print(
-            "error: the full experiment chain requires explicit Response-gate approval; "
-            "run verify-data and qualify first, review the stop/go rows, then pass "
-            "--approve-full-experiment",
+            "error: all requires --approval-manifest for the exact prepared run; "
+            "--approve-full-experiment is deprecated and cannot authorize execution",
+            file=sys.stderr,
+        )
+        return 2
+    if args.command in {"prepare-full-run", "all"} and not args.compute_plan:
+        print(
+            "error: full-run preparation and execution require --compute-plan",
             file=sys.stderr,
         )
         return 2
@@ -237,6 +262,27 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(json.dumps({"status": "PASS", "manifest": str(manifest)}, sort_keys=True))
             return 0
+        if args.command == "create-run-approval":
+            from .formal_run_approval import create_human_approval_manifest
+
+            approval = create_human_approval_manifest(
+                args.request,
+                args.output,
+                approver=args.approver,
+                expires_utc=args.expires_utc,
+                attest_reviewed=bool(args.attest_reviewed),
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": "APPROVED",
+                        "approval_manifest": approval["approval_manifest_path"],
+                        "request_sha256": approval["request_sha256"],
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
         config = load_formal_config(args.config)
         dataset_path = Path(args.dataset).resolve() if args.dataset else resolve_dataset_path(config)
         dataset = FormalDataset.load(
@@ -249,16 +295,53 @@ def main(argv: list[str] | None = None) -> int:
             minimum_target_cities=int(config["data"]["minimum_target_cities"]),
             minimum_source_cities=int(config["data"]["minimum_source_cities"]),
             minimum_banks_per_target_city=int(config["data"]["minimum_banks_per_target_city"]),
+            minimum_independent_base_map_clusters_per_target_city=int(
+                config["data"][
+                    "minimum_independent_base_map_clusters_per_target_city"
+                ]
+            ),
             minimum_banks_per_source_role=int(config["data"]["minimum_banks_per_source_role"]),
         )
         output = Path(args.output).resolve()
+        full_run_preflight = None
+        if args.command in {"prepare-full-run", "all"}:
+            from .formal_run_approval import (
+                full_run_input_values,
+                preflight_full_run,
+            )
+
+            full_run_preflight = preflight_full_run(
+                config,
+                dataset,
+                output,
+                args.compute_plan,
+                full_run_input_values(args),
+                resource_registry=(
+                    Path(__file__).resolve().parent
+                    / "configs"
+                    / "waibu_resources_v1.json"
+                ),
+                waibu_root=Path(__file__).resolve().parents[1] / "waibu",
+                resume=args.command == "all",
+            )
         output_lock = _acquire_output_lock(output)
-        if args.command == "all":
+        if args.command == "prepare-full-run":
             _reserve_full_run_output(output)
+        elif args.command == "all":
+            if not output.is_dir() or output.is_symlink():
+                raise RuntimeError("all requires an existing prepared run root")
         else:
             _reserve_command_output(args.command, output)
             output.mkdir(parents=True, exist_ok=True)
-        if args.command == "inspect-data":
+        if args.command == "prepare-full-run":
+            result = _prepare_full_run(
+                config,
+                dataset,
+                output,
+                args,
+                full_run_preflight,
+            )
+        elif args.command == "inspect-data":
             target = output / "data_contract.json"
             report = dataset.contract_report()
             write_json(target, report)
@@ -368,89 +451,26 @@ def main(argv: list[str] | None = None) -> int:
 
             result = assemble_claim_evidence(config, dataset, output)
         else:
-            from .formal_resources import verify_waibu_resources
-
-            resource_gate = verify_waibu_resources(
-                Path(__file__).resolve().parent / "configs" / "waibu_resources_v1.json",
-                Path(__file__).resolve().parents[1] / "waibu",
-                output,
-            )
-            if resource_gate.get("passed") is not True:
-                raise RuntimeError("formal run is blocked because waibu resource verification failed")
-            from .formal_data_verification import run_data_verification
-
-            verification = run_data_verification(config, dataset, args.verifier_manifest, output)
-            from .formal_qualification import run_formal_qualification
-
-            qualification = run_formal_qualification(
+            result = _run_authorized_full_chain(
                 config,
                 dataset,
                 output,
-                verification,
-                data_verification_gate_path=output / "data_verification" / "gate.json",
+                args,
+                full_run_preflight,
             )
-            from .formal_wrong_map import run_formal_wrong_map
-
-            run_formal_wrong_map(config, dataset, output, qualification)
-            from .formal_factorial import run_formal_factorial
-
-            result = run_formal_factorial(
-                config,
-                dataset,
-                output,
-                qualification,
-                allow_nonscientific_fixture=bool(args.allow_nonscientific_fixture),
+        if args.command == "prepare-full-run":
+            print(
+                json.dumps(
+                    {
+                        "status": result["status"],
+                        "output": str(output),
+                        "request": result["request"],
+                        "request_sha256": result["request_sha256"],
+                    },
+                    sort_keys=True,
+                )
             )
-            from .formal_evaluation import run_formal_evaluation
-
-            run_formal_evaluation(config, dataset, output, qualification, result)
-            from .formal_risk import run_risk_contract
-
-            run_risk_contract(config, dataset, output)
-            from .formal_path import run_path_audit
-
-            run_path_audit(config, dataset, output / "factorial", output)
-            from .formal_external import run_external_baselines
-
-            run_external_baselines(config, dataset, args.adapter_manifest, output)
-            from .formal_representation_baselines import run_representation_baselines
-
-            run_representation_baselines(
-                config, dataset, args.representation_baseline_config, output
-            )
-            from .formal_controls import run_resource_controls
-
-            run_resource_controls(config, dataset, args.control_manifest, output)
-            from .formal_scene_id import run_scene_id_audit
-
-            run_scene_id_audit(config, dataset, args.scene_id_manifest, output)
-            from .formal_external_validity import run_external_validity
-
-            run_external_validity(
-                config, dataset, args.external_validity_manifest, output
-            )
-            from .formal_literature import run_literature_resource_gate
-
-            run_literature_resource_gate(
-                config, dataset, args.literature_resource_manifest, output
-            )
-            from .formal_rt_calibration import run_rt_calibration_gate
-
-            run_rt_calibration_gate(
-                config, dataset, args.rt_calibration_manifest, output
-            )
-            from .formal_claim_controls import (
-                run_retention_audit,
-                run_shuffled_pair_control,
-            )
-
-            run_shuffled_pair_control(
-                config, dataset, args.shuffled_pair_manifest, output
-            )
-            run_retention_audit(config, dataset, args.retention_manifest, output)
-            from .formal_claims import assemble_claim_evidence
-
-            result = assemble_claim_evidence(config, dataset, output)
+            return _result_exit_code(result)
         from .formal_evidence import evidence_context
 
         root_scientific_use = "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
@@ -464,13 +484,207 @@ def main(argv: list[str] | None = None) -> int:
             },
         )
         print(json.dumps({"status": result.get("status", "success"), "output": str(output.resolve())}, sort_keys=True))
-        return 0
+        return _result_exit_code(result)
     except Exception as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     finally:
         if output_lock is not None:
             output_lock.unlink(missing_ok=True)
+
+
+def _prepare_full_run(config, dataset, output, args, preflight):
+    from .formal_data_verification import run_data_verification
+    from .formal_literature import run_literature_resource_gate
+    from .formal_qualification import run_formal_qualification
+    from .formal_resources import verify_waibu_resources
+    from .formal_rt_calibration import run_rt_calibration_gate
+    from .formal_run_approval import write_approval_request
+
+    resource_gate = verify_waibu_resources(
+        Path(__file__).resolve().parent / "configs" / "waibu_resources_v1.json",
+        Path(__file__).resolve().parents[1] / "waibu",
+        output,
+    )
+    _require_preapproval_pass(resource_gate, "waibu resource verification", dataset)
+    g0 = run_literature_resource_gate(
+        config,
+        dataset,
+        args.literature_resource_manifest,
+        output,
+    )
+    _require_preapproval_pass(g0, "G0 literature/resource gate", dataset)
+    rt = run_rt_calibration_gate(
+        config,
+        dataset,
+        args.rt_calibration_manifest,
+        output,
+    )
+    _require_preapproval_pass(rt, "independent RT calibration", dataset)
+    verification = run_data_verification(
+        config,
+        dataset,
+        args.verifier_manifest,
+        output,
+    )
+    _require_preapproval_pass(verification, "independent data verification", dataset)
+    qualification = run_formal_qualification(
+        config,
+        dataset,
+        output,
+        verification,
+        data_verification_gate_path=output / "data_verification" / "gate.json",
+    )
+    _require_preapproval_pass(
+        qualification,
+        "G1/G2 Response qualification",
+        dataset,
+        allow_fixture_failure=True,
+    )
+    return write_approval_request(
+        config,
+        dataset,
+        output,
+        preflight,
+        run_nonce=secrets.token_hex(32),
+    )
+
+
+def _run_authorized_full_chain(config, dataset, output, args, preflight):
+    from .formal_run_approval import (
+        authenticate_prepared_run,
+        mark_approval_accepted,
+    )
+
+    accepted = authenticate_prepared_run(
+        config,
+        dataset,
+        output,
+        preflight,
+        args.approval_manifest,
+    )
+    mark_approval_accepted(output, accepted)
+    qualification = read_strict_json(output / "qualification" / "gate.json")
+
+    from .formal_wrong_map import run_formal_wrong_map
+
+    _require_full_stage(
+        run_formal_wrong_map(config, dataset, output, qualification),
+        "wrong-map control",
+        dataset,
+    )
+    from .formal_factorial import run_formal_factorial
+
+    factorial = run_formal_factorial(
+        config,
+        dataset,
+        output,
+        qualification,
+        allow_nonscientific_fixture=bool(args.allow_nonscientific_fixture),
+    )
+    _require_full_stage(factorial, "four-arm factorial", dataset)
+    from .formal_evaluation import run_formal_evaluation
+
+    _require_full_stage(
+        run_formal_evaluation(config, dataset, output, qualification, factorial),
+        "formal evaluation",
+        dataset,
+    )
+    from .formal_risk import run_risk_contract
+
+    _require_full_stage(run_risk_contract(config, dataset, output), "risk contract", dataset)
+    from .formal_path import run_path_audit
+
+    _require_full_stage(
+        run_path_audit(config, dataset, output / "factorial", output),
+        "path audit",
+        dataset,
+    )
+    from .formal_external import run_external_baselines
+
+    _require_full_stage(
+        run_external_baselines(config, dataset, args.adapter_manifest, output),
+        "external baselines",
+        dataset,
+    )
+    from .formal_representation_baselines import run_representation_baselines
+
+    _require_full_stage(
+        run_representation_baselines(
+            config,
+            dataset,
+            args.representation_baseline_config,
+            output,
+        ),
+        "representation baselines",
+        dataset,
+    )
+    from .formal_controls import run_resource_controls
+
+    _require_full_stage(
+        run_resource_controls(config, dataset, args.control_manifest, output),
+        "resource controls",
+        dataset,
+    )
+    from .formal_scene_id import run_scene_id_audit
+
+    _require_full_stage(
+        run_scene_id_audit(config, dataset, args.scene_id_manifest, output),
+        "scene-ID audit",
+        dataset,
+    )
+    from .formal_external_validity import run_external_validity
+
+    _require_full_stage(
+        run_external_validity(
+            config,
+            dataset,
+            args.external_validity_manifest,
+            output,
+        ),
+        "external validity",
+        dataset,
+    )
+    from .formal_claim_controls import run_retention_audit, run_shuffled_pair_control
+
+    _require_full_stage(
+        run_shuffled_pair_control(
+            config,
+            dataset,
+            args.shuffled_pair_manifest,
+            output,
+        ),
+        "shuffled-pair control",
+        dataset,
+    )
+    _require_full_stage(
+        run_retention_audit(config, dataset, args.retention_manifest, output),
+        "retention audit",
+        dataset,
+    )
+    from .formal_claims import assemble_claim_evidence
+
+    result = assemble_claim_evidence(config, dataset, output)
+    _require_full_stage(result, "claim assembly", dataset)
+    return result
+
+
+def _require_preapproval_pass(
+    result,
+    label,
+    dataset,
+    *,
+    allow_fixture_failure=False,
+):
+    if result.get("passed") is not True and not (
+        dataset.is_fixture and allow_fixture_failure
+    ):
+        raise RuntimeError(f"{label} did not pass; no approval request was issued")
+
+
+def _require_full_stage(result, label, dataset):
+    if not dataset.is_fixture and _result_exit_code(result) != 0:
+        raise RuntimeError(f"{label} failed; the authorized chain stopped")
 
 
 def _acquire_output_lock(output_root: Path) -> Path:
@@ -528,6 +742,29 @@ def _reserve_full_run_output(output_root: Path) -> None:
             "refusing to reuse V2 full-run output directory except for a single "
             f"pre-staged inputs directory: {output_root}"
         )
+
+
+def _result_exit_code(result: object) -> int:
+    if not isinstance(result, dict):
+        return 0
+    if result.get("passed") is False:
+        return 1
+    if result.get("status") in {
+        "FAIL",
+        "BLOCKED",
+        "INVALID",
+        "QUALIFICATION_NO_GO",
+        "DRY_RUN_FAIL_NOT_EVIDENCE",
+        "INCOMPLETE_FAIL_CLOSED",
+    }:
+        return 1
+    for key in ("gate_vector", "upstream_gates"):
+        vector = result.get(key)
+        if isinstance(vector, dict) and any(
+            value in {"FAIL", "INVALID"} for value in vector.values()
+        ):
+            return 1
+    return 0
 
 
 if __name__ == "__main__":

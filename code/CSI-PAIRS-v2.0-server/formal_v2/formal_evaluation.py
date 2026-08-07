@@ -531,6 +531,10 @@ def run_formal_evaluation(
         shortcut_rows,
         factorial_gate,
         evidence,
+        qualification_gate_sha256=sha256_file(
+            root / "qualification" / "gate.json"
+        ),
+        factorial_gate_sha256=sha256_file(root / "factorial" / "gate.json"),
     )
     write_json(output_dir / "gate.json", gate)
     write_json(
@@ -1033,7 +1037,6 @@ def _alignment_shortcut_rows(
                 "probe_family": selected_family,
                 "fit_role": "source_probe_train",
                 "selection_role": "source_probe_selection",
-                "evaluation_scope": "source_final_unseen_bank_and_target",
                 "n": int(np.sum(mask)),
             }
         )
@@ -1744,23 +1747,10 @@ def _evaluation_gate(
     shortcut_rows,
     factorial_gate,
     evidence,
+    *,
+    qualification_gate_sha256,
+    factorial_gate_sha256,
 ):
-    null_safety = _null_safety_by_arm(config, route_rows)
-    null_safe = all(null_safety[arm]["passed"] for arm in ("alignment", "full"))
-    response_null_safe = all(
-        row.get("native_null_violation_rate") is not None
-        and row.get("native_latent_null_violation_rate") is not None
-        and row["native_null_violation_rate"]
-        <= float(config["evaluation"]["response_null_violation_rate_max"])
-        and row["native_latent_null_violation_rate"]
-        <= float(config["evaluation"]["response_null_violation_rate_max"])
-        and row["native_null_delta_rms_mean"]
-        <= float(config["evaluation"]["response_null_equivalence_margin"])
-        and row["native_latent_null_delta_rms_mean"]
-        <= float(config["evaluation"]["response_null_equivalence_margin"])
-        for row in response_rows
-        if row["arm"] in {"response", "full"}
-    )
     resamples = int(config["evaluation"]["bootstrap_resamples"])
     alignment_superiority = _paired_arm_comparison(
         cgs_rows,
@@ -1859,6 +1849,29 @@ def _evaluation_gate(
     scope_intervals = _g3_primary_scope_intervals(
         cgs_rows, response_rows, expected_scopes, resamples
     )
+    null_safety = _null_safety_by_arm(config, route_rows)
+    scope_null_safety = {
+        scope: _null_safety_by_arm(
+            config,
+            [row for row in route_rows if row.get("evaluation_scope") == scope],
+        )
+        for scope in expected_scopes
+    }
+    response_null_safety = {
+        scope: _response_null_safety(
+            config,
+            [row for row in response_rows if row.get("evaluation_scope") == scope],
+        )
+        for scope in expected_scopes
+    }
+    null_safe = all(
+        scope_null_safety[scope][arm]["passed"]
+        for scope in expected_scopes
+        for arm in ("alignment", "full")
+    )
+    response_null_safe = all(
+        response_null_safety[scope]["passed"] for scope in expected_scopes
+    )
     family = [
         alignment_superiority,
         response_superiority,
@@ -1874,10 +1887,7 @@ def _evaluation_gate(
         *[
             interval
             for scope in expected_scopes
-            for interval in (
-                scope_intervals[scope]["alignment_superiority"],
-                scope_intervals[scope]["response_superiority"],
-            )
+            for interval in scope_intervals[scope].values()
         ],
     ]
     adjusted = holm_adjust([float(row["p_value_two_sided"]) for row in family])
@@ -1898,6 +1908,22 @@ def _evaluation_gate(
             relation="superiority",
         )
         and scope_intervals[scope]["response_superiority"]["holm_adjusted_p"]
+        < alpha
+        and all(
+            interval_decision(
+                scope_intervals[scope][name],
+                threshold=float(config["evaluation"]["minimum_response_superiority"]),
+                relation="superiority",
+            )
+            and scope_intervals[scope][name]["holm_adjusted_p"] < alpha
+            for name in (
+                "response_vs_copy",
+                "response_vs_no_action",
+                "response_vs_action_swap",
+            )
+        )
+        and float(scope_intervals[scope]["response_direction"]["ci95_low"]) > 0
+        and scope_intervals[scope]["response_direction"]["holm_adjusted_p"]
         < alpha
         for scope in expected_scopes
     )
@@ -2190,11 +2216,13 @@ def _evaluation_gate(
         }
     )
     return {
-        "schema_version": "csi-pairs-v6-evaluation-gate-v2",
+        "schema_version": "csi-pairs-v6-evaluation-gate-v3",
         "status": "PASS" if g3_pass else "FAIL",
         "passed": bool(g3_pass),
         "scientific_claim_status": "SOFTWARE_ONLY" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM",
         **evidence,
+        "qualification_gate_sha256": qualification_gate_sha256,
+        "factorial_gate_sha256": factorial_gate_sha256,
         "gate_vector": vector,
         "g3_subgates": g3_subgates,
         "g3_intervals": {
@@ -2216,6 +2244,8 @@ def _evaluation_gate(
         "g4_subgates": g4,
         "g4_intervals": {"full_cgs": full_cgs, "full_response": full_response},
         "null_compatibility_safety": null_safety,
+        "null_compatibility_safety_by_scope": scope_null_safety,
+        "response_null_safety_by_scope": response_null_safety,
         "native_probe_correlation_macro": {
             "hierarchy": "canonical_unit_then_seed_to_bank_to_foundation_equal_macro",
             "values": correlation_macros,
@@ -2402,6 +2432,37 @@ def _g3_primary_scope_intervals(cgs_rows, response_rows, scopes, resamples):
                 higher_is_better=False,
                 resamples=resamples,
                 seed=81301 + 2 * index,
+            ),
+            "response_vs_copy": _within_arm_advantage_interval(
+                scoped_response,
+                "response",
+                "native_copy_full_channel_nmse",
+                "native_target_free_full_channel_nmse",
+                resamples,
+                81400 + 5 * index,
+            ),
+            "response_vs_no_action": _within_arm_advantage_interval(
+                scoped_response,
+                "response",
+                "native_no_action_full_channel_nmse",
+                "native_target_free_full_channel_nmse",
+                resamples,
+                81401 + 5 * index,
+            ),
+            "response_vs_action_swap": _within_arm_advantage_interval(
+                scoped_response,
+                "response",
+                "native_action_swap_full_channel_nmse",
+                "native_target_free_action_swap_exact_full_channel_nmse",
+                resamples,
+                81402 + 5 * index,
+            ),
+            "response_direction": _within_arm_level_interval(
+                scoped_response,
+                "response",
+                "native_delta_direction_cosine",
+                resamples,
+                81403 + 5 * index,
             ),
         }
     return result
@@ -2598,3 +2659,33 @@ def _null_safety_by_arm(config, route_rows):
             ),
         }
     return result
+
+
+def _response_null_safety(config, rows):
+    selected = [row for row in rows if row.get("arm") in {"response", "full"}]
+    observed_arms = {row.get("arm") for row in selected}
+    maximum_rate = float(config["evaluation"]["response_null_violation_rate_max"])
+    margin = float(config["evaluation"]["response_null_equivalence_margin"])
+    passed = bool(
+        observed_arms == {"response", "full"}
+        and selected
+        and all(
+            row.get("native_null_violation_rate") is not None
+            and row.get("native_latent_null_violation_rate") is not None
+            and row.get("native_null_delta_rms_mean") is not None
+            and row.get("native_latent_null_delta_rms_mean") is not None
+            and float(row["native_null_violation_rate"]) <= maximum_rate
+            and float(row["native_latent_null_violation_rate"]) <= maximum_rate
+            and float(row["native_null_delta_rms_mean"]) <= margin
+            and float(row["native_latent_null_delta_rms_mean"]) <= margin
+            for row in selected
+        )
+    )
+    return {
+        "passed": passed,
+        "row_count": len(selected),
+        "observed_arms": sorted(str(arm) for arm in observed_arms),
+        "required_arms": ["full", "response"],
+        "null_violation_rate_max": maximum_rate,
+        "null_equivalence_margin": margin,
+    }

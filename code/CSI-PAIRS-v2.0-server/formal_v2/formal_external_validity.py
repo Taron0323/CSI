@@ -41,6 +41,7 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         )
         for value in manifest["command"]
     ]
+    independently_probed_runtime = _probe_sionna_runtime(command)
     rt_scene_manifest, rt_scene_manifest_path = _bind_rt_scene_manifest(
         command, dataset, output_dir
     )
@@ -60,6 +61,11 @@ def run_external_validity(config, dataset, manifest_path, output_root):
     result_path = output_dir / "external_csi.npz"
     if completed.returncode != 0 or not result_path.is_file():
         raise RuntimeError("external-validity adapter failed")
+    runtime_path, runtime_record = _authenticate_sionna_runtime(
+        command,
+        output_dir,
+        independently_probed_runtime,
+    )
     external_csi = _load_external_csi(result_path, dataset)
     rows = _rows_from_external_csi(external_csi, expected_registry)
     active = [row for row in rows if row["route"] == "active"]
@@ -85,7 +91,7 @@ def run_external_validity(config, dataset, manifest_path, output_root):
     )
     write_csv(output_dir / "validated_paired_effects.csv", bind_rows(rows, evidence))
     gate = {
-        "schema_version": "csi-pairs-v6-external-validity-gate-v3",
+        "schema_version": "csi-pairs-v6-external-validity-gate-v4",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
@@ -101,6 +107,12 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         "rt_scene_manifest_sha256": sha256_file(rt_scene_manifest_path),
         "external_csi_path": result_path.name,
         "external_csi_sha256": sha256_file(result_path),
+        "external_runtime_provenance_path": runtime_path.name,
+        "external_runtime_provenance_sha256": sha256_file(runtime_path),
+        "external_runtime_environment_sha256": runtime_record[
+            "environment_sha256"
+        ],
+        "external_runtime_provenance": runtime_record,
         "external_csi_contract": "outer-recomputed-direction-and-effect-from-raw-csi-v1",
         "external_scene_count": int(external_csi.shape[0]),
         "active_direction_agreement": agreement["estimate"],
@@ -169,6 +181,38 @@ def _adapter_environment(project_root):
         **os.environ,
         "PYTHONPATH": root if not existing else root + os.pathsep + existing,
     }
+
+
+def _probe_sionna_runtime(command):
+    from .formal_external_runtime import probe_external_runtime
+
+    project_root = Path(__file__).resolve().parents[1]
+    return probe_external_runtime(
+        command[0],
+        "sionna",
+        project_root,
+        require_execution_ready=True,
+    )
+
+
+def _authenticate_sionna_runtime(command, output_dir, independently_probed):
+    from .formal_external_runtime import validate_external_runtime
+
+    path = Path(output_dir) / "runtime_provenance.json"
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("Sionna adapter omitted regular runtime_provenance.json")
+    record = read_strict_json(path)
+    validate_external_runtime(
+        record,
+        profile="sionna",
+        executable=command[0],
+        require_execution_ready=True,
+    )
+    if record != independently_probed:
+        raise RuntimeError(
+            "Sionna runtime provenance differs from the independently probed interpreter"
+        )
+    return path, record
 
 
 def _verify_adapter_source(manifest):

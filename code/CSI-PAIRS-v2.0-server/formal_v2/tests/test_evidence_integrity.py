@@ -141,6 +141,9 @@ class EvidenceIntegrityTests(unittest.TestCase):
             "target",
         )
         with patch(
+            "formal_v2.formal_external.validate_resource_registry",
+            return_value=[],
+        ), patch(
             "formal_v2.formal_data_verification.require_verified_roles_from_root",
             side_effect=RuntimeError("stop after role audit"),
         ) as require_roles, self.assertRaisesRegex(RuntimeError, "stop after role audit"):
@@ -357,6 +360,7 @@ class EvidenceIntegrityTests(unittest.TestCase):
             "c1_eligible_model_count": 0,
             "c1_eligible_models": [],
             "c1_required_eligible_model_count": 2,
+            "c1_city_gate_contract": "all-evaluation-cities-must-pass-v1",
             "model_assessments": [],
             "condition_input_contract": "outer-recomputed-map-and-action-sha256-v1",
             "condition_registry_path": "external_condition_registry.csv",

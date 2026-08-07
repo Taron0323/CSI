@@ -6,6 +6,7 @@ WAIBU_ROOT="${PROJECT_ROOT}/waibu"
 RUNTIME_ROOT="${1:-${PROJECT_ROOT}/formal_v2/external_adapters/.runtime-sionna}"
 ENV_DIR="${RUNTIME_ROOT}/venv"
 SOURCE_DIR="${RUNTIME_ROOT}/src"
+FROZEN_LOCK="${PROJECT_ROOT}/formal_v2/external_adapters/sionna_lrm_uv.lock"
 
 if [[ -e "${RUNTIME_ROOT}" && ! -d "${RUNTIME_ROOT}" ]]; then
   echo "refusing to reuse a non-directory Sionna runtime: ${RUNTIME_ROOT}" >&2
@@ -39,6 +40,11 @@ export DRJIT_LIBLLVM_PATH
 mkdir -p "${SOURCE_DIR}"
 unzip -oq "${WAIBU_ROOT}/sionna-main.zip" -d "${SOURCE_DIR}"
 unzip -oq "${WAIBU_ROOT}/sionna-large-radio-maps-main.zip" -d "${SOURCE_DIR}"
+if [[ ! -f "${FROZEN_LOCK}" ]]; then
+  echo "frozen Sionna LRM uv.lock is missing: ${FROZEN_LOCK}" >&2
+  exit 7
+fi
+cp "${FROZEN_LOCK}" "${SOURCE_DIR}/sionna-large-radio-maps-main/uv.lock"
 mkdir -p \
   "${RUNTIME_ROOT}/data/local/scenes" \
   "${RUNTIME_ROOT}/data/remote/scenes" \
@@ -59,6 +65,7 @@ installed=false
 for attempt in 1 2 3; do
   if UV_PROJECT_ENVIRONMENT="${ENV_DIR}" uv sync \
     --project "${SOURCE_DIR}/sionna-large-radio-maps-main" \
+    --locked \
     --no-dev; then
     installed=true
     break
@@ -97,5 +104,11 @@ print("torch", torch.__version__)
 print("h5py", h5py.__version__)
 print("drjit-libllvm", __import__("os").environ["DRJIT_LIBLLVM_PATH"])
 PY
+
+"${ENV_DIR}/bin/python" "${PROJECT_ROOT}/formal_v2/formal_external_runtime.py" \
+  --profile sionna \
+  --project-root "${PROJECT_ROOT}" \
+  --output "${RUNTIME_ROOT}/runtime_provenance.json" \
+  --verify-existing
 
 printf 'Sionna runtime ready: %s\n' "${RUNTIME_ROOT}"

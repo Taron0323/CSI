@@ -246,7 +246,16 @@ def run_formal_factorial(
     write_csv(output_dir / "localization_summary.csv", bind_rows(summary_rows, evidence))
     statistics = _factorial_statistics(config, bank_rows)
     write_json(output_dir / "factorial_statistics.json", {**statistics, **evidence})
-    gate = _preliminary_factorial_gate(config, dataset, bank_rows, statistics, evidence)
+    gate = _preliminary_factorial_gate(
+        config,
+        dataset,
+        bank_rows,
+        statistics,
+        evidence,
+        qualification_gate_sha256=sha256_file(
+            Path(output_root) / "qualification" / "gate.json"
+        ),
+    )
     write_json(output_dir / "gate.json", gate)
     write_json(
         output_dir / "manifest.json",
@@ -1513,7 +1522,49 @@ def _factorial_statistics(config, rows):
     }
 
 
-def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
+def _target_cluster_coverage(config, rows):
+    cities = sorted({str(row["city_id"]) for row in rows})
+    required_city_count = int(config["data"]["minimum_target_cities"])
+    required_clusters = int(
+        config["data"][
+            "minimum_independent_base_map_clusters_per_target_city"
+        ]
+    )
+    observed = {
+        city: len(
+            {
+                str(
+                    row.get("canonical_base_map_digest")
+                    or row["base_map_cluster_id"]
+                )
+                for row in rows
+                if str(row["city_id"]) == city
+            }
+        )
+        for city in cities
+    }
+    return {
+        "passed": bool(
+            len(cities) >= required_city_count
+            and all(count >= required_clusters for count in observed.values())
+        ),
+        "required_target_city_count": required_city_count,
+        "observed_target_city_count": len(cities),
+        "required_independent_clusters_per_city": required_clusters,
+        "observed_independent_clusters_by_city": observed,
+        "identity": "canonical_base_map_digest",
+    }
+
+
+def _preliminary_factorial_gate(
+    config,
+    dataset,
+    rows,
+    statistics,
+    evidence,
+    *,
+    qualification_gate_sha256,
+):
     hierarchical = statistics["hierarchical_bootstrap"]
     minimum_interaction = float(config["factorial"]["minimum_interaction_effect"])
     primary = set(int(value) for value in config["localization"]["primary_budgets"])
@@ -1600,22 +1651,11 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
             )
             and float(row["holm_adjusted_p"]) < alpha
         )
-    target_cities = sorted({row["city_id"] for row in localization_checks})
     primary_complete = set(primary) == {0, 8}
+    cluster_coverage = _target_cluster_coverage(config, rows)
     g5_subgates = {
         "1_two_target_cities_and_independent_clusters": "PASS"
-        if len(target_cities) >= 2
-        and all(
-            len(
-                {
-                    row["base_map_cluster_id"]
-                    for row in rows
-                    if row["city_id"] == city
-                }
-            )
-            >= 2
-            for city in target_cities
-        )
+        if cluster_coverage["passed"]
         else "FAIL",
         "2_strict_primary_k0_k8_complete": "PASS" if primary_complete else "FAIL",
         "3_every_city_k0_full_vs_endpoint_ci_holm": "PASS"
@@ -1641,6 +1681,7 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
         "status": "FAIL" if software_only else ("PASS" if g5_passed else "FAIL"),
         "passed": bool(g5_passed and not software_only),
         **evidence,
+        "qualification_gate_sha256": qualification_gate_sha256,
         "gate_vector": gate_vector,
         "g4_subgates": subgates,
         "g5_subgates": g5_subgates,
@@ -1652,6 +1693,7 @@ def _preliminary_factorial_gate(config, dataset, rows, statistics, evidence):
             "familywise_alpha": familywise_alpha,
         },
         "localization_city_budget_checks": localization_checks,
+        "target_cluster_coverage": cluster_coverage,
         "claim_boundary": "G4 cannot PASS until all seven subgates are PASS; NOT_ASSESSED is never PASS.",
         "software_only_qualification_bypass": software_only,
         "config": public_formal_config(config),

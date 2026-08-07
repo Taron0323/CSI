@@ -5,7 +5,6 @@ import hashlib
 import inspect
 import json
 import subprocess
-import sys
 import tempfile
 import threading
 import unittest
@@ -20,6 +19,7 @@ from formal_v2.formal_claims import (
     CLAIM_DEPENDENCIES,
     _claim_state,
     _semantic_status,
+    _validate_critical_chain_binding,
     _validate_external_manifest_binding,
     _validate_stage_bound_input,
     assemble_claim_evidence,
@@ -34,17 +34,14 @@ from formal_v2.formal_cli import (
     _acquire_output_lock,
     _reserve_command_output,
     _reserve_full_run_output,
+    _result_exit_code,
     _sionna_export_lock_root,
     build_parser,
     main as formal_cli_main,
 )
 from formal_v2.formal_controls import CONTROL_IDS, _validate_manifest as validate_control_manifest
 from formal_v2.formal_config import load_formal_config, validate_formal_config
-from formal_v2.formal_data_verification import (
-    BLOCKING_ROLES,
-    require_data_verification,
-    require_verified_roles,
-)
+from formal_v2.formal_data_verification import require_data_verification, require_verified_roles
 from formal_v2.formal_dataset import FormalDataset, FormalDatasetError, SOURCE_ROLES
 from formal_v2.formal_evidence import (
     CLAIM_IDS,
@@ -54,14 +51,21 @@ from formal_v2.formal_evidence import (
     evidence_context,
     require_formal_qualification,
     require_stage_manifested_gate,
+    runtime_provenance,
 )
-from formal_v2.formal_factorial import city_support_candidates, eligible_query_indices
+from formal_v2.formal_factorial import (
+    _target_cluster_coverage,
+    city_support_candidates,
+    eligible_query_indices,
+)
 from formal_v2.formal_evaluation import _eligible_evaluation_positions, _paired_score_differences
 from formal_v2.formal_external_validity import (
+    _authenticate_sionna_runtime,
     _cluster_direction_interval,
     _validate_manifest as validate_external_validity_manifest,
 )
 from formal_v2.formal_external import (
+    _c1_model_assessment,
     _validate_manifest as validate_external_manifest,
     _validate_execution_manifest as validate_external_execution_manifest,
     _validate_six_condition_rows,
@@ -119,7 +123,7 @@ from formal_v2.formal_representation_baselines import (
     _warm_start_contra,
     load_representation_config,
 )
-from formal_v2.formal_resources import validate_resource_registry
+from formal_v2.formal_resources import validate_resource_registry_structure
 from formal_v2.formal_qualification import qualification_blocking_scenes
 from formal_v2.formal_literature import _validate_manifest as validate_literature_manifest
 from formal_v2.formal_rt_calibration import (
@@ -133,7 +137,11 @@ from formal_v2.formal_risk import (
     frozen_map_proposals,
     randomized_candidate_labels,
 )
-from formal_v2.formal_routing import route_code
+from formal_v2.formal_routing import (
+    PRIMARY_ROUTE_CONTRACT,
+    route_code,
+    teacher_sensitivity_code,
+)
 from formal_v2.formal_scene_id import (
     _model_assessment as scene_id_model_assessment,
     _validate_manifest as validate_scene_id_manifest,
@@ -145,6 +153,7 @@ from formal_v2.formal_statistics import (
     exact_factorial_utilities,
     hierarchical_factorial_interval,
     holm_adjust,
+    paired_sign_flip_test,
 )
 from formal_v2.formal_teacher import CSIMaskedTeacher
 
@@ -154,7 +163,7 @@ SMOKE_CONFIG = ROOT / "formal_v2" / "configs" / "formal_v2_smoke.json"
 
 
 class ConfigTests(unittest.TestCase):
-    def test_full_run_shell_requires_human_approval_before_other_inputs(self):
+    def test_full_run_shell_requires_an_explicit_two_phase_mode(self):
         script = ROOT / "formal_v2" / "scripts" / "run_formal_v2.sh"
         completed = subprocess.run(
             ["/bin/bash", str(script)],
@@ -165,17 +174,46 @@ class ConfigTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(completed.returncode, 5)
-        self.assertIn("CSI_PAIRS_APPROVE_FULL_EXPERIMENT=YES", completed.stderr)
+        self.assertIn("CSI_PAIRS_FULL_RUN_PHASE=prepare", completed.stderr)
         self.assertNotIn("CSI_PAIRS_FORMAL_OUTPUT", completed.stderr)
 
     def test_config_is_v6_and_has_complete_sections(self):
         config = load_formal_config(SMOKE_CONFIG)
-        self.assertEqual(config["schema_version"], "csi-pairs-formal-config-v2.2-v6")
+        self.assertEqual(config["schema_version"], "csi-pairs-formal-config-v2.3-v6")
         self.assertEqual(len(config["seeds"]), 3)
         self.assertEqual(config["factorial"]["arms"], ["endpoint", "alignment", "response", "full"])
         self.assertEqual(set(("teacher", "evaluation", "risk", "path")).difference(config), set())
         self.assertIn("external_validity", config)
         self.assertIn("literature", config)
+        self.assertEqual(
+            config["data"][
+                "minimum_independent_base_map_clusters_per_target_city"
+            ],
+            2,
+        )
+
+    def test_formal_g5_cluster_minimum_is_frozen_in_config(self):
+        config = load_formal_config(
+            ROOT / "formal_v2" / "configs" / "formal_v2.json"
+        )
+        self.assertEqual(
+            config["data"][
+                "minimum_independent_base_map_clusters_per_target_city"
+            ],
+            8,
+        )
+        rows = [
+            {
+                "city_id": city,
+                "base_map_cluster_id": f"declared-{city}-{index}",
+                "canonical_base_map_digest": f"canonical-{city}-{index}",
+            }
+            for city in ("target-a", "target-b")
+            for index in range(2)
+        ]
+        smoke = load_formal_config(SMOKE_CONFIG)
+        self.assertTrue(_target_cluster_coverage(smoke, rows)["passed"])
+        self.assertFalse(_target_cluster_coverage(config, rows)["passed"])
 
     def test_rejects_two_seeds(self):
         config = load_formal_config(SMOKE_CONFIG)
@@ -650,18 +688,29 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaisesRegex(FormalDatasetError, "cross support_pool/query"):
             FormalDataset.load(malformed)
 
-    def test_source_encoder_train_itself_must_cover_two_source_cities(self):
-        arrays = _archive_arrays(self.fixture)
-        train_scenes = np.flatnonzero(
-            arrays["scene_roles"] == "source_encoder_train"
+    def test_target_city_cluster_minimum_uses_canonical_foundations(self):
+        self.dataset.validate(
+            minimum_independent_base_map_clusters_per_target_city=2
         )
-        self.assertGreaterEqual(train_scenes.size, 2)
-        arrays["city_ids"] = arrays["city_ids"].astype("<U64")
-        arrays["city_ids"][train_scenes] = arrays["city_ids"][train_scenes[0]]
-        malformed = self.root / "single-training-city.npz"
-        np.savez_compressed(malformed, **arrays)
-        with self.assertRaisesRegex(FormalDatasetError, "source_encoder_train"):
-            FormalDataset.load(malformed)
+        with self.assertRaisesRegex(FormalDatasetError, "canonical base-map clusters"):
+            self.dataset.validate(
+                minimum_independent_base_map_clusters_per_target_city=3
+            )
+
+    def test_every_source_role_itself_must_cover_two_source_cities(self):
+        for role in SOURCE_ROLES:
+            with self.subTest(role=role):
+                arrays = _archive_arrays(self.fixture)
+                role_scenes = np.flatnonzero(arrays["scene_roles"] == role)
+                self.assertGreaterEqual(role_scenes.size, 2)
+                arrays["city_ids"] = arrays["city_ids"].astype("<U64")
+                arrays["city_ids"][role_scenes] = arrays["city_ids"][
+                    role_scenes[0]
+                ]
+                malformed = self.root / f"single-city-{role}.npz"
+                np.savez_compressed(malformed, **arrays)
+                with self.assertRaisesRegex(FormalDatasetError, role):
+                    FormalDataset.load(malformed)
 
     def test_embedded_metadata_duplicate_is_rejected(self):
         arrays = _archive_arrays(self.fixture)
@@ -860,9 +909,16 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(torch.equal(first, second))
 
     def test_route_thresholds_are_direction_independent(self):
-        forward = route_code(0.2, 0.3, 0.05, 0.1, 0.05, 0.1)
-        reverse = route_code(abs(-0.2), abs(-0.3), 0.05, 0.1, 0.05, 0.1)
+        forward = route_code(0.2, 0.05, 0.1)
+        reverse = route_code(abs(-0.2), 0.05, 0.1)
         self.assertEqual(forward, reverse)
+
+    def test_primary_route_is_physical_only_and_teacher_is_a_separate_stratum(self):
+        self.assertEqual(route_code(0.2, 0.05, 0.1), 2)
+        self.assertEqual(route_code(0.01, 0.05, 0.1), 0)
+        self.assertEqual(route_code(0.075, 0.05, 0.1), 1)
+        self.assertEqual(teacher_sensitivity_code(0.2, 0.05, 0.1), 2)
+        self.assertEqual(teacher_sensitivity_code(0.01, 0.05, 0.1), 0)
 
     def test_paired_score_difference_requires_one_match_and_one_alternative(self):
         difference = _paired_score_differences(
@@ -907,6 +963,44 @@ class StatisticsTests(unittest.TestCase):
         self.assertTrue(all(0 <= value <= 1 for value in adjusted))
         self.assertGreaterEqual(adjusted[0], 0.01)
 
+    def test_exact_sign_flip_does_not_use_monte_carlo_plus_one_correction(self):
+        result = paired_sign_flip_test(
+            np.asarray(["cluster-a", "cluster-b"]),
+            np.asarray([1.0, 2.0]),
+            np.zeros(2),
+            seed=7,
+        )
+        self.assertEqual(result["method"], "exact")
+        self.assertEqual(result["draws"], 4)
+        self.assertEqual(result["p_value_two_sided"], 0.5)
+
+    def test_monte_carlo_sign_flip_uses_plus_one_correction(self):
+        result = paired_sign_flip_test(
+            np.asarray([f"cluster-{index}" for index in range(17)]),
+            np.ones(17),
+            np.zeros(17),
+            seed=0,
+            maximum_draws=3,
+        )
+        self.assertEqual(result["method"], "monte_carlo")
+        self.assertEqual(result["draws"], 3)
+        self.assertEqual(result["finite_sample_correction"], "plus_one_monte_carlo")
+        self.assertEqual(result["p_value_two_sided"], 0.25)
+
+    def test_scientific_gate_exit_code_is_fail_closed(self):
+        self.assertEqual(_result_exit_code({"status": "PASS", "passed": True}), 0)
+        self.assertEqual(_result_exit_code({"status": "FAIL", "passed": False}), 1)
+        self.assertEqual(_result_exit_code({"status": "BLOCKED", "passed": False}), 1)
+        self.assertEqual(
+            _result_exit_code(
+                {
+                    "status": "COMPLETE",
+                    "gate_vector": {"G0": "PASS", "G1": "FAIL"},
+                }
+            ),
+            1,
+        )
+
     def test_splitting_identical_bank_rows_inside_one_cluster_does_not_reweight_j(self):
         rows = _factorial_rows()
         original = exact_factorial_utilities(rows, [0, 8])
@@ -936,6 +1030,39 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(CLAIM_IDS, tuple(f"C{i}" for i in range(1, 14)))
         self.assertEqual(set(CLAIM_DEPENDENCIES), set(CLAIM_IDS))
         self.assertEqual(set(complete_gate_vector()), set(GATE_IDS))
+        self.assertEqual(
+            CLAIM_DEPENDENCIES["C8"],
+            ("G1_G2", "G3", "G4", "G5"),
+        )
+
+    def test_c8_stages_bind_one_qualification_factorial_evaluation_chain(self):
+        for name in ("qualification", "factorial", "evaluation", "controls"):
+            (self.root / name).mkdir()
+        qualification = self.root / "qualification" / "gate.json"
+        factorial = self.root / "factorial" / "gate.json"
+        evaluation = self.root / "evaluation" / "gate.json"
+        controls = self.root / "controls" / "gate.json"
+        qualification.write_bytes(b"qualification")
+        factorial.write_bytes(b"factorial")
+        evaluation.write_bytes(b"evaluation")
+        controls.write_bytes(b"controls")
+        g5 = {"qualification_gate_sha256": sha256_file(qualification)}
+        g3 = {
+            **g5,
+            "factorial_gate_sha256": sha256_file(factorial),
+        }
+        g4 = {
+            "factorial_gate_sha256": sha256_file(factorial),
+            "evaluation_gate_sha256": sha256_file(evaluation),
+        }
+        _validate_critical_chain_binding(factorial, g5, "G5")
+        _validate_critical_chain_binding(evaluation, g3, "G3")
+        _validate_critical_chain_binding(controls, g4, "G4")
+        factorial.write_bytes(b"different-factorial-run")
+        with self.assertRaisesRegex(RuntimeError, "G3 factorial binding"):
+            _validate_critical_chain_binding(evaluation, g3, "G3")
+        with self.assertRaisesRegex(RuntimeError, "G4 factorial binding"):
+            _validate_critical_chain_binding(controls, g4, "G4")
 
     def test_resource_verification_failure_returns_nonzero(self):
         output = self.root / "resource-failure"
@@ -955,6 +1082,47 @@ class EvidenceAndPathTests(unittest.TestCase):
                 ]
             )
         self.assertEqual(return_code, 1)
+
+    def test_prepare_stops_before_data_verification_when_resources_fail(self):
+        output = self.root / "all-resource-failure"
+        argv = [
+            "prepare-full-run",
+            "--config",
+            str(SMOKE_CONFIG),
+            "--dataset",
+            str(self.path),
+            "--output",
+            str(output),
+            "--allow-nonscientific-fixture",
+            "--compute-plan",
+            str(self.root / "compute.json"),
+            "--verifier-manifest",
+            str(self.root / "verifier.json"),
+            "--adapter-manifest",
+            str(self.root / "adapters.json"),
+            "--external-validity-manifest",
+            str(self.root / "external-validity.json"),
+            "--literature-resource-manifest",
+            str(self.root / "literature.json"),
+            "--rt-calibration-manifest",
+            str(self.root / "rt-calibration.json"),
+        ]
+        with (
+            patch(
+                "formal_v2.formal_run_approval.preflight_full_run",
+                return_value={"status": "PASS"},
+            ),
+            patch(
+                "formal_v2.formal_resources.verify_waibu_resources",
+                return_value={"status": "FAIL", "passed": False},
+            ) as resource_verifier,
+            patch(
+                "formal_v2.formal_data_verification.run_data_verification"
+            ) as data_verifier,
+        ):
+            self.assertEqual(formal_cli_main(argv), 2)
+        resource_verifier.assert_called_once()
+        data_verifier.assert_not_called()
 
     def test_claim_semantics_recheck_g0_c2_c11_and_g8_evidence(self):
         g0 = {
@@ -1040,6 +1208,10 @@ class EvidenceAndPathTests(unittest.TestCase):
             "external_csi_sha256": "c" * 64,
             "external_csi_contract": "outer-recomputed-direction-and-effect-from-raw-csi-v1",
             "external_scene_count": 2,
+            "external_runtime_provenance_path": "runtime_provenance.json",
+            "external_runtime_provenance_sha256": "d" * 64,
+            "external_runtime_environment_sha256": "e" * 64,
+            "external_runtime_provenance": {"environment_sha256": "e" * 64},
             "null_equivalence": {"passed": True, "base_map_cluster_count": 3},
         }
         self.assertEqual(_semantic_status("G8", g8), "PASS")
@@ -1068,6 +1240,7 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "upstream_gates": complete_gate_vector({"G1": "PASS", "G2": "PASS"}),
                 "teacher_checkpoint": str(checkpoint),
                 "teacher_checkpoint_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+                "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
             },
         )
         write_json(
@@ -1104,6 +1277,31 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(len(evidence["dataset_sha256"]), 64)
         self.assertEqual(len(evidence["config_sha256"]), 64)
 
+    def test_evidence_context_rejects_unlocked_main_runtime(self):
+        original = runtime_provenance()
+        mutations = []
+
+        wrong_python = json.loads(json.dumps(original))
+        wrong_python["python_version"] = "3.11.9"
+        mutations.append((wrong_python, "CPython 3.12"))
+
+        wrong_version = json.loads(json.dumps(original))
+        wrong_version["installed_distributions"]["torch"]["version"] = "2.0.0"
+        mutations.append((wrong_version, "torch must be exactly"))
+
+        missing_record = json.loads(json.dumps(original))
+        missing_record["installed_distributions"]["numpy"]["record_sha256"] = None
+        mutations.append((missing_record, "numpy has no RECORD provenance"))
+
+        for runtime, message in mutations:
+            with self.subTest(message=message):
+                with patch(
+                    "formal_v2.formal_evidence.runtime_provenance",
+                    return_value=runtime,
+                ):
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        evidence_context(self.config, self.dataset, "FORBIDDEN")
+
     def test_candidate_or_forbidden_nonfixture_cannot_start_factorial(self):
         arrays = _archive_arrays(self.path)
         arrays["maps"] = arrays["maps"].copy()
@@ -1139,6 +1337,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "upstream_gates": complete_gate_vector({"G1": "PASS", "G2": "PASS"}),
             "teacher_checkpoint": "/not/read/by-this-check",
             "teacher_checkpoint_sha256": "0" * 64,
+            "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
         }
         with self.assertRaisesRegex(RuntimeError, "FORMAL_EXPERIMENT_ALLOWED"):
             require_formal_qualification(gate, self.config, candidate, allow_nonscientific_fixture=False)
@@ -1244,6 +1443,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "upstream_gates": complete_gate_vector({"G1": "PASS", "G2": "PASS"}),
             "teacher_checkpoint": str(checkpoint),
             "teacher_checkpoint_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+            "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
         }
         require_formal_qualification(
             gate, self.config, self.dataset, allow_nonscientific_fixture=True
@@ -1265,6 +1465,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "upstream_gates": complete_gate_vector({"G1": "FAIL", "G2": "FAIL"}),
             "teacher_checkpoint": str(checkpoint),
             "teacher_checkpoint_sha256": sha256_file(checkpoint),
+            "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
         }
         require_formal_qualification(
             gate, self.config, self.dataset, allow_nonscientific_fixture=True
@@ -1305,10 +1506,42 @@ class EvidenceAndPathTests(unittest.TestCase):
                 schema_version="test-gate-v1",
             )
         write_json(stage / "gate.json", mutated)
-        with self.assertRaisesRegex(RuntimeError, "mismatched"):
+        with self.assertRaisesRegex(RuntimeError, "changed after manifesting"):
             require_stage_manifested_gate(
                 stage / "gate.json",
                 mutated,
+                self.config,
+                self.dataset,
+                schema_version="test-gate-v1",
+            )
+
+    def test_manifested_gate_authenticates_complete_stage_inventory(self):
+        stage = self.root / "complete-stage"
+        stage.mkdir()
+        context = evidence_context(self.config, self.dataset, "FORBIDDEN")
+        gate = {"schema_version": "test-gate-v1", "passed": True, **context}
+        write_json(stage / "gate.json", gate)
+        (stage / "evidence.csv").write_text("value\n1\n", encoding="utf-8")
+        write_json(
+            stage / "manifest.json",
+            {
+                "schema_version": "csi-pairs-formal-stage-manifest-v2.1-v6",
+                **context,
+                "files": artifact_manifest(stage, evidence=context),
+            },
+        )
+        require_stage_manifested_gate(
+            stage / "gate.json",
+            gate,
+            self.config,
+            self.dataset,
+            schema_version="test-gate-v1",
+        )
+        (stage / "unmanifested.csv").write_text("value\n2\n", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "inventory is incomplete"):
+            require_stage_manifested_gate(
+                stage / "gate.json",
+                gate,
                 self.config,
                 self.dataset,
                 schema_version="test-gate-v1",
@@ -1753,6 +1986,7 @@ class EvidenceAndPathTests(unittest.TestCase):
     def test_cli_exposes_all_fail_closed_stages(self):
         help_text = build_parser().format_help()
         for command in (
+            "prepare-full-run",
             "run-evaluation",
             "run-risk",
             "run-path",
@@ -1788,7 +2022,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         ]
         with patch("builtins.print") as denied_message:
             self.assertEqual(formal_cli_main(full_argv), 2)
-        self.assertIn("explicit Response-gate approval", denied_message.call_args.args[0])
+        self.assertIn("--approval-manifest", denied_message.call_args.args[0])
         full_args = parser.parse_args(
             [*full_argv, "--approve-full-experiment"]
         )
@@ -2070,6 +2304,86 @@ class WiGATrAdapterTests(unittest.TestCase):
                 adapter, output, result_path, self.dataset
             )
 
+    def test_wigatr_execution_manifest_binds_independently_probed_runtime(self):
+        output = self.root / "wigatr-runtime-adapter"
+        output.mkdir()
+        config_path = output / "adapter_config.json"
+        training_path = output / "training_record.json"
+        checkpoint_path = output / "checkpoint.pt"
+        result_path = output / "six_condition_results.csv"
+        runtime_path = output / "runtime_provenance.json"
+        write_json(config_path, {"schema_version": "adapter-config"})
+        write_json(
+            training_path,
+            {
+                "train_role": "source_encoder_train",
+                "selection_role": "source_method_selection",
+                "target_roles_read": [],
+            },
+        )
+        checkpoint_path.write_bytes(b"checkpoint")
+        write_csv(result_path, [{"result": 1}])
+        runtime = {"environment_sha256": "a" * 64}
+        write_json(runtime_path, runtime)
+        command = [
+            "{project_root}/formal_v2/external_adapters/.venv-wigatr/bin/python",
+            "adapter.py",
+        ]
+        adapter = {
+            "adapter_id": "wigatr",
+            "model_name": "Wi-GATr",
+            "implementation_status": "official-code-adaptation",
+            "source_revision": "revision",
+            "command": command,
+            "adapter_config_sha256": sha256_file(config_path),
+        }
+        execution = {
+            "schema_version": "csi-pairs-v6-external-execution-v3",
+            "adapter_id": "wigatr",
+            "model_name": "Wi-GATr",
+            "implementation_status": "official-code-adaptation",
+            "source_revision": "revision",
+            "dataset_sha256": sha256_file(self.path),
+            "adapter_config_path": config_path.name,
+            "adapter_config_sha256": sha256_file(config_path),
+            "training_record_path": training_path.name,
+            "training_record_sha256": sha256_file(training_path),
+            "checkpoint_path": checkpoint_path.name,
+            "checkpoint_sha256": sha256_file(checkpoint_path),
+            "command_sha256": hashlib.sha256(
+                json.dumps(command, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+            "results_sha256": sha256_file(result_path),
+            "runtime_provenance_path": runtime_path.name,
+            "runtime_provenance_sha256": sha256_file(runtime_path),
+            "runtime_environment_sha256": runtime["environment_sha256"],
+        }
+        write_json(output / "execution_manifest.json", execution)
+        with (
+            patch(
+                "formal_v2.formal_external_runtime.validate_external_runtime",
+                return_value=runtime,
+            ),
+            patch(
+                "formal_v2.formal_external_runtime.probe_external_runtime",
+                return_value=runtime,
+            ),
+        ):
+            validate_external_execution_manifest(
+                adapter, output, result_path, self.dataset
+            )
+            substituted = {"environment_sha256": "b" * 64}
+            write_json(runtime_path, substituted)
+            execution["runtime_provenance_sha256"] = sha256_file(runtime_path)
+            execution["runtime_environment_sha256"] = substituted[
+                "environment_sha256"
+            ]
+            write_json(output / "execution_manifest.json", execution)
+            with self.assertRaisesRegex(RuntimeError, "independently probed"):
+                validate_external_execution_manifest(
+                    adapter, output, result_path, self.dataset
+                )
+
     def test_inverse_localizer_api_has_no_true_position_argument(self):
         parameters = inspect.signature(inverse_localize_power).parameters
         self.assertNotIn("true_position", parameters)
@@ -2135,15 +2449,19 @@ class WaibuIntegrationTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_every_waibu_resource_is_hash_authenticated(self):
+    def test_every_waibu_resource_has_frozen_authentication_metadata(self):
         registry = parse_strict_json(
             (ROOT / "formal_v2/configs/waibu_resources_v1.json").read_text()
         )
-        rows = validate_resource_registry(registry, ROOT / "waibu")
+        rows = validate_resource_registry_structure(registry)
         self.assertEqual(len(rows), 10)
-        self.assertTrue(all(row["status"] == "PASS" for row in rows))
+        self.assertTrue(all(len(row["sha256"]) == 64 for row in rows))
         self.assertEqual(
-            {row["file"] for row in rows if not row["redistribution_allowed"]},
+            {
+                row["file"]
+                for row in rows
+                if not row["redistribution_allowed"]
+            },
             {
                 "2502.11965v2.pdf",
                 "2505.09160v2.pdf",
@@ -2151,9 +2469,6 @@ class WaibuIntegrationTests(unittest.TestCase):
                 "2604.07086v1.pdf",
             },
         )
-        registry["resources"][0]["sha256"] = "0" * 64
-        changed = validate_resource_registry(registry, ROOT / "waibu")
-        self.assertEqual(changed[0]["status"], "FAIL")
 
     def test_representation_registry_preserves_paper_labels_and_roles(self):
         config = load_representation_config(
@@ -2390,6 +2705,7 @@ class WaibuIntegrationTests(unittest.TestCase):
             "c1_eligible_model_count": 1,
             "c1_eligible_models": ["Wi-GATr"],
             "c1_required_eligible_model_count": 2,
+            "c1_city_gate_contract": "all-evaluation-cities-must-pass-v1",
             "model_assessments": [
                 {
                     "model_name": "Wi-GATr",
@@ -2400,6 +2716,21 @@ class WaibuIntegrationTests(unittest.TestCase):
                     "base_map_cluster_count": 2,
                     "null_overclassification_rate_ci95_high": 0.01,
                     "null_overclassification_rate_max": 0.05,
+                    "aggregation": "pooled-report-plus-simultaneous-per-city-gate",
+                    "evaluation_city_count": 1,
+                    "evaluation_cities": ["target-a"],
+                    "all_cities_passed": True,
+                    "city_assessments": {
+                        "target-a": {
+                            "city_id": "target-a",
+                            "passed": True,
+                            "active_effect_passed": True,
+                            "null_safety_passed": True,
+                            "base_map_cluster_count": 2,
+                            "null_overclassification_rate_ci95_high": 0.01,
+                            "null_overclassification_rate_max": 0.05,
+                        }
+                    },
                 }
             ],
             "condition_input_contract": "outer-recomputed-map-and-action-sha256-v1",
@@ -2421,11 +2752,91 @@ class WaibuIntegrationTests(unittest.TestCase):
                 "base_map_cluster_count": 2,
                 "null_overclassification_rate_ci95_high": 0.01,
                 "null_overclassification_rate_max": 0.05,
+                "aggregation": "pooled-report-plus-simultaneous-per-city-gate",
+                "evaluation_city_count": 1,
+                "evaluation_cities": ["target-a"],
+                "all_cities_passed": True,
+                "city_assessments": {
+                    "target-a": {
+                        "city_id": "target-a",
+                        "passed": True,
+                        "active_effect_passed": True,
+                        "null_safety_passed": True,
+                        "base_map_cluster_count": 2,
+                        "null_overclassification_rate_ci95_high": 0.01,
+                        "null_overclassification_rate_max": 0.05,
+                    }
+                },
             }
         )
         base["status"] = "PASS"
         base["passed"] = True
         self.assertEqual(_semantic_status("external_baselines", base), "PASS")
+        changed = json.loads(json.dumps(base))
+        changed["model_assessments"][1]["city_assessments"]["target-a"][
+            "passed"
+        ] = False
+        self.assertEqual(_semantic_status("external_baselines", changed), "FAIL")
+
+    def test_c1_model_must_pass_in_every_evaluation_city(self):
+        city_ids = np.asarray(["source-a"] * 20 + ["target-a"] * 4)
+        dataset = SimpleNamespace(
+            base_map_cluster_ids=np.asarray(
+                [f"cluster-{index:02d}" for index in range(city_ids.size)]
+            ),
+            bank_ids=np.asarray(
+                [f"bank-{index:02d}" for index in range(city_ids.size)]
+            ),
+            city_ids=city_ids,
+        )
+        contracts = {
+            f"unit-{index:02d}": SimpleNamespace(scene=index)
+            for index in range(city_ids.size)
+        }
+        rows = []
+        conditions = (
+            "correct",
+            "paired_active_alternative",
+            "paired_null_alternative",
+            "wrong_city",
+            "geometry_destroyed",
+            "empty",
+        )
+        for index in range(city_ids.size):
+            values = {
+                "correct": 0.0,
+                "paired_active_alternative": 1.0 if index < 20 else -0.1,
+                "paired_null_alternative": 0.0,
+                "wrong_city": 1.0,
+                "geometry_destroyed": 1.0,
+                "empty": 1.0,
+            }
+            rows.extend(
+                {
+                    "unit_id": f"unit-{index:02d}",
+                    "condition": condition,
+                    "localization_error_m": values[condition],
+                }
+                for condition in conditions
+            )
+        config = {
+            "evaluation": {
+                "bootstrap_resamples": 1000,
+                "c1_active_error_minimum_m": 0.1,
+                "c1_null_error_equivalence_margin_m": 0.01,
+                "null_overclassification_rate_max": 0.05,
+            }
+        }
+        result = _c1_model_assessment(
+            config,
+            {"adapter_id": "adapter", "model_name": "model", "c1_eligible": True},
+            rows,
+            dataset,
+            expected_unit_contract=contracts,
+        )
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["city_assessments"]["source-a"]["passed"])
+        self.assertFalse(result["city_assessments"]["target-a"]["passed"])
 
     def test_c1_claim_reauthenticates_the_adapter_manifest_copy(self):
         stage = Path(self.temporary.name) / "external_baselines"
@@ -2485,6 +2896,29 @@ class WaibuIntegrationTests(unittest.TestCase):
         )
         validate_external_validity_manifest(manifest)
         self.assertEqual(manifest["command"][1], "{adapter_source}")
+
+    def test_sionna_gate_rejects_runtime_record_not_matching_outer_probe(self):
+        output = Path(self.temporary.name) / "sionna-runtime-output"
+        output.mkdir()
+        runtime_path = output / "runtime_provenance.json"
+        runtime = {"environment_sha256": "a" * 64}
+        write_json(runtime_path, runtime)
+        command = ["/runtime/venv/bin/python", "adapter.py"]
+        with patch(
+            "formal_v2.formal_external_runtime.validate_external_runtime",
+            return_value=runtime,
+        ):
+            path, authenticated = _authenticate_sionna_runtime(
+                command, output, runtime
+            )
+            self.assertEqual(path, runtime_path)
+            self.assertEqual(authenticated, runtime)
+            with self.assertRaisesRegex(RuntimeError, "independently probed"):
+                _authenticate_sionna_runtime(
+                    command,
+                    output,
+                    {"environment_sha256": "b" * 64},
+                )
 
     def test_sionna_scene_export_covers_and_authenticates_external_worlds(self):
         arrays = _archive_arrays(self.path)

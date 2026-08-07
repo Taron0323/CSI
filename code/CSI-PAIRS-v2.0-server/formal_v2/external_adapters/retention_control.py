@@ -64,6 +64,11 @@ def run_retention_control(dataset_path, run_root, output_root, context_path) -> 
         minimum_banks_per_target_city=int(
             config["data"]["minimum_banks_per_target_city"]
         ),
+        minimum_independent_base_map_clusters_per_target_city=int(
+            config["data"][
+                "minimum_independent_base_map_clusters_per_target_city"
+            ]
+        ),
         minimum_banks_per_source_role=int(
             config["data"]["minimum_banks_per_source_role"]
         ),

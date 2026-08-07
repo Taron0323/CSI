@@ -2636,7 +2636,7 @@ def build_first_party_risk_features(config, dataset, output_root):
     from .formal_localization import fit_source_position_head, predict_position_distribution
     from .formal_probes import fit_select_compatibility_probe, predict_binary_probe
     from .formal_protocol import patchify_csi, zero_typed_edit
-    from .formal_routing import ROUTE_NAMES, fit_route_normalization, route_dataset
+    from .formal_routing import fit_route_normalization, route_dataset
     from .formal_teacher import load_teacher_bundle
 
     root = Path(output_root)

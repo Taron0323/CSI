@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+import zipfile
+
+from formal_v2.anonymous_release import (
+    project_anonymity_tokens,
+    scan_tree,
+    scan_zip,
+)
+
+
+class AnonymousReleaseTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.tokens = {"private-owner", "private-owner/project", "author@example.org"}
+        self.project_shas = {"a" * 40, "b" * 40}
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_tree_scan_checks_names_binary_metadata_and_project_shas(self):
+        safe = self.root / "safe"
+        safe.mkdir()
+        (safe / "code.py").write_text("print('anonymous')\n", encoding="utf-8")
+        self.assertEqual(
+            scan_tree(safe, tokens=self.tokens, project_shas=self.project_shas),
+            [],
+        )
+
+        (safe / "figure.png").write_bytes(b"header\x00author@example.org\x00")
+        (safe / ("a" * 40 + ".txt")).write_text("clean", encoding="utf-8")
+        (safe / "short-sha.txt").write_text("revision " + "b" * 7, encoding="utf-8")
+        violations = scan_tree(
+            safe,
+            tokens=self.tokens,
+            project_shas=self.project_shas,
+        )
+        self.assertTrue(any("author@example.org" in value for value in violations))
+        self.assertTrue(any("project Git commit" in value for value in violations))
+        self.assertTrue(any("b" * 7 in value for value in violations))
+
+    def test_zip_scan_checks_entry_names_comments_payloads_and_symlinks(self):
+        archive = self.root / "anonymous.zip"
+        with zipfile.ZipFile(archive, "w") as package:
+            package.comment = b"private-owner/project"
+            info = zipfile.ZipInfo("paper/source.tex")
+            info.comment = b"author@example.org"
+            package.writestr(info, "project head " + "b" * 40)
+            symlink = zipfile.ZipInfo("paper/link")
+            symlink.external_attr = (0o120777 << 16) | 0xA0000000
+            package.writestr(symlink, "source.tex")
+            package.writestr("../identity.txt", "payload")
+        violations = scan_zip(
+            archive,
+            tokens=self.tokens,
+            project_shas=self.project_shas,
+        )
+        self.assertTrue(any("zip-comment" in value for value in violations))
+        self.assertTrue(any("zip-entry-comment" in value for value in violations))
+        self.assertTrue(any("project Git commit" in value for value in violations))
+        self.assertTrue(any("symlink is forbidden" in value for value in violations))
+        self.assertTrue(any("unsafe archive path" in value for value in violations))
+
+    def test_absolute_home_paths_and_generated_files_are_rejected(self):
+        release = self.root / "release"
+        release.mkdir()
+        personal_path = "/" + "Users" + "/someone/work/project"
+        (release / "trace.txt").write_text(
+            "built at " + personal_path,
+            encoding="utf-8",
+        )
+        cache = release / "__pycache__"
+        cache.mkdir()
+        (cache / "module.pyc").write_bytes(b"bytecode")
+        violations = scan_tree(
+            release,
+            tokens=self.tokens,
+            project_shas=self.project_shas,
+        )
+        self.assertTrue(any("personal absolute path" in value for value in violations))
+        self.assertTrue(any("forbidden release path" in value for value in violations))
+        self.assertTrue(any("bytecode is forbidden" in value for value in violations))
+
+    def test_project_tokens_include_author_and_committer_names_and_emails(self):
+        repository = self.root / "repository"
+        repository.mkdir()
+        subprocess.run(
+            ["git", "init", "--quiet"],
+            cwd=repository,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        (repository / "tracked.txt").write_text("content\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "tracked.txt"],
+            cwd=repository,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        environment = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "futaoran",
+            "GIT_AUTHOR_EMAIL": "private-author@example.org",
+            "GIT_COMMITTER_NAME": "Private Committer",
+            "GIT_COMMITTER_EMAIL": "private-committer@example.org",
+        }
+        subprocess.run(
+            ["git", "commit", "--quiet", "-m", "test identity"],
+            cwd=repository,
+            env=environment,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        tokens, shas = project_anonymity_tokens(repository)
+
+        self.assertTrue(
+            {
+                "futaoran",
+                "private-author@example.org",
+                "private committer",
+                "private-committer@example.org",
+            }.issubset(tokens)
+        )
+        self.assertEqual(len(shas), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

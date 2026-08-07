@@ -27,7 +27,7 @@ from formal_v2.formal_qualification import (
     _wrong_action_distance,
     qualification_blocking_scenes,
 )
-from formal_v2.formal_routing import fit_route_normalization
+from formal_v2.formal_routing import fit_route_normalization, route_dataset
 from formal_v2.formal_teacher import (
     load_teacher_bundle,
     random_teacher_pretraining_masks,
@@ -212,6 +212,56 @@ class FrozenMaskContractTests(unittest.TestCase):
 
 
 class QualificationCoverageTests(unittest.TestCase):
+    def test_teacher_latent_replacement_cannot_change_primary_routes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = write_nonscientific_fixture(Path(temporary) / "fixture.npz")
+            dataset = FormalDataset.load(fixture)
+            config = load_formal_config(SMOKE_CONFIG)
+            blocking = qualification_blocking_scenes(dataset)
+            spec = PatchSpec.from_metadata(dataset.metadata)
+            teacher = train_teacher_bundle(
+                dataset.csi[blocking["teacher_train"]],
+                spec,
+                config,
+                seed=120,
+            )
+            normalization = fit_route_normalization(dataset, teacher)
+            scenes = blocking["method_selection"]
+            baseline = route_dataset(
+                dataset,
+                teacher,
+                config,
+                scenes,
+                normalization=normalization,
+            )
+
+            from formal_v2.formal_teacher import teacher_targets as real_teacher_targets
+
+            def teacher_blind(bundle, csi):
+                return np.zeros_like(real_teacher_targets(bundle, csi))
+
+            with patch(
+                "formal_v2.formal_routing.teacher_targets",
+                side_effect=teacher_blind,
+            ):
+                replaced = route_dataset(
+                    dataset,
+                    teacher,
+                    config,
+                    scenes,
+                    normalization=normalization,
+                )
+
+        self.assertEqual(baseline.alignment_route, replaced.alignment_route)
+        self.assertEqual(baseline.response_route, replaced.response_route)
+        self.assertTrue(any(value == 2 for value in baseline.alignment_route.values()))
+        self.assertTrue(
+            all(value == 0 for value in replaced.alignment_teacher_stratum.values())
+        )
+        self.assertTrue(
+            all(value == 0 for value in replaced.response_teacher_stratum.values())
+        )
+
     def test_route_low_thresholds_are_audited_in_their_native_noise_units(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = write_nonscientific_fixture(Path(temporary) / "fixture.npz")

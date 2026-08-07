@@ -27,6 +27,8 @@ mkdir -p "${BUNDLE_ROOT}/paper/official_style"
     --exclude='formal_v2/external_adapters/.runtime-sionna' \
     --exclude='formal_v2/scripts/build_server_bundle.sh' \
     --exclude='formal_v2/scripts/build_anonymous_supplement.sh' \
+    --exclude='formal_v2/anonymous_release.py' \
+    --exclude='formal_v2/tests/test_anonymous_release.py' \
     -cf - formal_v2
 ) | (
   cd "${BUNDLE_ROOT}"
@@ -40,30 +42,9 @@ find "${BUNDLE_ROOT}" -type d -name __pycache__ -prune -exec rm -rf {} +
 find "${BUNDLE_ROOT}" -type d -name '*.egg-info' -prune -exec rm -rf {} +
 find "${BUNDLE_ROOT}" -type f \( -name '*.pyc' -o -name '.DS_Store' \) -delete
 
-python3 - "${BUNDLE_ROOT}" <<'PY'
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1])
-forbidden = (
-    "yiweinanzi",
-    "Taron0323",
-    "Immune-SkillNet",
-    "researcher@immune-skillnet.ai",
-    "origin/main",
-    "/Users/futaoran",
-)
-violations = []
-for path in root.rglob("*"):
-    if not path.is_file() or path.suffix.lower() in {".png", ".jpg", ".jpeg", ".pdf", ".zip", ".pt", ".npz"}:
-        continue
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    for token in forbidden:
-        if token.lower() in text.lower():
-            violations.append(f"{path.relative_to(root)}: {token}")
-if violations:
-    raise SystemExit("anonymous supplement identity scan failed: " + "; ".join(violations[:10]))
-PY
+python3 "${PROJECT_ROOT}/formal_v2/anonymous_release.py" \
+  --tree "${BUNDLE_ROOT}" \
+  --project-repository "${PROJECT_ROOT}"
 
 cd "${BUNDLE_ROOT}"
 find . -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r path; do
@@ -76,6 +57,9 @@ find "${BUNDLE_ROOT}" -exec touch -t 198001010000.00 {} +
 
 cd "${STAGING_ROOT}"
 TZ=UTC find CSI-PAIRS-anonymous-supplement -type f -print | LC_ALL=C sort | TZ=UTC zip -X -q "${OUTPUT_ZIP}" -@
+python3 "${PROJECT_ROOT}/formal_v2/anonymous_release.py" \
+  --zip "${OUTPUT_ZIP}" \
+  --project-repository "${PROJECT_ROOT}"
 cd "${OUTPUT_PARENT}"
 shasum -a 256 "$(basename "${OUTPUT_ZIP}")" > "${OUTPUT_ZIP}.sha256"
 

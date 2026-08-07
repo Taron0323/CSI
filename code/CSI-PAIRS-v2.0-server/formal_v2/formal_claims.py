@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from .formal_evidence import (
     CLAIM_IDS,
     GATE_IDS,
+    QUALIFICATION_SCHEMA,
     blocked_claim_vector,
     evidence_context,
     require_stage_manifested_gate,
@@ -20,7 +22,7 @@ CLAIM_DEPENDENCIES = {
     "C5": ("G1_G2", "G3_C5"),
     "C6": ("G1_G2", "G3_C5", "retention"),
     "C7": ("G1_G2", "G3", "G4", "G5"),
-    "C8": ("G1_G2", "G5"),
+    "C8": ("G1_G2", "G3", "G4", "G5"),
     "C9": ("G1_G2", "G3", "G6"),
     "C10": ("G1_G2", "G3", "G7"),
     "C11": ("rt_calibration",),
@@ -31,18 +33,18 @@ CLAIM_DEPENDENCIES = {
 
 STAGE_SPECS = {
     "G0": ("literature_resources/gate.json", "csi-pairs-v6-literature-resource-gate-v3"),
-    "G1_G2": ("qualification/gate.json", "csi-pairs-formal-qualification-gate-v2.1-v6"),
-    "G3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
-    "G3_C3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
-    "G3_C5": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v2"),
+    "G1_G2": ("qualification/gate.json", QUALIFICATION_SCHEMA),
+    "G3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v3"),
+    "G3_C3": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v3"),
+    "G3_C5": ("evaluation/gate.json", "csi-pairs-v6-evaluation-gate-v3"),
     "G4": ("controls/gate.json", "csi-pairs-v6-resource-control-gate-v3"),
     "G5": ("factorial/gate.json", "csi-pairs-formal-factorial-gate-v2.1-v6"),
     "G6": ("risk/gate.json", "csi-pairs-v6-risk-gate-v2"),
     "G7": ("path/gate.json", "csi-pairs-v6-path-gate-v3"),
-    "G8": ("external_validity/gate.json", "csi-pairs-v6-external-validity-gate-v3"),
+    "G8": ("external_validity/gate.json", "csi-pairs-v6-external-validity-gate-v4"),
     "external_baselines": (
         "external_baselines/gate.json",
-        "csi-pairs-v6-external-baseline-gate-v2",
+        "csi-pairs-v6-external-baseline-gate-v3",
     ),
     "scene_id_mechanism": ("scene_id/gate.json", "csi-pairs-v6-scene-id-gate-v3"),
     "shuffled_pair": (
@@ -147,7 +149,7 @@ def _assess_stage(path, schema, name, config, dataset):
             schema_version=schema,
         )
         if name == "external_baselines":
-            _validate_external_manifest_binding(path, payload)
+            _validate_external_manifest_binding(path, payload, dataset)
         if name == "G6":
             _validate_risk_mixture_binding(path, payload, config, dataset)
         if name in {
@@ -157,6 +159,8 @@ def _assess_stage(path, schema, name, config, dataset):
             _validate_stage_bound_input(path, payload, config, name, dataset)
         if name == "shuffled_pair":
             _validate_shuffled_evaluation_binding(path, payload, config, dataset)
+        if name in {"G3", "G3_C3", "G3_C5", "G4", "G5"}:
+            _validate_critical_chain_binding(path, payload, name)
         return _semantic_status(name, payload), None
     except Exception as error:
         return "INVALID", f"{type(error).__name__}: {error}"
@@ -190,10 +194,18 @@ def _semantic_status(name, payload):
         ):
             return "FAIL"
     elif name == "G1_G2":
+        from .formal_routing import PRIMARY_ROUTE_CONTRACT
+
         vector = payload.get("upstream_gates")
         if not isinstance(vector, dict):
             raise RuntimeError("qualification gate lacks upstream_gates")
-        return "PASS" if vector.get("G1") == vector.get("G2") == "PASS" and payload.get("passed") is True else "FAIL"
+        return (
+            "PASS"
+            if vector.get("G1") == vector.get("G2") == "PASS"
+            and payload.get("passed") is True
+            and payload.get("primary_route_contract") == PRIMARY_ROUTE_CONTRACT
+            else "FAIL"
+        )
     if name == "G3_C3":
         return "PASS" if payload.get("c3_evidence_complete") is True else "FAIL"
     if name == "G3_C5":
@@ -266,6 +278,17 @@ def _semantic_status(name, payload):
             or payload.get("external_csi_contract")
             != "outer-recomputed-direction-and-effect-from-raw-csi-v1"
             or int(payload.get("external_scene_count", 0)) < 1
+            or payload.get("external_runtime_provenance_path")
+            != "runtime_provenance.json"
+            or not _lower_sha256(
+                payload.get("external_runtime_provenance_sha256")
+            )
+            or not _lower_sha256(
+                payload.get("external_runtime_environment_sha256")
+            )
+            or not isinstance(payload.get("external_runtime_provenance"), dict)
+            or payload["external_runtime_provenance"].get("environment_sha256")
+            != payload.get("external_runtime_environment_sha256")
         ):
             return "FAIL"
     elif name == "external_baselines":
@@ -277,6 +300,8 @@ def _semantic_status(name, payload):
             or int(payload.get("c1_eligible_model_count", 0)) != len(eligible)
             or int(payload.get("c1_required_eligible_model_count", 0)) != 2
             or not isinstance(assessments, list)
+            or payload.get("c1_city_gate_contract")
+            != "all-evaluation-cities-must-pass-v1"
             or payload.get("condition_input_contract")
             != "outer-recomputed-map-and-action-sha256-v1"
             or payload.get("condition_registry_path") != "external_condition_registry.csv"
@@ -294,6 +319,8 @@ def _semantic_status(name, payload):
             return "FAIL"
         for model in eligible:
             row = by_model[model]
+            cities = row.get("evaluation_cities")
+            city_assessments = row.get("city_assessments")
             if (
                 row.get("c1_eligible") is not True
                 or row.get("passed") is not True
@@ -304,8 +331,33 @@ def _semantic_status(name, payload):
                     row.get("null_overclassification_rate_ci95_high", float("inf"))
                 )
                 > float(row.get("null_overclassification_rate_max", -1.0))
+                or row.get("aggregation")
+                != "pooled-report-plus-simultaneous-per-city-gate"
+                or row.get("all_cities_passed") is not True
+                or not isinstance(cities, list)
+                or len(cities) != len(set(cities))
+                or int(row.get("evaluation_city_count", 0)) != len(cities)
+                or not isinstance(city_assessments, dict)
+                or set(city_assessments) != set(cities)
             ):
                 return "FAIL"
+            for city in cities:
+                assessment = city_assessments[city]
+                if (
+                    not isinstance(assessment, dict)
+                    or assessment.get("city_id") != city
+                    or assessment.get("passed") is not True
+                    or assessment.get("active_effect_passed") is not True
+                    or assessment.get("null_safety_passed") is not True
+                    or int(assessment.get("base_map_cluster_count", 0)) < 2
+                    or float(
+                        assessment.get(
+                            "null_overclassification_rate_ci95_high", float("inf")
+                        )
+                    )
+                    > float(assessment.get("null_overclassification_rate_max", -1.0))
+                ):
+                    return "FAIL"
         if len(eligible) < 2:
             return (
                 "BLOCKED"
@@ -437,8 +489,8 @@ def _lower_sha256(value):
     )
 
 
-def _validate_external_manifest_binding(gate_path, payload):
-    from .formal_external import _validate_manifest
+def _validate_external_manifest_binding(gate_path, payload, dataset=None):
+    from .formal_external import _validate_execution_manifest, _validate_manifest
 
     manifest_path = gate_path.parent / str(payload.get("adapter_manifest_path", ""))
     if not manifest_path.is_file():
@@ -455,7 +507,8 @@ def _validate_external_manifest_binding(gate_path, payload):
     ] if isinstance(entries, list) else []
     if len(matches) != 1 or matches[0].get("sha256") != payload.get("adapter_manifest_sha256"):
         raise RuntimeError("external adapter manifest is absent from or mismatched with the stage manifest")
-    _validate_manifest(read_strict_json(manifest_path))
+    adapter_manifest = read_strict_json(manifest_path)
+    _validate_manifest(adapter_manifest)
     condition_path = gate_path.parent / str(payload.get("condition_registry_path", ""))
     condition_digest = payload.get("condition_registry_sha256")
     if not condition_path.is_file() or sha256_file(condition_path) != condition_digest:
@@ -466,6 +519,31 @@ def _validate_external_manifest_binding(gate_path, payload):
     ] if isinstance(entries, list) else []
     if len(condition_matches) != 1 or condition_matches[0].get("sha256") != condition_digest:
         raise RuntimeError("external condition registry is absent from or mismatched with the stage manifest")
+    if dataset is None:
+        return
+    status_path = gate_path.parent / "adapter_status.csv"
+    status_matches = [
+        row for row in entries
+        if isinstance(row, dict) and row.get("path") == status_path.name
+    ] if isinstance(entries, list) else []
+    if not status_path.is_file() or len(status_matches) != 1:
+        raise RuntimeError("external adapter status is not stage-authenticated")
+    with status_path.open(newline="", encoding="utf-8") as handle:
+        status_rows = list(csv.DictReader(handle))
+    passed_ids = [
+        row.get("adapter_id") for row in status_rows if row.get("status") == "PASS"
+    ]
+    if len(passed_ids) != len(set(passed_ids)):
+        raise RuntimeError("external adapter status duplicates a passing adapter")
+    adapters = {row["adapter_id"]: row for row in adapter_manifest["adapters"]}
+    if set(passed_ids).difference(adapters):
+        raise RuntimeError("external adapter status names an unknown passing adapter")
+    for adapter_id in passed_ids:
+        adapter_output = gate_path.parent / "adapters" / str(adapter_id)
+        result_path = adapter_output / "six_condition_results.csv"
+        _validate_execution_manifest(
+            adapters[str(adapter_id)], adapter_output, result_path, dataset
+        )
 
 
 def _validate_risk_mixture_binding(gate_path, payload, config, dataset):
@@ -535,6 +613,47 @@ def _validate_risk_mixture_binding(gate_path, payload, config, dataset):
         raise RuntimeError("risk replay binding does not match executed first-party inputs")
 
 
+def _validate_critical_chain_binding(gate_path, payload, stage_name):
+    root = gate_path.parent.parent
+    qualification_path = root / "qualification" / "gate.json"
+    factorial_path = root / "factorial" / "gate.json"
+    evaluation_path = root / "evaluation" / "gate.json"
+
+    def require_digest(field, path, label):
+        digest = payload.get(field)
+        if not _lower_sha256(digest) or not path.is_file() or sha256_file(path) != digest:
+            raise RuntimeError(f"{label} is missing or hash-mismatched")
+
+    if stage_name == "G5":
+        require_digest(
+            "qualification_gate_sha256",
+            qualification_path,
+            "G5 qualification binding",
+        )
+    elif stage_name in {"G3", "G3_C3", "G3_C5"}:
+        require_digest(
+            "qualification_gate_sha256",
+            qualification_path,
+            "G3 qualification binding",
+        )
+        require_digest(
+            "factorial_gate_sha256",
+            factorial_path,
+            "G3 factorial binding",
+        )
+    elif stage_name == "G4":
+        require_digest(
+            "factorial_gate_sha256",
+            factorial_path,
+            "G4 factorial binding",
+        )
+        require_digest(
+            "evaluation_gate_sha256",
+            evaluation_path,
+            "G4 evaluation binding",
+        )
+
+
 def _validate_shuffled_evaluation_binding(gate_path, payload, config, dataset):
     root = gate_path.parent.parent.parent
     evaluation_gate_path = root / "evaluation" / "gate.json"
@@ -552,7 +671,7 @@ def _validate_shuffled_evaluation_binding(gate_path, payload, config, dataset):
         evaluation_gate,
         config,
         dataset,
-        schema_version="csi-pairs-v6-evaluation-gate-v2",
+        schema_version="csi-pairs-v6-evaluation-gate-v3",
     )
     audit = evaluation_gate.get("alignment_shortcut_audit")
     if not isinstance(audit, dict) or audit.get("passed") is not True:
@@ -665,6 +784,48 @@ def _validate_stage_bound_input(
             or payload.get("external_scene_count") != external_csi.shape[0]
         ):
             raise RuntimeError("G8 gate statistics differ from raw-CSI outer recomputation")
+        runtime_relative = payload.get("external_runtime_provenance_path")
+        runtime_digest = payload.get("external_runtime_provenance_sha256")
+        if runtime_relative != "runtime_provenance.json" or not _lower_sha256(
+            runtime_digest
+        ):
+            raise RuntimeError("G8 gate has no authenticated runtime provenance")
+        runtime_path = gate_path.parent / runtime_relative
+        runtime_matches = [
+            row
+            for row in files
+            if isinstance(row, dict) and row.get("path") == runtime_relative
+        ] if isinstance(files, list) else []
+        if (
+            runtime_path.is_symlink()
+            or not runtime_path.is_file()
+            or sha256_file(runtime_path) != runtime_digest
+            or len(runtime_matches) != 1
+            or runtime_matches[0].get("sha256") != runtime_digest
+        ):
+            raise RuntimeError("G8 runtime provenance is not stage-authenticated")
+        from .formal_external_runtime import probe_external_runtime
+        from .formal_external_validity import _authenticate_sionna_runtime
+
+        project_root = Path(__file__).resolve().parents[1]
+        executable = manifest["command"][0].replace(
+            "{project_root}", str(project_root)
+        )
+        independently_probed = probe_external_runtime(
+            executable,
+            "sionna",
+            project_root,
+            require_execution_ready=True,
+        )
+        _, runtime_record = _authenticate_sionna_runtime(
+            [executable], gate_path.parent, independently_probed
+        )
+        if (
+            payload.get("external_runtime_provenance") != runtime_record
+            or payload.get("external_runtime_environment_sha256")
+            != runtime_record["environment_sha256"]
+        ):
+            raise RuntimeError("G8 gate runtime fields differ from the probed interpreter")
     elif stage_name == "scene_id_mechanism":
         from .formal_scene_id import _validate_manifest, _verify_adapter_files
 

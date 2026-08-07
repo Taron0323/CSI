@@ -281,6 +281,7 @@ class FormalDataset:
         minimum_target_cities: int = 2,
         minimum_source_cities: int = 2,
         minimum_banks_per_target_city: int = 2,
+        minimum_independent_base_map_clusters_per_target_city: int = 2,
         minimum_banks_per_source_role: int = 1,
     ) -> None:
         if require_clean_csi is not True:
@@ -448,26 +449,39 @@ class FormalDataset:
         source_cities = set(self.city_ids[np.isin(self.scene_roles, SOURCE_ROLES)].tolist())
         if len(source_cities) < minimum_source_cities:
             raise FormalDatasetError("too few independent source cities")
-        encoder_train_cities = set(
-            self.city_ids[self.scene_roles == "source_encoder_train"].tolist()
-        )
-        if len(encoder_train_cities) < minimum_source_cities:
-            raise FormalDatasetError(
-                "source_encoder_train covers too few independent source cities"
-            )
+        for role in SOURCE_ROLES:
+            role_cities = set(self.city_ids[self.scene_roles == role].tolist())
+            if len(role_cities) < minimum_source_cities:
+                raise FormalDatasetError(
+                    f"{role} covers too few independent source cities"
+                )
         if source_cities.intersection(target_cities):
             raise FormalDatasetError("source and target city identifiers must be disjoint")
         for city in target_cities:
-            count = len(
+            bank_count = len(
                 {
-                    self.independent_unit_id(scene)
+                    str(self.bank_ids[scene])
                     for scene in range(scenes)
                     if self.scene_roles[scene] == "target" and self.city_ids[scene] == city
                 }
             )
-            if count < minimum_banks_per_target_city:
+            if bank_count < minimum_banks_per_target_city:
                 raise FormalDatasetError(
-                    f"target city {city!r} has too few independent base-map clusters"
+                    f"target city {city!r} has too few distinct banks"
+                )
+            canonical_cluster_count = len(
+                {
+                    self.canonical_base_map_digest(scene)
+                    for scene in range(scenes)
+                    if self.scene_roles[scene] == "target" and self.city_ids[scene] == city
+                }
+            )
+            if (
+                canonical_cluster_count
+                < minimum_independent_base_map_clusters_per_target_city
+            ):
+                raise FormalDatasetError(
+                    f"target city {city!r} has too few independent canonical base-map clusters"
                 )
         for cluster in set(self.base_map_cluster_ids.tolist()):
             mask = self.base_map_cluster_ids == cluster

@@ -10,6 +10,11 @@ from .formal_teacher import TeacherBundle, teacher_targets
 
 
 ROUTE_NAMES = np.asarray(["null", "gray", "active"])
+PRIMARY_ROUTE_CONTRACT = {
+    "alignment_primary": "full_channel_physical_distance_only",
+    "response_primary": "query_patch_physical_distance_only",
+    "teacher_sensitivity": "independent_audit_stratum_and_auxiliary_qualification_only",
+}
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,8 @@ class RoutedEdges:
     physical_patches: dict[int, np.ndarray]
     alignment_route: dict[tuple[int, int, int, int], int]
     response_route: dict[tuple[int, int, int, int, int], int]
+    alignment_teacher_stratum: dict[tuple[int, int, int, int], int]
+    response_teacher_stratum: dict[tuple[int, int, int, int, int], int]
     alignment_distances: dict[tuple[int, int, int, int], tuple[float, float]]
     response_distances: dict[tuple[int, int, int, int, int], tuple[float, float]]
     normalization: RouteNormalization
@@ -76,6 +83,8 @@ def route_dataset(
     }
     alignment_route: dict[tuple[int, int, int, int], int] = {}
     response_route: dict[tuple[int, int, int, int, int], int] = {}
+    alignment_teacher_stratum: dict[tuple[int, int, int, int], int] = {}
+    response_teacher_stratum: dict[tuple[int, int, int, int, int], int] = {}
     alignment_distances: dict[tuple[int, int, int, int], tuple[float, float]] = {}
     response_distances: dict[tuple[int, int, int, int, int], tuple[float, float]] = {}
     q = config["qualification"]
@@ -104,9 +113,11 @@ def route_dataset(
                 a_key = (scene, edge.source_world, edge.target_world, position)
                 alignment_route[a_key] = route_code(
                     physical_a,
-                    latent_a,
                     float(q["physical_null_rms_max"]),
                     float(q["physical_active_rms_min"]),
+                )
+                alignment_teacher_stratum[a_key] = teacher_sensitivity_code(
+                    latent_a,
                     float(q["latent_null_rms_max"]),
                     float(q["latent_active_rms_min"]),
                 )
@@ -131,9 +142,11 @@ def route_dataset(
                     r_key = (*a_key, query)
                     response_route[r_key] = route_code(
                         physical_r,
-                        latent_r,
                         float(q["response_physical_null_rms_max"]),
                         float(q["response_physical_active_rms_min"]),
+                    )
+                    response_teacher_stratum[r_key] = teacher_sensitivity_code(
+                        latent_r,
                         float(q["response_latent_null_rms_max"]),
                         float(q["response_latent_active_rms_min"]),
                     )
@@ -144,6 +157,8 @@ def route_dataset(
         physical_patches=scene_patches,
         alignment_route=alignment_route,
         response_route=response_route,
+        alignment_teacher_stratum=alignment_teacher_stratum,
+        response_teacher_stratum=response_teacher_stratum,
         alignment_distances=alignment_distances,
         response_distances=response_distances,
         normalization=norm,
@@ -152,15 +167,24 @@ def route_dataset(
 
 def route_code(
     physical: float,
-    latent: float,
     physical_null: float,
     physical_active: float,
+) -> int:
+    if physical <= physical_null:
+        return 0
+    if physical >= physical_active:
+        return 2
+    return 1
+
+
+def teacher_sensitivity_code(
+    latent: float,
     latent_null: float,
     latent_active: float,
 ) -> int:
-    if physical <= physical_null and latent <= latent_null:
+    if latent <= latent_null:
         return 0
-    if physical >= physical_active and latent >= latent_active:
+    if latent >= latent_active:
         return 2
     return 1
 
@@ -178,7 +202,22 @@ def route_coverage(dataset: FormalDataset, routed: RoutedEdges, scenes: np.ndarr
             "bank_id": str(dataset.bank_ids[scene]),
             "role": str(dataset.scene_roles[scene]),
         }
-        for prefix, values in (("alignment", alignment), ("response_patch", response)):
+        alignment_teacher = [
+            value
+            for key, value in routed.alignment_teacher_stratum.items()
+            if key[0] == scene
+        ]
+        response_teacher = [
+            value
+            for key, value in routed.response_teacher_stratum.items()
+            if key[0] == scene
+        ]
+        for prefix, values in (
+            ("alignment", alignment),
+            ("response_patch", response),
+            ("alignment_teacher_stratum", alignment_teacher),
+            ("response_patch_teacher_stratum", response_teacher),
+        ):
             for code, name in enumerate(ROUTE_NAMES.tolist()):
                 row[f"{prefix}_{name}_units"] = int(np.sum(np.asarray(values) == code))
         rows.append(row)
