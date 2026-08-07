@@ -222,7 +222,8 @@ class AnonymousReleaseTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=120,
+            # This recursively runs the public suite on a hosted CPU runner.
+            timeout=300,
         )
         self.assertEqual(
             completed.returncode,

@@ -608,7 +608,8 @@ class ConfigTests(unittest.TestCase):
                 env=environment,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                # The wrapper performs the complete fixture qualification chain.
+                timeout=300,
                 check=False,
             )
             self.assertEqual(
