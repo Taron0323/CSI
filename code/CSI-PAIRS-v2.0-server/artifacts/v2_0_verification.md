@@ -15,15 +15,23 @@ This record supersedes the previous V2.0 dry-run report. Archived V1/V1.26 fixtu
 
 The current repair starts from `BASE_SHA`
 `eef3040c13264829cda1f4398009f691b52038ae`; code and regression tests are fixed at
-`AUDITED_CODE_SHA` `9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64`. The source-tree suite passes
-`256/256` tests under CPython 3.12.10. Compilation, Ruff `E9,F`, `pip check`, strict V2.3
-formal/smoke configuration loading, 24 CLI help paths, shell syntax, and vendored hashes pass.
+`AUDITED_CODE_SHA` `4074e98fe3c1d1ddccee79672f312b9111185992`. The source-tree suite passes
+`258/258` tests under CPython 3.12.10. Compilation, Ruff `E9,F`, `pip check`, strict V2.3
+formal/smoke configuration loading, 25 CLI help paths, shell syntax, and vendored hashes pass.
 
 The anonymous-release regression now builds a fresh archive, excludes the private requirement-matrix
 generator and its internal audit tests, extracts the archive, and executes every exported public test.
 This closes the discovered failure in which the exported suite retained an audit test whose internal
 claim contract was intentionally absent. The release remains separated from the provenance-bearing
 internal server delivery.
+
+Remote-head replay found two additional delivery defects and closed both before this audited SHA.
+First, the bundle verifier inherited the fixture qualification's expected exit `1`; it now returns
+success only after authenticating the complete `DRY_RUN_FAIL_NOT_EVIDENCE`, `passed=false`,
+`fixture=true`, `scientific_use=FORBIDDEN` state. Second, pull-request merge refs use the generic
+`GitHub <noreply@github.com>` committer; the anonymity scan now excludes only those two
+non-identifying automation tokens while retaining real author/committer identities, repository
+owners, project commit SHAs, and personal-path detection.
 
 The reproducible paper build has SHA-256
 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e`, contains 10 PDF

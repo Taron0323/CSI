@@ -3,7 +3,7 @@
 Date: 2026-08-08 (Asia/Shanghai)
 
 - `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`
-- `AUDITED_CODE_SHA`: `9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64`
+- `AUDITED_CODE_SHA`: `4074e98fe3c1d1ddccee79672f312b9111185992`
 - Branch: `codex/fix-formal-experiment-readiness`
 - Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
 - Environment: CPython 3.12.10, locked packages, macOS arm64, CPU-only
@@ -12,11 +12,11 @@ Date: 2026-08-08 (Asia/Shanghai)
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `256/256 PASS` in 19.750 s |
+| Full unittest discovery | `258/258 PASS` in 123.402 s |
 | Python compilation | PASS for core, adapters and tests |
 | Ruff `E9,F` | PASS |
 | Dependency health | `pip check` PASS |
-| CLI help | `24/24 PASS` |
+| CLI help | `25/25 PASS` (top level plus 24 subcommands) |
 | Strict config load | formal and smoke both `csi-pairs-formal-config-v2.3-v6` |
 | Shell syntax | 9 scripts PASS |
 | Wi-GATr vendor inventory | PASS |
@@ -41,18 +41,22 @@ failed tests.
 - anonymous identity/Git/path scanner and CPU CI.
 - anonymous export omits internal requirement-matrix tooling and proves the exported public test
   suite runs to completion after fresh extraction.
+- bundle verification accepts only the fully authenticated expected fixture failure and never
+  reclassifies it as a scientific PASS;
+- pull-request merge-ref anonymity scanning ignores only GitHub's generic automation identity while
+  retaining project author, committer, email, repository, SHA and personal-path checks.
 
 ## Final local delivery checks
 
 | Check | Result |
 |---|---|
-| Server bundle reproducibility | Two byte-identical builds; SHA-256 `ab59d43fc07608a7f29cae6a62491f1f2770690b28e34e47be89574bfad8f6c6` |
-| Anonymous bundle reproducibility | Two byte-identical builds; SHA-256 `a69d9dd12016eae1e7cce4573c14837bb41f774e1d93ed05194d84e73c80a6e9` |
+| Server bundle reproducibility | Two byte-identical builds; SHA-256 `e8c0713dfe04fb03a93c4d64588fe8269ba5e3809e4ee7e5d6f8d35ea9cde94f` |
+| Anonymous bundle reproducibility | Two byte-identical builds; SHA-256 `3b4959ef147baab62997ad0225eed0b7c705e362e827c209ac054ad0ea300839` |
 | Bundle sidecars | All four generated sidecars verify |
-| Fresh server extraction | Exact 174-entry inventory; 256 tests pass with one expected source-only Git-history test skipped |
-| Fresh anonymous extraction | Exact 155-entry inventory; 246 tests pass; pre/post-test tree and ZIP anonymity scans pass |
+| Fresh server extraction | Exact 174-entry inventory; 258 tests pass with one expected source-only Git-history test skipped |
+| Fresh anonymous extraction | Exact 155-entry inventory; 247 tests pass; pre/post-test tree and ZIP anonymity scans pass |
 | Anonymous exclusions | No internal matrix builder, internal audit test, audit artifacts, PDF, `.DS_Store`, bytecode or identity/path finding |
-| Extracted server dry run | PASS; fixture manifest remains `scientific_use=FORBIDDEN` |
+| Extracted server dry run | Outer verifier PASS after authenticating inner exit `1`, `passed=false`, `DRY_RUN_FAIL_NOT_EVIDENCE`, and fixture `scientific_use=FORBIDDEN` |
 | Reproducible paper | Two byte-identical builds and tracked PDF share SHA-256 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e` |
 | ICLR preflight | Zero findings on the clean build directory containing the official style and build log |
 | PDF visual/metadata review | 10/10 pages rendered; main text ends on page 8, references and appendix start on page 9; no clipping, overlap, identity metadata or author-bearing link |

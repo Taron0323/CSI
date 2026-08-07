@@ -53,6 +53,13 @@ Expected software outcome:
 - no teacher, qualification, four-arm, localization, RT, or external-model experiment is run;
 - no scientific gate changes state.
 
+`formal_v2/scripts/verify_server_bundle.sh` also runs a non-scientific fixture dry run. Its inner
+qualification must exit `1` with authenticated status `DRY_RUN_FAIL_NOT_EVIDENCE`, `passed=false`,
+`fixture=true`, and `scientific_use=FORBIDDEN`. The wrapper returns `0` only after reauthenticating
+that exact expected fail-closed gate and the complete root manifest. A successful wrapper therefore
+means that software verification preserved the scientific prohibition; it is not a qualification
+PASS or experimental evidence.
+
 Stage-0 samples an independent, without-replacement 75% patch mask for every example at every
 optimization step. Formal patch grids must contain a multiple of four patches so the mask
 cardinality is exact. The checkpoint records this sampler contract and old fixed-bank Stage-0

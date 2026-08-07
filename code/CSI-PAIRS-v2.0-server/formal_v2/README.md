@@ -113,3 +113,10 @@ but includes concat bottleneck parameters and its measured training/inference FL
 Use `make-fixture --source-banks-per-role 2` only when a software smoke must exercise the
 cross-source-city scene-ID path. The generated data and every derivative remain permanently
 `scientific_use=FORBIDDEN`.
+
+`scripts/run_formal_v2_dry_run.sh` treats the fixture qualification's nonzero result as part of the
+verification contract, not as a scientific success. It accepts only exit `1` plus a fully
+reauthenticated `DRY_RUN_FAIL_NOT_EVIDENCE` gate with `passed=false`, `fixture=true`, and
+`scientific_use=FORBIDDEN`; any other exit or manifest state makes the wrapper fail. Consequently,
+`verify_server_bundle.sh` may return `0` after this expected fail-closed check without promoting G1,
+G2, or any claim.

@@ -3,7 +3,7 @@
   "artifact_label": "csi-pairs-formal-v2.1-v6",
   "status": "CODE_READY_FOR_FORMAL_INPUT",
   "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
-  "audited_code_sha": "9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64",
+  "audited_code_sha": "4074e98fe3c1d1ddccee79672f312b9111185992",
   "launch_status": "BLOCKED",
   "author_decision_blockers": [
     "SC-GAUGE-001: choose one shared RT reference or one source-derived per-pair gauge without changing the estimand silently",
@@ -37,7 +37,9 @@
     "CPython 3.12 main-runtime enforcement with exact lock versions and nonempty distribution RECORD digests",
     "complete stage inventory authentication and same-run G3/G4/G5 dependency binding for C8",
     "nonredistributable resource exclusion, deterministic server and anonymous bundles, identity scanning, and CPU CI",
-    "anonymous supplement excludes internal requirement-matrix tooling and proves its exported public test suite runs to completion"
+    "anonymous supplement excludes internal requirement-matrix tooling and proves its exported public test suite runs to completion",
+    "bundle dry-run verification authenticates the exact expected fixture failure while returning success only for the outer software check",
+    "anonymous identity scanning retains real project identities while excluding generic GitHub merge-committer tokens that otherwise make pull-request CI false-positive"
   ],
   "implementation_inventory": {
     "shuffled_pair": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",

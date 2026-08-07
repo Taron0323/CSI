@@ -8,11 +8,14 @@
 ## 2026-08-08 current PR addendum
 
 - Current `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`.
-- Current `AUDITED_CODE_SHA`: `9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64`.
-- Current source-tree verification: `256/256` tests, Python compilation, Ruff `E9,F`, dependency
-  health, strict V2.3 configs, 24 CLI help paths, shell syntax, and vendored hashes pass.
+- Current `AUDITED_CODE_SHA`: `4074e98fe3c1d1ddccee79672f312b9111185992`.
+- Current source-tree verification: `258/258` tests, Python compilation, Ruff `E9,F`, dependency
+  health, strict V2.3 configs, 25 CLI help paths, shell syntax, and vendored hashes pass.
 - The anonymous exporter now omits internal requirement-matrix code and audit tests together. A
   source-tree regression builds and extracts the archive and runs the complete exported public suite.
+- Remote replay additionally closes the bundle verifier's expected fixture-exit propagation and the
+  GitHub pull-request merge committer's non-identifying anonymity-scan false positive. Real project
+  identities, repository provenance, project SHAs, and personal paths remain fail-closed.
 - The current paper PDF passes reproducible-build, ICLR preflight, metadata/font, LaTeX-log, and
   10-page visual inspection checks. It remains a pre-experiment protocol draft and contains no
   substituted fixture results.

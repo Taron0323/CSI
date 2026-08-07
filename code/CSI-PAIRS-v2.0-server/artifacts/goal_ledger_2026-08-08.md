@@ -9,8 +9,8 @@ Last updated: 2026-08-08 (Asia/Shanghai)
 - Branch: `codex/fix-formal-experiment-readiness`
 - Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
 - Starting PR head: `1f5c5fafa0fd76cf1a243f18fcb234c3418a08a6`
-- `AUDITED_CODE_SHA`: `9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64`
-- Current remote PR head: `1f5c5fafa0fd76cf1a243f18fcb234c3418a08a6` (delivery commits not pushed yet)
+- `AUDITED_CODE_SHA`: `4074e98fe3c1d1ddccee79672f312b9111185992`
+- Current remote PR head: `742ec70b88ef48e3179aa6a23f7cba482c846a5b` (latest repairs not pushed yet)
 
 ## Authority inputs
 
@@ -43,19 +43,29 @@ All independently reproduced code-level P0/P1 findings are repaired at `AUDITED_
 - nonredistributable PDFs in Git/deliveries and anonymous provenance leakage;
 - nondeterministic bundles and missing CI.
 - anonymous supplement retaining an internal audit test whose private contract was excluded.
+- bundle verification propagating the fixture qualification's expected nonzero exit instead of
+  authenticating it as a successful outer software check;
+- pull-request CI treating the generic `GitHub <noreply@github.com>` merge committer as a project
+  identity and false-positive scanning ordinary GitHub URLs.
 
 The last hypothesis-driven sweep found one additional P1: the main runtime could record but not
 reject an internally consistent unlocked environment. The unified evidence context now requires
 CPython 3.12, every exact pinned version and a nonempty installed-distribution RECORD digest. The
 new version/missing-package/RECORD mutations pass.
 
+The first remote-head replay then found the two delivery findings above. The dry-run wrapper now
+requires exact exit `1` and reauthenticates the complete `DRY_RUN_FAIL_NOT_EVIDENCE`,
+`passed=false`, fixture/FORBIDDEN state before it returns `0`. The anonymity scan ignores only the
+two generic GitHub automation tokens while continuing to reject real authors, committers, emails,
+repository owners, project SHAs, and personal paths. Both repairs have regression tests.
+
 ## Latest local verification
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `256/256 PASS`, 19.750 s |
+| Full unittest discovery | `258/258 PASS`, 123.402 s |
 | Compilation, Ruff `E9,F`, `pip check` | PASS |
-| CLI help | `24/24 PASS` |
+| CLI help | `25/25 PASS` (top level plus 24 subcommands) |
 | Formal/smoke strict config | V2.3 V6 PASS |
 | Shell syntax | 9/9 PASS |
 | Wi-GATr vendor hash | PASS |
@@ -63,10 +73,11 @@ new version/missing-package/RECORD mutations pass.
 | PDF render | 10/10 pages inspected; no overlap, clipping or identity metadata |
 | Remote main drift | none after fetch; `origin/main` remains `BASE_SHA` |
 | Anonymous exported-suite regression | PASS after fresh build/extraction; internal audit tooling absent |
-| Deterministic server delivery | SHA-256 `ab59d43fc07608a7f29cae6a62491f1f2770690b28e34e47be89574bfad8f6c6`; two byte-identical builds |
-| Deterministic anonymous delivery | SHA-256 `a69d9dd12016eae1e7cce4573c14837bb41f774e1d93ed05194d84e73c80a6e9`; two byte-identical builds |
-| Fresh server package | 174 inventory entries; 256 tests pass with one expected source-only skip; dry run remains scientifically forbidden |
-| Fresh anonymous package | 155 inventory entries; 246 tests pass; pre/post tree and ZIP anonymity scans pass |
+| Pull-request merge-ref anonymity regression | PASS against the actual PR merge-ref committer identity |
+| Deterministic server delivery | SHA-256 `e8c0713dfe04fb03a93c4d64588fe8269ba5e3809e4ee7e5d6f8d35ea9cde94f`; two byte-identical builds |
+| Deterministic anonymous delivery | SHA-256 `3b4959ef147baab62997ad0225eed0b7c705e362e827c209ac054ad0ea300839`; two byte-identical builds |
+| Fresh server package | 174 inventory entries; 258 tests pass with one expected source-only skip; outer verifier authenticates the expected fixture failure and returns `0` without claim promotion |
+| Fresh anonymous package | 155 inventory entries; 247 tests pass; pre/post tree and ZIP anonymity scans pass |
 | Reproducible paper PDF | two builds and tracked PDF share SHA-256 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e` |
 | Final ICLR/PDF check | clean-build preflight has zero findings; 10/10 rendered pages and anonymous metadata pass |
 

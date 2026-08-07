@@ -30,6 +30,18 @@ Run the code tests with Python 3.12 after installing `formal_v2/requirements-loc
 python3 -m unittest discover -s formal_v2/tests -v
 ```
 
+The optional fixture dry run is a fail-closed software check:
+
+```bash
+CSI_PAIRS_PYTHON=python3 \
+  formal_v2/scripts/run_formal_v2_dry_run.sh runs/dry-run-001
+```
+
+The inner qualification must exit `1` and emit an authenticated `DRY_RUN_FAIL_NOT_EVIDENCE` gate
+with `passed=false`, `fixture=true`, and `scientific_use=FORBIDDEN`. The wrapper exits `0` only after
+verifying that exact state and its complete root manifest; this does not mean that qualification or
+any scientific gate passed.
+
 Fixtures are permanently marked `scientific_use=FORBIDDEN`. Formal claims remain blocked until the
 non-fixture data, independent regeneration, calibration, external-validity, and statistical gates
 complete under the frozen protocol.

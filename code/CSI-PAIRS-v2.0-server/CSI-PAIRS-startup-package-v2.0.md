@@ -10,7 +10,7 @@
 > 版本性质：正式实验执行版，不是新增科学结果
 > 当前状态：`CODE_READY_FOR_FORMAL_INPUT`
 > 当前科学结论：`SCIENTIFIC_EVIDENCE=NOT_ASSESSED`；归档 fixture 仍为 `scientific_use=FORBIDDEN`
-> 工程基线：合作者 GitHub `origin/main@eef3040c13264829cda1f4398009f691b52038ae`；审计代码提交 `9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64`；旧本地实现不作为代码来源
+> 工程基线：合作者 GitHub `origin/main@eef3040c13264829cda1f4398009f691b52038ae`；审计代码提交 `4074e98fe3c1d1ddccee79672f312b9111185992`；旧本地实现不作为代码来源
 > 科学设计约束：冻结 Idea V6；归档 No-X/null/shortcut 失败仅作历史追溯
 
 ## 0. 一页结论
@@ -25,7 +25,10 @@ V2.1 按冻结 V6 实现数据再生成门、资格门、patch F/P、严格四�
 4. Endpoint/Alignment/Response/Full 使用同一 PyTorch 架构、初始化、batch、mask、步数和完整前向合同；四臂参数量和前向分支一致。
 5. 定位只读取共享 state；目标 support/query 按唯一 receiver position 隔离，最高独立统计单位为 base-map-cluster，并对 seed、draw、cluster 做配对汇总。
 
-V2.1 的 dry run 只能证明软件执行。fixture 在元数据、gate 和报告中永久标记 `FORBIDDEN`，其任何数字都不得进入论文。
+V2.1 的 dry run 只能证明软件执行。fixture qualification 必须以退出码 `1` 和认证状态
+`DRY_RUN_FAIL_NOT_EVIDENCE`、`passed=false`、`scientific_use=FORBIDDEN` 结束；外层 verifier
+仅在完整复核这一预期 fail-closed 状态后返回 `0`。这不是 qualification PASS。fixture 在
+元数据、gate 和报告中永久标记 `FORBIDDEN`，其任何数字都不得进入论文。
 
 ## 1. 本版交付物
 
