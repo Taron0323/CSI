@@ -11,6 +11,31 @@ Scientific status: `NO_GO_EVIDENCE_NOT_RUN`
 
 This record supersedes the previous V2.0 dry-run report. Archived V1/V1.26 fixture outputs and numbers are traceability material only; they do not prove that the current `formal_v2` implementation executes correctly and cannot support a V6 claim.
 
+## 2026-08-08 current PR addendum
+
+The current repair starts from `BASE_SHA`
+`eef3040c13264829cda1f4398009f691b52038ae`; code and regression tests are fixed at
+`AUDITED_CODE_SHA` `9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64`. The source-tree suite passes
+`256/256` tests under CPython 3.12.10. Compilation, Ruff `E9,F`, `pip check`, strict V2.3
+formal/smoke configuration loading, 24 CLI help paths, shell syntax, and vendored hashes pass.
+
+The anonymous-release regression now builds a fresh archive, excludes the private requirement-matrix
+generator and its internal audit tests, extracts the archive, and executes every exported public test.
+This closes the discovered failure in which the exported suite retained an audit test whose internal
+claim contract was intentionally absent. The release remains separated from the provenance-bearing
+internal server delivery.
+
+The reproducible paper build has SHA-256
+`35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e`, contains 10 PDF
+pages with references beginning on page 9 and appendices after references, and passes the ICLR
+preflight with zero findings. All pages were visually inspected; no clipping, overlap, author/title
+metadata, unembedded font, undefined citation/reference, duplicate label, or overfull box was found.
+
+These are implementation and protocol checks, not experimental results. `PAPER_PROTOCOL_GO=NO-GO`,
+`FORMAL_INPUT_READY=BLOCKED`, `LAUNCH_READY=BLOCKED`, `FORMAL_GO=NO-GO`, and
+`SCIENTIFIC_EVIDENCE=NOT_ASSESSED` remain binding for the author-decision and external-input blockers
+listed in `artifacts/formal_experiment_blockers.md`.
+
 ## 2026-08-07 readiness repair
 
 The latest audit closed the following code-resolvable protocol/evidence-integrity gaps:

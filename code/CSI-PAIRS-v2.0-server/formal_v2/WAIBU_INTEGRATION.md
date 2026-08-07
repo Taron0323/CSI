@@ -1,13 +1,14 @@
 # V6 external-resource integration
 
-This document maps every file under `waibu/` to executable V6 behavior. The authenticated registry
-is `configs/waibu_resources_v1.json`. SHA-256 authentication proves local bytes, not paper fidelity
-or scientific support.
+This document maps every registry entry to executable V6 behavior. The authenticated registry is
+`configs/waibu_resources_v1.json`. SHA-256 authentication proves local bytes, not paper fidelity or
+scientific support.
 
 The registry separately records `source_url`, `license_url`, and `redistribution_allowed`.
 `2502.11965v2.pdf`, `2505.09160v2.pdf`, `2601.03789v1.pdf`, and `2604.07086v1.pdf` use the arXiv
-non-exclusive distribution license and are local research inputs only. They are excluded from the
-anonymous supplementary package; each user must obtain them from the recorded source URL.
+non-exclusive distribution license and are local research inputs only. They are excluded from Git,
+the internal delivery bundle, and the anonymous supplementary package; each user must obtain them
+directly from the recorded source URL.
 
 | Resource | Project role | Executable implementation | Allowed evidence label |
 |---|---|---|---|
@@ -32,9 +33,13 @@ upstream dependencies pass; resource authentication or source presence alone can
 
 ## Commands
 
-Authenticate resources:
+Fetch omitted resources directly from their registered sources, then authenticate the complete
+formal input set:
 
 ```bash
+python3 -m formal_v2.fetch_waibu_resources \
+  --registry formal_v2/configs/waibu_resources_v1.json \
+  --waibu-root waibu
 python3 -m formal_v2.formal_cli verify-waibu-resources \
   --registry formal_v2/configs/waibu_resources_v1.json \
   --waibu-root waibu \

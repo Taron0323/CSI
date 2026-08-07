@@ -8,6 +8,7 @@
 \usepackage{graphicx}
 \usepackage{array}
 \usepackage{xcolor}
+\hypersetup{hidelinks}
 
 \title{\raggedright CSI-PAIRS: Paired Alignment and Intervention-Response
 Supervision for Map-Conditioned Wireless Localization}
@@ -28,9 +29,12 @@ Supervision for Map-Conditioned Wireless Localization}
 \newcommand{\route}{\operatorname{Route}}
 \newcommand{\rms}{\operatorname{RMS}}
 \newcommand{\planned}{\textsc{Planned}}
-\newcommand{\draftplaceholder}[1]{%
-\fbox{\parbox{0.94\linewidth}{\centering\small
-\textbf{PLANNED EXPERIMENT PANEL}\\[2pt]#1}}}
+\newcommand{\auditcell}[2]{%
+\fbox{\parbox[c][0.36in][c]{0.27\linewidth}{\centering\small
+\textbf{#1}\\[-1pt]#2}}}
+\newcommand{\flowcell}[2]{%
+\fbox{\parbox[c][0.42in][c]{0.25\linewidth}{\centering\small
+\textbf{#1}\\[-1pt]#2}}}
 
 \begin{document}
 \maketitle
@@ -83,16 +87,18 @@ incompatible.
 We study this problem with \emph{paired scene interventions}.  A scene-level
 world bank contains canonical states of a small edit hypercube and is reused
 across many receiver positions.  Only adjacent Hamming-1 worlds are compared.
-Each edge-position unit is routed by both a full-channel physical distance and
-a frozen-teacher distance.  Active edges support relative Alignment; gray edges
-carry target regression but no strong compatibility label; null edges receive
-a tolerance constraint rather than a negative label.
+Each edge-position unit receives a physical primary route and an independent
+frozen-teacher sensitivity stratum.  Active physical edges support relative
+Alignment; gray physical edges carry target regression but no strong
+compatibility label; null physical edges receive a tolerance constraint rather
+than a negative label.  Teacher strata audit target quality without selecting
+the raw-CSI primary sample set.
 
 \method{} adds two distinct constraints to a shared state encoder.  Alignment
 selects the generating side of an active paired edge.  Response predicts the
 direction and magnitude of the retraced raw-CSI target under a signed edit.  The
-target is loaded only after source inputs are fixed; the route teacher reads CSI
-only, preventing the target map or receiver coordinate from leaking the answer.
+target is loaded only after source inputs are fixed; the auxiliary teacher reads
+CSI only, preventing the target map or receiver coordinate from leaking the answer.
 At localization time, only the retained state encoder and
 position head remain.  The method therefore succeeds only if both skills are
 present in the shared representation, not merely in disposable audit heads.
@@ -121,13 +127,23 @@ target-city outcomes.
 
 \begin{figure}[t]
 \centering
-\draftplaceholder{Paired intervention audit. Replace with six-condition results
-for at least two C1-eligible external models: active and null paired alternatives,
-wrong city, geometry-destroyed, and empty map. Show paired bank-level intervals.}
-\caption{Planned paired-intervention audit. Panels report model information
-budgets, independent scene banks, seeds, paired intervals, and frozen
-active/null thresholds.}
-\label{fig:paired-audit-placeholder}
+\small
+\textbf{Hold observed CSI $H_u$, receiver state, and radio configuration fixed}\\[3pt]
+\begin{tabular}{@{}c@{\hspace{0.02\linewidth}}c@{\hspace{0.02\linewidth}}c@{}}
+\auditcell{Matched}{$M_u$; reference} &
+\auditcell{Paired active}{$M_v$; effect test} &
+\auditcell{Paired null}{$M_v$; safety test} \\[3pt]
+\auditcell{Wrong city}{context stress test} &
+\auditcell{Destroyed geometry}{structure stress test} &
+\auditcell{Empty map}{map-removal stress test}
+\end{tabular}\\[4pt]
+$\Downarrow$ identical units and denominators $\Downarrow$\\[-1pt]
+\textbf{Localization error, active CGS, gray score gap, and null over-discrimination}
+\caption{Six-condition paired-intervention audit protocol. Active and null
+paired alternatives test local physical sensitivity; the other corruptions are
+stress tests and do not inherit paired-causal labels. Formal intervals use
+independent scene banks and thresholds frozen on source-only roles.}
+\label{fig:paired-audit}
 \end{figure}
 
 \section{Related Work}
@@ -213,26 +229,33 @@ two pairs of symmetric distances
  \gamma^{R,q}_{uv}&=d_z(z^q_{R,u},z^q_{R,v}).
  \end{aligned}
 \end{equation}
-Thresholds come from source repeat noise and a source-only practical-effect
-floor, then remain frozen:
+Physical thresholds come from source repeat noise and a source-only
+practical-effect floor, then remain frozen:
 \begin{equation}
-\route(\delta,\gamma)=
+\route_{\mathrm{phys}}(\delta)=
 \begin{cases}
-\mathrm{null}, & \delta\le\epsilon_0\ \land\ \gamma\le\tau_0,\\
-\mathrm{active}, & \delta\ge\epsilon_1\ \land\ \gamma\ge\tau_1,\\
+\mathrm{null}, & \delta\le\epsilon_0,\\
+\mathrm{active}, & \delta\ge\epsilon_1,\\
 \mathrm{gray}, & \text{otherwise}.
 \end{cases}
 \label{eq:route}
 \end{equation}
-Alignment uses $\route_A(u,v)=\route(\delta^A_{uv},\gamma^A_{uv})$;
-Response uses the separate query-level route
-$\route_R(u,v,q)=\route(\delta^{R,q}_{uv},\gamma^{R,q}_{uv})$, with separately
+Alignment uses $\route_A(u,v)=\route_{\mathrm{phys}}(\delta^A_{uv})$;
+patch-level Response training and the unified retained-state probe use the
+separate query-level route
+$\route_R(u,v,q)=\route_{\mathrm{phys}}(\delta^{R,q}_{uv})$, with separately
 frozen Alignment and Response thresholds.  Thus a full-channel active edge need
-not make every Response query active.
-Route labels control losses and audit strata but are never model inputs.  We
-report raw counts and scene coverage, physical-active/teacher-sensitive
-agreement, and physical-null/teacher-null agreement.  Empty conditional means
-are qualification failures, not zeros.
+not make every Response query active.  The teacher distance is binned
+independently as null, gray, or sensitive using $(\tau_0,\tau_1)$; this stratum
+never changes primary inclusion.  Route labels control losses and audit strata
+but are never model inputs.  We report raw counts and scene coverage,
+physical-active/teacher-sensitive agreement, physical-null/teacher-null
+agreement, and teacher-blind physical-active outcomes.  Empty conditional means
+are qualification failures, not zeros.  Frozen V6 separately defines the native
+mask-cover diagnostic on full-channel $\route_A=\mathrm{active}$ transitions:
+it assembles every predicted patch before scoring the complete channel.  This
+transition-level diagnostic and the $\route_R$ patch probe are distinct
+estimands.
 
 \subsection{What compatibility means}
 
@@ -279,14 +302,20 @@ all arms.  Thus any downstream difference must pass through the shared state.
 
 \begin{figure}[t]
 \centering
-\draftplaceholder{Architecture. Draw source CSI/mask and source map entering
-shared $F_\theta$; zero-action endpoint/Alignment and signed-edit Response
-entering one predictor; CSI-only target labels; discard all auxiliary heads
-before the common localization probe. Mark receiver $x$ as oracle-only.}
-\caption{Planned CSI-PAIRS architecture. This is a method schematic, not
-evidence of efficacy. The final diagram must expose the input allowlist,
-stop-gradient target path, and the modules retained downstream.}
-\label{fig:architecture-placeholder}
+\small
+\begin{tabular}{@{}c@{\hspace{4pt}$\longrightarrow$\hspace{4pt}}c@{\hspace{4pt}$\longrightarrow$\hspace{4pt}}c@{}}
+\flowcell{Source input}{$V_m(H_u),G(M_u),c,m$} &
+\flowcell{Shared encoder}{$F_\theta$ produces $C_u^m$} &
+\flowcell{Retained path}{$C_u^m\rightarrow g\rightarrow\widehat{x}$} \\[5pt]
+\flowcell{Task input}{$C_u^m,e_{uv},q$; $x$ oracle-only} &
+\flowcell{Shared predictor}{endpoint, Alignment, Response} &
+\flowcell{Target path}{$y_v^q$ primary; $\operatorname{sg}(T(H_v)^q)$ auxiliary}
+\end{tabular}\\[3pt]
+\textbf{After pretraining: discard the predictor, action encoder, teacher, and audit readouts.}
+\caption{CSI-PAIRS information flow. Target CSI is loaded only after source
+predictor inputs are fixed; it supplies loss targets and never enters the
+headline no-position input. Only the shared encoder is retained for localization.}
+\label{fig:architecture}
 \end{figure}
 
 \subsection{Common endpoint objective}
@@ -346,8 +375,8 @@ outside source-frozen dead zones:
  [\|\widehat{\Delta y}_{uv}\|_{\mathrm{phys}}-\kappa_y]_+^2.
 \end{equation}
 Gray edges carry only target regression.  The target-world CSI is used to form
-frozen targets, physical labels, routes, and metrics; it never enters a source
-predictor.
+frozen targets, physical primary routes, teacher audit strata, and metrics; it
+never enters a source predictor.
 
 \subsection{Factorial objective}
 
@@ -393,26 +422,36 @@ R_{\mathrm{noA}}^*-R_A^*
 =\E\!\left[\operatorname{tr}\operatorname{Cov}
 (\E[Z\mid S,A]\mid S)\right]\ge0.
 \end{equation}
-The inequality is strict only if conditional targets vary with action.  A
-learned action encoder may still collapse.  Likewise adding visible source CSI
-cannot increase Bayes risk over map/edit-only input, but finite models may not
-use it.  No-action, action-swap, map/edit-only, CSI-only, and privileged-$x$
+The inequality is strict only if conditional targets vary with action.  It does
+not guarantee that a learned action encoder avoids collapse.  Likewise adding
+visible source CSI cannot increase Bayes risk over map/edit-only input, but the
+Bayes result does not guarantee that a finite model uses it.  No-action,
+action-swap, map/edit-only, CSI-only, and privileged-$x$
 experiments are therefore required.
 
 \section{Experimental Protocol}
 
 \begin{figure}[t]
 \centering
-\draftplaceholder{Split and gate flow. Show seven disjoint source roles:
-encoder-train, method-select, probe-train/select, calibration-fit/select, and
-final-unseen; then target support/query in two cities. Show G0 literature/resources,
-G1 world-bank/RT qualification, G2 teacher and No-X qualification, G3
-single-branch, G4 seven-part joint-value, G5 two-city localization, G6 risk,
-G7 path-mechanism, and G8 external-validity exits.}
-\caption{Planned split, gate, and claim flow. The highest independent unit is
-the scene bank. Each downstream claim activates only after its upstream gate,
-with thresholds frozen before held-out target evaluation.}
-\label{fig:gates-placeholder}
+\small
+\begin{tabular}{@{}c@{\hspace{4pt}$\longrightarrow$\hspace{4pt}}c@{\hspace{4pt}$\longrightarrow$\hspace{4pt}}c@{}}
+\flowcell{G0}{literature, code, assets} &
+\flowcell{G1}{world bank, RT, route} &
+\flowcell{G2}{teacher, readout, no-$x$ Response} \\[4pt]
+\multicolumn{3}{c}{$\Downarrow$ stop on any failed prerequisite $\Downarrow$}\\[2pt]
+\flowcell{G3}{single-branch skills} &
+\flowcell{G4}{seven joint-value gates} &
+\flowcell{G5}{two-city localization} \\[4pt]
+\multicolumn{3}{c}{$\Downarrow$ only authenticated upstream evidence $\Downarrow$}\\[2pt]
+\flowcell{G6}{paired-context risk} &
+\flowcell{G7}{path mechanism} &
+\flowcell{G8}{independent external validity}
+\end{tabular}
+\caption{Fail-closed gate sequence. Seven disjoint source roles freeze models,
+thresholds, probes, and calibration before final-unseen and target evaluation.
+The scene bank is the highest independent unit; target support siblings are
+excluded from every query denominator.}
+\label{fig:gates}
 \end{figure}
 
 \subsection{Questions and independent units}
@@ -442,7 +481,7 @@ For fixed channel samples and denominators, each model receives: correct map,
 paired active alternative, paired null alternative, wrong-city map,
 geometry-destroyed map with preserved low-order statistics, and empty map.
 Primary localization outcomes are median and P90 error, reported per city and
-bank.  Active compatibility uses a frozen, equal-budget probe AUROC.  Gray
+bank.  Physical-active compatibility uses a frozen, equal-budget probe AUROC.  Gray
 score gaps and null over-discrimination are separate.  The latter three
 arbitrary corruptions are stress tests, not paired causal evidence.
 
@@ -469,7 +508,7 @@ scene-ID; variant-ID & Detect world-bank identity leakage \\
 oracle-$x$ & Quantify the privileged-position information gap \\
 shuffled pairing & Detect gains from generic extra supervision \\
 equal-FLOP single branches & Separate task value from compute \\
-parameter/FLOP-matched concat & Separate sharing from mechanical concatenation \\
+parameter/FLOP-matched \mbox{concat} & Separate sharing from mechanical concatenation \\
 full-width $2\times$ concat & Generous two-encoder upper control \\
 \bottomrule
 \end{tabular}
@@ -478,8 +517,9 @@ full-width $2\times$ concat & Generous two-encoder upper control \\
 \subsection{Metrics and gates}
 
 Alignment's primary diagnostic is active paired CGS AUROC under a unified
-probe; Response's primary diagnostic is active, full-channel, target-free
-physical-patch NMSE.  Secondary Response metrics include latent NMSE, delta
+probe; native Response's primary diagnostic is target-free full-channel NMSE on
+$\route_A$-active transitions, while the unified Response probe reports
+$\route_R$-active physical-patch NMSE.  Secondary Response metrics include latent NMSE, delta
 cosine, magnitude ratio, and null hallucination.  Localization reports
 median/P90 at $k\in\{0,8,32,128\}$ unique target positions, with support and
 query siblings isolated.  The paired-proposal failure score reports AURC,
@@ -497,22 +537,15 @@ gate makes downstream tests exploratory.
 \section{Experiment Readiness and Launch Rule}
 
 Table~\ref{tab:status} separates completed software checks from the launch
-criteria for formal experiments.  Synthetic qualification exercises file
-formats, samplers, allowlists, metrics, checkpoints, and stop decisions.  Its
-archived no-position outcomes motivate a gate-first launch on independent
-ray-traced scene banks.
+criteria for formal experiments.  Synthetic qualification tests exercise file
+formats, samplers, allowlists, metrics, checkpoints, and stop decisions; their
+artifacts are excluded from scientific claims.  Formal execution begins with a
+no-position gate on independent ray-traced scene banks.
 
-\begin{figure}[t]
-\centering
-\draftplaceholder{Formal result panel. A: external six-condition wrong-map.
-B: No-X vs copy/no-action/action-swap active NMSE. C: null violation rate with
-the frozen tolerance. D: Endpoint/A/R/Full localization at $k=0,8$ in both
-target cities. Optional E: preregistered interaction with cluster CI.}
-\caption{Planned formal results. Panels are generated from authenticated
-per-sample files and report scene banks, training seeds, label draws where
-applicable, units, confidence intervals, and frozen pass thresholds.}
-\label{fig:formal-results-placeholder}
-\end{figure}
+No result panel is instantiated before authenticated non-fixture rows exist.
+Tables~\ref{tab:planned-arms} and~\ref{tab:planned-target} freeze the admissible
+result schemas; each populated cell must bind its scene banks, seeds, label
+draws where applicable, analysis unit, interval, and pass threshold.
 
 \begin{table}[t]
 \caption{Formal experiment launch sequence. Software readiness and scientific
@@ -524,14 +557,14 @@ gate completion are tracked separately.}
 \toprule
 Stage & Readiness & Launch criterion \\
 \midrule
-Official format/policy & Ready & Preserve anonymity and the AI use statement \\
-Canonical world-bank code & Ready & Pass independent RT regeneration \\
-Six-condition pipeline & Ready & Execute two C1-eligible models \\
-Teacher and routing & Ready & Pass per-bank teacher and route coverage \\
-Masked no-$x$ Response & Gate first & Beat three controls per scene and pass null safety \\
-Strict four arms & Queued & Start after the Response stop/go review \\
-Unseen-city localization & Queued & Start after both native skill gates \\
-External validity & Queued & Test cross-engine transfer after internal gates \\
+Official format/policy & Ready & Preserve anonymity; recheck before submission \\
+Canonical world-bank code & Input blocked & Pass independent RT regeneration \\
+Six-condition pipeline & Model blocked & Execute two C1-eligible models \\
+Teacher and routing & Input blocked & Pass physical-route coverage and teacher audit strata per bank \\
+Masked no-$x$ Response & Input blocked & Beat three controls per scene and pass null safety \\
+Strict four arms & Not authorized & Start after the Response stop/go review \\
+Unseen-city localization & Not authorized & Start after both native skill gates \\
+External validity & Input blocked & Test cross-engine transfer after internal gates \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -546,9 +579,9 @@ four-arm experiment.
 \section{Limitations and Conclusion}
 
 \paragraph{Limitations.}
-The primary evidence concerns paired interventions generated by the qualified
-simulator; G8 measures transfer to an independent engine.  Physical targets and
-teacher/physical agreement address teacher blind spots, while the oracle-$x$
+The protocol restricts primary evidence to paired interventions generated by a
+qualified simulator; G8 evaluates transfer to an independent engine.  Physical
+targets and teacher/physical agreement diagnose teacher blind spots, while the oracle-$x$
 gap measures ambiguity from hidden receiver position.  Compatibility is scoped
 to the frozen paired proposal set.  Scene-bank inference reflects the available
 independent sample count, and resource-matched controls separate supervision
@@ -576,11 +609,11 @@ proceed.
 
 \section*{AI Use Statement}
 
-In this work, we used OpenAI Codex to assist with refining the conceptual
-framework and hypotheses, critiquing research methodology and experimental
-design, drafting and debugging software, searching and summarizing related
-literature, organizing the manuscript, and improving translation and
-readability.  We treated its outputs as suggestions rather than evidence.
+In this work, we used OpenAI ChatGPT and Codex to assist with refining the
+conceptual framework and hypotheses, critiquing research methodology and
+experimental design, drafting and debugging software, searching and summarizing
+related literature, organizing the manuscript, and improving translation and
+readability.  We treated their outputs as suggestions rather than evidence.
 AI-assisted material was checked, as applicable, against the frozen protocol,
 repository source, unit and mutation tests, original cited papers, and official
 ICLR policy pages.  No scientific result was generated or accepted solely on
@@ -660,6 +693,7 @@ renamed ``pilot'' to bypass this ledger.
 
 \begin{table}[h]
 \caption{Alignment and Response result schema for formal scene-bank experiments.}
+\label{tab:planned-arms}
 \centering
 \small
 \begin{tabular}{lcccc}
@@ -677,6 +711,7 @@ Full & \planned & \planned & \planned & \planned \\
 \begin{table}[h]
 \caption{Unseen-city localization and paired-risk result schema. Risk columns
 are permitted only for the frozen $k=0$ paired-proposal audit.}
+\label{tab:planned-target}
 \centering
 \small
 \begin{tabular}{llcccc}

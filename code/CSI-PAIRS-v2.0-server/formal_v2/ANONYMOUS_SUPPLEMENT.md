@@ -9,6 +9,21 @@ digests are recorded in `formal_v2/configs/waibu_resources_v1.json`. Resources w
 license does not grant downstream redistribution must be obtained by each user from the source URL.
 Local byte authentication does not establish paper fidelity or scientific evidence.
 
+Fetch missing inputs directly from those sources and authenticate the complete local set:
+
+```bash
+python3 -m formal_v2.fetch_waibu_resources \
+  --registry formal_v2/configs/waibu_resources_v1.json \
+  --waibu-root waibu
+python3 -m formal_v2.formal_cli verify-waibu-resources \
+  --registry formal_v2/configs/waibu_resources_v1.json \
+  --waibu-root waibu \
+  --output runs/resource-auth-001
+```
+
+The fetcher refuses to overwrite mismatched files and removes a partial download unless its
+SHA-256 matches the frozen registry. Local downloads must not be committed or redistributed.
+
 Run the code tests with Python 3.12 after installing `formal_v2/requirements-lock.txt`:
 
 ```bash

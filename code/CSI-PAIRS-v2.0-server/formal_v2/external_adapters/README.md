@@ -78,6 +78,10 @@ The setup is intentionally separate from the core V2.1 environment. If the pinne
 cannot be installed, the adapter fails and remains `not_executed`; no substitute model is used.
 The official GATr/xFormers forward requires NVIDIA CUDA. A CPU-only host fails before training with
 an explicit prerequisite error rather than entering an unsupported fallback.
+Setup records the actual Python 3.10 interpreter, `uv.lock` and vendor-manifest digests, every
+installed distribution and RECORD digest, Torch/CUDA/cuDNN/driver/GPU identity, and deterministic
+settings. The V3 execution manifest includes the same record. The core runner independently probes
+that interpreter after execution and rejects package, driver, lock, or environment substitution.
 
 ### Formal execution
 
@@ -97,9 +101,9 @@ six-map interventions.
 
 ## Sionna
 
-`setup_sionna.sh` authenticates and extracts both supplied official archives, installs Sionna RT
-1.2.1 (the version frozen by the large-radio-map project), and installs the official tiling/scene/
-radio-map scripts. A fixed CPU PyTorch is installed because the G8 adapter reloads the frozen
+`setup_sionna.sh` authenticates and extracts both supplied official archives, copies the checked-in
+`sionna_lrm_uv.lock`, installs it with `uv sync --locked`, freezes Sionna RT 1.2.1, and installs the
+official tiling/scene/radio-map scripts. A fixed CPU PyTorch is installed because the G8 adapter reloads the frozen
 Stage-0 teacher to reproduce route assignments; the unrelated CUDA dependency set is excluded. `sionna_facility.py`
 exposes those operations and audits each `rm_*.npz` output.
 
@@ -107,6 +111,9 @@ exposes those operations and audits each `rm_*.npz` output.
 sibling world to have a scene XML, canonical-map hash, asset manifest, per-asset hash, and license.
 It retraces CFRs with `PathSolver` and emits paired active/null effects. A source archive alone cannot
 pass G8; actual scene assets and a formal non-fixture run are mandatory.
+The adapter emits a runtime record bound into the G8 V4 gate. The outer runner independently probes
+the exact Python 3.12 interpreter before execution and rejects any differing lock, package inventory,
+RECORD digest, Torch state, or interpreter prefix.
 
 The standard outer adapter is `../configs/sionna_external_validity_adapter_v2.json`. It expects the
 scene manifest at `RUN_ROOT/inputs/sionna_scene_manifest.json`; this fixed location keeps the exact

@@ -54,7 +54,10 @@ The exact source ledger is:
 
 - Schema: `csi-pairs-formal-dataset-v2.1-v6`.
 - `engine` includes exact `name`, `version`, `source_revision`, `license_id`, `config_sha256`, and `deterministic` fields.
-- `representation.phase_gauge_rule` is exactly `shared_complex_reference` or `phase_invariant_delay_angle_power`.
+- The current raw-complex P0 implementation requires
+  `representation.phase_gauge_rule=shared_complex_reference`. The frozen V6
+  `phase_invariant_delay_angle_power` fallback is not implemented and is rejected
+  before training rather than silently changing the physical target.
 - P0 sets `alignment_physical_representation=complex_csi_plus_delay_angle_power`; its source-train normalization is frozen and Response remains patch-local in the physical dead-zone units.
 - `coordinate_system` is exactly `bs_centered_right_handed_meters`; map and position units are `m`.
 - Antenna count, subcarrier count, `patch_antenna_size`, `patch_subcarrier_size`, and complex patch area must define an exact 2D tiling of the real-then-imag CSI grid.
@@ -81,6 +84,9 @@ G1 does not infer route noise tolerances from overall repeat NMSE. For each
 `source_method_selection` bank, all unordered pairs of independent repeats at the same
 scene/world/position are transformed with the source-encoder-train route normalization. The 0.95
 quantile by default is computed separately for full-channel physical, full-channel teacher latent,
-patch-local physical, and patch-local teacher latent RMS. Each configured route null threshold must
-cover its corresponding value or G1 fails. The rows and exact thresholds are bound in
-`qualification/route_noise_floor.csv`.
+patch-local physical, and patch-local teacher latent RMS. The physical values govern the Alignment
+and Response primary routes. Teacher latent values govern only independent sensitivity strata and
+the auxiliary G2 teacher-alignment audit. Each configured null threshold must cover its corresponding
+native-noise value or G1 fails. The rows and exact thresholds are bound in
+`qualification/route_noise_floor.csv`; changing teacher latent values cannot change raw-CSI primary
+sample inclusion.

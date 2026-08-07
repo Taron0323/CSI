@@ -5,6 +5,26 @@
 > adds runtime reauthentication, raw-evidence C11/G8 contracts, API search receipts, conservative
 > redistribution metadata, and separate internal/anonymous bundle builders.
 
+## 2026-08-08 current PR addendum
+
+- Current `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`.
+- Current `AUDITED_CODE_SHA`: `9fd34b0076bcb9c25a9c3acf63c7f59f5e862a64`.
+- Current source-tree verification: `256/256` tests, Python compilation, Ruff `E9,F`, dependency
+  health, strict V2.3 configs, 24 CLI help paths, shell syntax, and vendored hashes pass.
+- The anonymous exporter now omits internal requirement-matrix code and audit tests together. A
+  source-tree regression builds and extracts the archive and runs the complete exported public suite.
+- The current paper PDF passes reproducible-build, ICLR preflight, metadata/font, LaTeX-log, and
+  10-page visual inspection checks. It remains a pre-experiment protocol draft and contains no
+  substituted fixture results.
+
+Current layered verdicts are `PACKAGE_INTEGRITY=PASS` for the verified source and package mechanisms,
+`SOFTWARE_READY=PASS` on the recorded CPython 3.12 CPU environment,
+`V6_PROTOCOL_FIDELITY=BLOCKED` by `SC-GAUGE-001`, `SC-ROUTE-002`, and conservative clause-level
+trace gaps, `PAPER_PROTOCOL_READY=BLOCKED`, `FORMAL_INPUT_READY=BLOCKED`,
+`LAUNCH_READY=BLOCKED`, `ANONYMOUS_RELEASE_READY=PASS` for mechanical packaging only, and
+`SCIENTIFIC_EVIDENCE=NOT_ASSESSED`. The historical counts and verdict tables below remain attached to
+their 2026-08-07 snapshot and must not replace this addendum.
+
 Date: 2026-08-07 (Asia/Shanghai)
 
 `BASE_SHA`: `3e0eacf39244a957243018388a869d30e859a96d` (`origin/main` when work began).

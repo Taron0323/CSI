@@ -25,13 +25,26 @@ CLI stages are visible with:
 python3 -m formal_v2.formal_cli --help
 ```
 
-`all` is the complete evidence-chain orchestrator. It authenticates every local `waibu/` resource and runs the five representation baselines in addition to the verifier, first-party risk replay, external-baseline, resource-control, scene-ID, external-validity, literature, RT-calibration, shuffled-pair, and retention stages. Missing inputs fail at argument parsing; no independent stage is silently skipped. Fixtures remain `FORBIDDEN` at every artifact layer. Code and tests do not constitute scientific evidence.
-G1 also writes a per-bank `route_noise_floor.csv` and requires all four route null thresholds to
-cover the registered quantile of independent repeat-pair noise in their native alignment/response
-and physical/latent norms. Overall repeat NMSE cannot substitute for this test.
+Formal orchestration is split between `prepare-full-run` and `all`. Preparation performs the complete
+static manifest/disk/CUDA/license/credential preflight, then runs resources, G0, independent RT,
+independent data verification, and G1/G2 before emitting a random-nonce approval request. `all`
+requires an external, unexpired human approval bound to that exact request and prepared root; the
+deprecated Boolean flag has no authorization power. After authentication, `all` runs the remaining
+factorial, evaluation, risk, path, external-baseline, representation, resource-control, scene-ID,
+external-validity, shuffled-pair, retention, and claim stages without rerunning preapproval stages.
+A formal stage failure stops the chain. Fixtures remain `FORBIDDEN` at every artifact layer. Code and
+tests do not constitute scientific evidence.
+G1 also writes a per-bank `route_noise_floor.csv` and requires all four physical/teacher audit null
+thresholds to cover the registered quantile of independent repeat-pair noise in their native
+alignment/response norms. Alignment primary inclusion uses full-channel physical distance;
+Response primary inclusion uses query-patch physical distance. Teacher sensitivity remains a
+separate audit stratum and auxiliary G2 condition. Overall repeat NMSE cannot substitute for this
+test, and teacher sensitivity cannot select raw-CSI primary samples.
 
-The full-run root must be new, except that a single pre-staged `inputs/` directory is allowed for
-authenticated Sionna scenes and other immutable run inputs; any existing result/stage file is rejected.
+The preparation root must be new, except that a single pre-staged `inputs/` directory is allowed for
+authenticated Sionna scenes and other immutable run inputs. Those bytes enter the approval request.
+The only reuse allowed is `all` resuming its exactly authenticated prepared root; approval is
+single-use and cross-root or modified-root replay is rejected.
 Individual stage commands atomically reserve their registered output path and hold an exclusive
 operation lock for the run root, so concurrent, interrupted, or completed evidence directories
 cannot be silently mixed or overwritten. Fixture paths are normalized to `.npz` before exclusive
@@ -72,11 +85,20 @@ Every stage records and reauthenticates the formal source-tree digest, requireme
 Python/platform identity, installed-distribution RECORD digests, Torch/CUDA/GPU identity, and
 determinism settings. The CLI enables deterministic Torch algorithms, disables TF32 and cuDNN
 benchmarking, and refuses to combine gates produced by a different recorded runtime.
+Wi-GATr and Sionna additionally use their actual external interpreters to emit complete runtime
+records. Preparation and the outer evidence runners independently probe those interpreters and bind
+the exact lock files, package versions/RECORD digests, CUDA/cuDNN/driver state, and environment digest
+into the approval request, Wi-GATr V3 execution manifest, and G8 V4 gate.
 
 `scripts/build_server_bundle.sh` creates a deterministic internal research-delivery ZIP. It contains
-delivery provenance and all locally supplied resources, so it is not an anonymous submission
-artifact. `scripts/build_anonymous_supplement.sh` creates the separate deterministic anonymous
-package and excludes `waibu/`, internal Git provenance, and identity-bearing delivery audits.
+delivery provenance and only authenticated third-party files with recorded downstream redistribution
+permission, so it is not an anonymous submission artifact. It excludes every
+`redistribution_allowed=false` resource even if that file exists in the builder's local `waibu/`
+directory. `scripts/build_anonymous_supplement.sh` creates the separate deterministic anonymous
+package and excludes all of `waibu/`, internal Git provenance, and identity-bearing delivery audits.
+Use `python3 -m formal_v2.fetch_waibu_resources --registry ... --waibu-root ...` to obtain omitted
+inputs directly from their frozen source URLs; formal resource verification remains strict and fails
+until all ten local files authenticate.
 
 C1 rows bind the exact supplied map and directed action by SHA-256; the outer runner recomputes both
 from the frozen unit registry and makes cluster-macro active-effect/null-equivalence decisions.

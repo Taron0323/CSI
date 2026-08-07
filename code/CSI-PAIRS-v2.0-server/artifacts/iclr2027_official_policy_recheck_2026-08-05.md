@@ -1,6 +1,6 @@
 # ICLR 2027 官方投稿政策复核
 
-最近复核日期：2026-08-07（Asia/Shanghai）。
+最近复核日期：2026-08-08（Asia/Shanghai）。
 
 ## 官方来源与核对结果
 
@@ -22,9 +22,12 @@
 
 ## 与冻结交付物的一致性
 
-- `output/pdf/CSI-PAIRS-paper-v2.1-draft.pdf` 为 10 页 US Letter，其中主文在参考文献前为
-  7 页，符合初投稿主文最多 9 页的限制；总 PDF 页数不能替代主文页数检查。
+- `output/pdf/CSI-PAIRS-paper-v2.1-draft.pdf` 为 10 页 US Letter；主文章节在第 8 页结束，
+  Reproducibility Statement 的末段与参考文献起始位于第 9 页，appendix 位于参考文献之后。
+  初投稿主文仍低于 9 页上限；总 PDF 页数不能替代主文页数检查。
 - `paper_v2/main.tex` 保持匿名投稿模式，并已填写 AI Use Statement。
+- 本次构建的 ICLR preflight 为零 findings；10 页全部渲染检查通过，作者/标题 PDF metadata
+  为空，AI Use Statement 明确披露 OpenAI ChatGPT 和 Codex 的实际使用与作者复核责任。
 - 本次复核未发现需要修改匿名模板或声明的官方规则变化。
 - Ethics Statement 是否适用仍须作者在正式数据、部署场景和最终 claims 确定后人工复核。
 
