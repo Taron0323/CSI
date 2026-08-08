@@ -100,15 +100,15 @@ def _inspect_reviewed_wheel(
             raise RuntimeError(f"reviewed wheel has duplicate members: {wheel.name}")
         safe_names = {_safe_archive_path(name): info for name, info in zip(names, members)}
         metadata_members = [
-            path for path in safe_names if len(path.parts) >= 2 and path.parts[-1] == "METADATA"
+            path for path in safe_names if len(path.parts) == 2 and path.parts[-1] == "METADATA"
             and path.parts[-2].endswith(".dist-info")
         ]
         wheel_members = [
-            path for path in safe_names if len(path.parts) >= 2 and path.parts[-1] == "WHEEL"
+            path for path in safe_names if len(path.parts) == 2 and path.parts[-1] == "WHEEL"
             and path.parts[-2].endswith(".dist-info")
         ]
         record_members = [
-            path for path in safe_names if len(path.parts) >= 2 and path.parts[-1] == "RECORD"
+            path for path in safe_names if len(path.parts) == 2 and path.parts[-1] == "RECORD"
             and path.parts[-2].endswith(".dist-info")
         ]
         if not (len(metadata_members) == len(wheel_members) == len(record_members) == 1):

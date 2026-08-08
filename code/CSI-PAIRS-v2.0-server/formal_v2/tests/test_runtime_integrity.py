@@ -85,6 +85,45 @@ class RuntimeIntegrityTests(unittest.TestCase):
         result = self.validate()
         self.assertEqual(set(result["record_digests"]), {"example"})
 
+    def test_nested_vendored_dist_info_is_not_mistaken_for_wheel_metadata(self):
+        nested = {
+            "example/_vendor/helper-2.0.dist-info/METADATA": (
+                b"Metadata-Version: 2.1\nName: helper\nVersion: 2.0\n\n"
+            ),
+            "example/_vendor/helper-2.0.dist-info/WHEEL": (
+                b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
+            ),
+            "example/_vendor/helper-2.0.dist-info/RECORD": b"vendored metadata\n",
+        }
+        self.members.update(nested)
+        rows = [
+            [name, f"sha256={_record_hash(payload)}", str(len(payload))]
+            for name, payload in self.members.items()
+            if name != "example-1.0.dist-info/RECORD"
+        ]
+        rows.append(["example-1.0.dist-info/RECORD", "", ""])
+        stream = io.StringIO()
+        csv.writer(stream, lineterminator="\n").writerows(rows)
+        self.members["example-1.0.dist-info/RECORD"] = stream.getvalue().encode()
+        with zipfile.ZipFile(self.wheel, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, payload in self.members.items():
+                archive.writestr(name, payload)
+        for name, payload in nested.items():
+            destination = self.site / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        (self.site / "example-1.0.dist-info" / "RECORD").write_bytes(
+            self.members["example-1.0.dist-info/RECORD"]
+        )
+        self.expected["example"]["hashes"] = (
+            hashlib.sha256(self.wheel.read_bytes()).hexdigest(),
+        )
+        manifest = reviewed_wheel_manifest(self.wheelhouse, self.expected, "a" * 64)
+        self.manifest_path.write_bytes(canonical_manifest_bytes(manifest))
+
+        result = self.validate()
+        self.assertEqual(set(result["record_digests"]), {"example"})
+
     def test_rewritten_record_cannot_hide_installed_file_mutation(self):
         module = self.site / "example" / "__init__.py"
         module.write_bytes(b"VALUE = 9\n")
