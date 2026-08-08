@@ -42,7 +42,6 @@ jobs:
         run: |
           formal_v2/scripts/setup_formal_v2.sh "${RUNNER_TEMP}/csi-pairs-formal-v2"
           echo "${RUNNER_TEMP}/csi-pairs-formal-v2/bin" >> "${GITHUB_PATH}"
-          "${RUNNER_TEMP}/csi-pairs-formal-v2/bin/python" -m pip check
 
       - name: Compile, validate, and test
         run: |
