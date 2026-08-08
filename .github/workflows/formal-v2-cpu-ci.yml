@@ -68,6 +68,10 @@ jobs:
             cd formal_v2/external_adapters/vendor/Wi-GATr
             sha256sum --check VENDOR_SHA256SUMS
           )
+          (
+            cd formal_v2/external_adapters/vendor/PMNet
+            sha256sum --check VENDOR_SHA256SUMS
+          )
 
       - name: Rebuild and verify deterministic deliveries
         run: |

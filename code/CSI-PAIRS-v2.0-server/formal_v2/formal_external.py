@@ -32,6 +32,7 @@ REQUIRED_BASELINE_NAMES = {
     "WWM",
     "SigMap",
     "Wi-GATr",
+    "PMNet",
     "WiSER",
     "CSI-only",
     "oracle-x",

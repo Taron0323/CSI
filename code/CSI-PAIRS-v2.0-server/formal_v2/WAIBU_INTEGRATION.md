@@ -13,6 +13,7 @@ directly from the recorded source URL.
 | Resource | Project role | Executable implementation | Allowed evidence label |
 |---|---|---|---|
 | `2406.14995v2.pdf`, `Wi-GATr-main.zip` | map-conditioned forward baseline | official tokenizer/GATr plus CSI-PAIRS mesh and inverse localization | Wi-GATr official-code adaptation |
+| `PMNet-a0e0c592.zip` | pathloss-radiomap baseline | official PMNet v3 backbone plus CSI-PAIRS map/Tx raster, source-only masked radiomap training, and inverse localization | PMNet official-code adaptation |
 | `2502.11965v2.pdf` | CIR/CSI consistency baseline | ResNet-50 CSI/CIR encoders and symmetric contrastive loss; ViT style extension | CSI-CLIP-style / CSI-CLIP++-style controlled implementation |
 | `2505.09160v2.pdf` | reconstruction+contrastive baseline | reconstruction-only WiMAE warm-start followed by 2D MAE/independent noisy masked-view contrastive training | ContraWiMAE paper-spec controlled implementation |
 | `2601.03789v1.pdf` | masked CSI baseline and Stage-0 neighbor | 75% per-sample random 2D patches, fixed 2D sine-cosine position, asymmetric ViT encoder/narrow decoder | CSI-MAE paper-spec controlled implementation |
@@ -107,7 +108,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli export-sionna-scenes \
 - External-baseline PASS requires at least two C1-eligible map-conditioned models over the exact same
   internally generated units. Every condition must report map/action digests that the outer runner
   recomputes, and each eligible model must pass cluster-macro active-effect and null-equivalence gates.
-  The shipped manifest has only Wi-GATr in that class, so it intentionally leaves C1 blocked.
+  The shipped manifest contains Wi-GATr and PMNet in that class. C1 remains blocked until both
+  execute on qualified non-fixture data and pass every evaluation city's active/null gate.
 - G8 requires actual independent Sionna scene XML/assets, hashes, licenses, and retraced CFRs.
 - Shipped first-party control code closes the implementation gap, not the formal-execution gap.
 - Formal profile execution on real, independently regenerated data is required for scientific use.

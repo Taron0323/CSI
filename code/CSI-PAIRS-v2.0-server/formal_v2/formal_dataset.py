@@ -587,6 +587,22 @@ class FormalDataset:
             raise FormalDatasetError("CSI channels are constant")
 
         self._validate_metadata()
+        representation = self.metadata["representation"]
+        origin = np.asarray(representation["map_origin_xy_m"], dtype=np.float64)
+        resolution = float(representation["map_resolution_m"])
+        upper = origin + resolution * np.asarray(
+            [self.maps.shape[-1], self.maps.shape[-2]], dtype=np.float64
+        )
+        if np.any(self.positions < origin[None, None]) or np.any(
+            self.positions >= upper[None, None]
+        ):
+            raise FormalDatasetError(
+                "receiver position lies outside the frozen map extent"
+            )
+        if np.any(self.bs_pose[:, :2] < origin[None]) or np.any(
+            self.bs_pose[:, :2] >= upper[None]
+        ):
+            raise FormalDatasetError("BS pose lies outside the frozen map extent")
         engine_config_digest = hashlib.sha256(
             _canonical_json_bytes(self.engine_config)
         ).hexdigest()

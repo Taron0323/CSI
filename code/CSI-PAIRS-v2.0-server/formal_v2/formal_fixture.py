@@ -39,6 +39,7 @@ def write_nonscientific_fixture(
 
     bits = np.asarray([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64)
     worlds, antennas, subcarriers, map_size, repeats = 4, 2, 4, 8, 3
+    map_origin = np.asarray([-4.0, -4.0], dtype=np.float64)
     channels = 2 * antennas * subcarriers
     map_channel_names = np.asarray(["occupancy", "height", "material"], dtype="U16")
     maps = np.zeros((scene_count, worlds, 3, map_size, map_size), dtype=np.float64)
@@ -100,12 +101,13 @@ def write_nonscientific_fixture(
         primitive_ids[scene] = np.asarray([0, 1] if scene % 2 == 0 else [1, 0])
         anchor_bits[scene] = np.asarray([(scene // 2) % 2, scene % 2])
         natural[scene] = next(index for index, row in enumerate(bits) if np.array_equal(row, anchor_bits[scene]))
-        centers = np.asarray(
+        grid_centers_rc = np.asarray(
             [
                 [1.5 + (scene % 2), 1.5 + ((scene // 2) % 2)],
                 [5.5 - (scene % 2), 5.5 - ((scene // 2) % 2)],
             ]
         )
+        centers_xy = grid_centers_rc[:, ::-1] + map_origin
         base_occupancy = np.zeros((map_size, map_size), dtype=np.float64)
         base_occupancy[0, :] = 1.0
         base_occupancy[:, 0] = 1.0
@@ -115,7 +117,7 @@ def write_nonscientific_fixture(
         base_material = np.zeros_like(base_occupancy)
         base_material[base_occupancy > 0] = 1.0
         primitive_masks = []
-        for center in centers:
+        for center in grid_centers_rc:
             mask = np.zeros_like(base_occupancy)
             row = int(round(center[0]))
             column = int(round(center[1]))
@@ -138,13 +140,16 @@ def write_nonscientific_fixture(
                     material[mask] = 1.0 + 2.0 * float(enabled)
             maps[scene, world] = np.stack((occupancy, height, material))
 
-        fixed = np.asarray(
-            [[1, 4], [1, 6], [2, 4], [2, 6], [4, 1], [6, 1], [4, 4], [6, 6]],
-            dtype=np.float64,
+        common_free = np.all(maps[scene, :, 0] < 0.5, axis=0)
+        free_cells = np.argwhere(common_free)
+        if positions > len(free_cells):
+            raise ValueError("fixture positions exceed common-free map cells")
+        order = rng.permutation(len(free_cells))[:positions]
+        selected = free_cells[order]
+        jitter = 0.1 + 0.8 * (scene + 1) / (scene_count + 1)
+        coordinates[scene] = map_origin + np.stack(
+            (selected[:, 1] + jitter, selected[:, 0] + jitter), axis=1
         )
-        fixed += 0.01 * scene
-        remaining = rng.uniform(0.5, map_size - 0.5, size=(positions - fixed.shape[0], 2))
-        coordinates[scene] = np.vstack((fixed, remaining))[:positions]
         for position_index in range(positions):
             position_ids[scene, position_index] = f"{city_ids[scene]}:{bank_ids[scene]}:p{position_index:04d}"
         if roles[scene] == "target":
@@ -154,7 +159,7 @@ def write_nonscientific_fixture(
 
         city_shift = (0.03 * (scene % 4)) * np.linspace(-1.0, 1.0, channels)
         for position_index, coordinate in enumerate(coordinates[scene]):
-            normalized = coordinate / map_size
+            normalized = (coordinate - map_origin) / map_size
             base_csi = np.concatenate(
                 (
                     np.sin(np.pi * normalized[0] * np.arange(1, 5)),
@@ -167,7 +172,7 @@ def write_nonscientific_fixture(
                 value = base_csi + city_shift
                 for bit_index, enabled in enumerate(world_bits):
                     primitive = int(primitive_ids[scene, bit_index])
-                    distance = float(np.linalg.norm(coordinate - centers[primitive]))
+                    distance = float(np.linalg.norm(coordinate - centers_xy[primitive]))
                     amplitude = max(0.0, 1.0 - distance / 3.0)
                     value = value + float(enabled) * amplitude * primitive_channel[primitive]
                 clean[scene, world, position_index] = value
@@ -235,7 +240,7 @@ def write_nonscientific_fixture(
             "patch_antenna_size": 1,
             "patch_subcarrier_size": 1,
             "map_resolution_m": 1.0,
-            "map_origin_xy_m": [-4.0, -4.0],
+            "map_origin_xy_m": map_origin.tolist(),
             "alignment_physical_representation": "complex_csi_plus_delay_angle_power",
         },
         "assets": {

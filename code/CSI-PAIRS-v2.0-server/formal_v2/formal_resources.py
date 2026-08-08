@@ -21,6 +21,7 @@ REQUIRED_FILES = {
     "2604.07086v1.pdf",
     "2606.04770v1.pdf",
     "Wi-GATr-main.zip",
+    "PMNet-a0e0c592.zip",
     "sionna-main.zip",
     "sionna-large-radio-maps-main.zip",
 }
