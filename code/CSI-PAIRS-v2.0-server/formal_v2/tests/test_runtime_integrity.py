@@ -211,6 +211,9 @@ class RuntimeIntegrityTests(unittest.TestCase):
         self.assertIn("--no-compile", setup)
         self.assertIn("pip uninstall --yes pip", setup)
         self.assertIn("-name '*.pyc'", setup)
+        scripts = Path(__file__).resolve().parents[1] / "scripts"
+        for name in ("run_formal_v2.sh", "run_formal_v2_dry_run.sh"):
+            self.assertIn("export PYTHONDONTWRITEBYTECODE=1", (scripts / name).read_text())
 
 
 if __name__ == "__main__":

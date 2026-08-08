@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export PYTHONDONTWRITEBYTECODE=1
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON_BIN="${CSI_PAIRS_PYTHON:-python3}"
 OUTPUT="${1:?usage: run_formal_v2_dry_run.sh UNUSED_OUTPUT_DIRECTORY}"
