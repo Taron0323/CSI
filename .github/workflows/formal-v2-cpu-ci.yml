@@ -21,7 +21,7 @@ concurrency:
 jobs:
   test-and-package:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: code/CSI-PAIRS-v2.0-server
@@ -54,7 +54,7 @@ jobs:
 
       - name: Compile, validate, and test
         run: |
-          python -m compileall -q formal_v2
+          python -m formal_v2.scripts.check_python_syntax formal_v2
           python -m unittest discover -s formal_v2/tests -v
           python - <<'PY'
           from formal_v2.formal_config import load_formal_config

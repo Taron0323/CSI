@@ -22,7 +22,7 @@ Unavailable data, external models, independent RT calibration, or unrun controls
 CLI stages are visible with:
 
 ```bash
-python3 -m formal_v2.formal_cli --help
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli --help
 ```
 
 Formal orchestration is split between `prepare-full-run` and `all`. Preparation performs the complete
@@ -71,13 +71,17 @@ so the controls are executable protocol surfaces rather than scientific evidence
 
 External evidence contracts are fail-closed. Scene-ID adapters must bind their implementation source
 and trained checkpoint, cover each held-out position with one exact four-condition unit, and pass
-base-map-cluster bootstrap intervals rather than row-level point estimates. RT calibration V4
+base-map-cluster bootstrap intervals rather than row-level point estimates. RT calibration V5
 manifests bind separate fit data, validation inputs, and an independent per-unit validation-reference
 CSV. Fit data and validation inputs are themselves strict JSON partition contracts; every unit
-contains its `unit_id`, stable `scene_id`, and nonempty inline payload under the file's authenticated
-hash. The outer runner derives both identifier sets and scene sets from these raw contracts, requires
-them to be disjoint, and requires validation units to match the reference CSV exactly. No sidecar
-identity assertion is accepted. The adapter cannot
+contains its `unit_id`, stable `scene_id`, nonempty inline payload, and a V3 `source` record binding
+the source asset path and SHA-256, generation/acquisition batch, source record, and physical raw-unit
+ID. Each source asset is a strict record contract; the outer runner locates the declared record and
+requires its identity and canonical payload to match the partition row exactly. It then requires
+unit, scene, source-asset content, source-record, and raw-unit
+identities to be disjoint while recording equal canonical payloads as a diagnostic rather than
+rejecting equal measurements from genuinely distinct physical units. Validation units must match
+the reference CSV exactly; no identity sidecar is accepted. The adapter cannot
 receive the reference path; it emits per-unit simulated statistics. The outer runner preserves every
 per-unit absolute error and evaluates each C11 statistic by frozen mean absolute error per unit, so
 opposite signed errors cannot cancel. G8 adapters emit raw independent-engine CSI in
@@ -111,7 +115,7 @@ permission, so it is not an anonymous submission artifact. It excludes every
 `redistribution_allowed=false` resource even if that file exists in the builder's local `waibu/`
 directory. `scripts/build_anonymous_supplement.sh` creates the separate deterministic anonymous
 package and excludes all of `waibu/`, internal Git provenance, and identity-bearing delivery audits.
-Use `python3 -m formal_v2.fetch_waibu_resources --registry ... --waibu-root ...` to obtain omitted
+Use `PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.fetch_waibu_resources --registry ... --waibu-root ...` to obtain omitted
 inputs directly from their frozen source URLs; formal resource verification remains strict and fails
 until all ten local files authenticate.
 

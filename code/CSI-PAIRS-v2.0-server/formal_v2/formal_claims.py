@@ -57,7 +57,7 @@ STAGE_SPECS = {
     ),
     "rt_calibration": (
         "qualification/rt_calibration/gate.json",
-        "csi-pairs-v6-rt-calibration-gate-v4",
+        "csi-pairs-v6-rt-calibration-gate-v5",
     ),
 }
 
@@ -439,16 +439,39 @@ def _semantic_status(name, payload):
     elif name == "rt_calibration":
         statistics = payload.get("statistics")
         independence = payload.get("fit_validation_independence")
+        independence_fields = {
+            "verified",
+            "rule",
+            "unit_id_overlap",
+            "scene_id_overlap",
+            "source_asset_sha256_overlap",
+            "source_record_identity_overlap",
+            "raw_unit_identity_overlap",
+            "canonical_payload_sha256_overlap_count",
+        }
         if (
             not isinstance(statistics, dict)
             or set(statistics) != {"path_loss", "delay_spread", "angular_spread", "visible_path_count"}
             or any(not isinstance(value, dict) or value.get("passed") is not True for value in statistics.values())
-            or independence != {
-                "verified": True,
-                "rule": "raw_partition_unit_id_and_scene_id_disjoint",
-                "unit_id_overlap": [],
-                "scene_id_overlap": [],
-            }
+            or not isinstance(independence, dict)
+            or set(independence) != independence_fields
+            or independence.get("verified") is not True
+            or independence.get("rule")
+            != "raw_partition_unit_scene_source_and_raw_unit_disjoint_v2"
+            or any(
+                independence.get(key) != []
+                for key in (
+                    "unit_id_overlap",
+                    "scene_id_overlap",
+                    "source_asset_sha256_overlap",
+                    "source_record_identity_overlap",
+                    "raw_unit_identity_overlap",
+                )
+            )
+            or not isinstance(
+                independence.get("canonical_payload_sha256_overlap_count"), int
+            )
+            or independence["canonical_payload_sha256_overlap_count"] < 0
             or payload.get("aggregation") != "mean_absolute_error_per_unit"
             or int(payload.get("fit_unit_count", 0)) < 1
             or int(payload.get("fit_scene_count", 0)) < 1

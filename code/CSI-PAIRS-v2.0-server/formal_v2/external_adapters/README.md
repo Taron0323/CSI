@@ -119,7 +119,7 @@ The standard outer adapter is `../configs/sionna_external_validity_adapter_v2.js
 scene manifest at `RUN_ROOT/inputs/sionna_scene_manifest.json`; this fixed location keeps the exact
 command hash and scene bundle inside the formal run tree.
 
-`python -m formal_v2.formal_cli export-sionna-scenes` deterministically converts every formal
+`PYTHONDONTWRITEBYTECODE=1 python -m formal_v2.formal_cli export-sionna-scenes` deterministically converts every formal
 `external_validation` sibling world into material-separated PLY meshes and Sionna scene XML, writes
 per-asset license/hash records, and emits the complete scene manifest. The command does not invent
 an asset license: `--license-id` must match `metadata.assets.license_ids`; carrier frequency and

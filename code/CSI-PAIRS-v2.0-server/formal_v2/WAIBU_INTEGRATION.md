@@ -37,10 +37,10 @@ Fetch omitted resources directly from their registered sources, then authenticat
 formal input set:
 
 ```bash
-python3 -m formal_v2.fetch_waibu_resources \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.fetch_waibu_resources \
   --registry formal_v2/configs/waibu_resources_v1.json \
   --waibu-root waibu
-python3 -m formal_v2.formal_cli verify-waibu-resources \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli verify-waibu-resources \
   --registry formal_v2/configs/waibu_resources_v1.json \
   --waibu-root waibu \
   --output runs/waibu-auth-001
@@ -49,7 +49,7 @@ python3 -m formal_v2.formal_cli verify-waibu-resources \
 Run the five representation baselines after role-wise data verification:
 
 ```bash
-python3 -m formal_v2.formal_cli run-representation-baselines \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli run-representation-baselines \
   --config formal_v2/configs/formal_v2.json \
   --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
   --representation-baseline-config formal_v2/configs/representation_baselines_v1.json \
@@ -59,7 +59,7 @@ python3 -m formal_v2.formal_cli run-representation-baselines \
 Run the common C1 unit registry:
 
 ```bash
-python3 -m formal_v2.formal_cli run-external-baselines \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli run-external-baselines \
   --config formal_v2/configs/formal_v2.json \
   --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
   --adapter-manifest formal_v2/external_adapters/all_map_adapters_v1.json \
@@ -69,17 +69,17 @@ python3 -m formal_v2.formal_cli run-external-baselines \
 Run the shipped CSI-PAIRS protocol controls after factorial/evaluation artifacts exist:
 
 ```bash
-python3 -m formal_v2.formal_cli run-resource-controls \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli run-resource-controls \
   --config formal_v2/configs/formal_v2.json \
   --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
   --output /absolute/path/formal-run
 
-python3 -m formal_v2.formal_cli run-shuffled-pair-control \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli run-shuffled-pair-control \
   --config formal_v2/configs/formal_v2.json \
   --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
   --output /absolute/path/formal-run
 
-python3 -m formal_v2.formal_cli run-retention-audit \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli run-retention-audit \
   --config formal_v2/configs/formal_v2.json \
   --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
   --output /absolute/path/formal-run
@@ -89,11 +89,10 @@ Install and inspect Sionna facilities:
 
 ```bash
 formal_v2/external_adapters/setup_sionna.sh
-formal_v2/external_adapters/.runtime-sionna/venv/bin/python \
-  -m formal_v2.sionna_facility \
+PYTHONDONTWRITEBYTECODE=1 formal_v2/external_adapters/.runtime-sionna/venv/bin/python -m formal_v2.sionna_facility \
   --runtime-root formal_v2/external_adapters/.runtime-sionna verify
 
-python3 -m formal_v2.formal_cli export-sionna-scenes \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli export-sionna-scenes \
   --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
   --output /absolute/path/formal-run/inputs \
   --license-id YOUR_SCENE_ASSET_LICENSE \
