@@ -396,19 +396,38 @@ class RequirementsLockTests(unittest.TestCase):
                     prefix.resolve(),
                 )
 
-    def test_install_entrypoints_require_hashes_and_wheels(self):
+    def test_install_entrypoint_requires_hashes_and_wheels(self):
         setup = (self.server_root / "formal_v2" / "scripts" / "setup_formal_v2.sh").read_text(
             encoding="utf-8"
         )
-        workflow = (
-            self.server_root.parents[1] / ".github" / "workflows" / "formal-v2-cpu-ci.yml"
-        ).read_text(encoding="utf-8")
         self.assertIn("--require-hashes", setup)
         self.assertIn("--only-binary=:all:", setup)
         self.assertIn("--report", setup)
-        self.assertIn("setup_formal_v2.sh", workflow)
         self.assertIn("CSI_PAIRS_PIP_CERT", setup)
         self.assertNotIn("--trusted-host", setup)
+
+    def test_source_ci_uses_the_hashed_setup_entrypoint(self):
+        repository_root = self.server_root.parents[1]
+        if not (repository_root / ".git").exists():
+            self.skipTest("source CI workflow is outside the standalone server delivery")
+        workflow = (
+            repository_root / ".github" / "workflows" / "formal-v2-cpu-ci.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("setup_formal_v2.sh", workflow)
+
+    def test_server_builder_stages_public_trace_dependencies(self):
+        builder = (
+            self.server_root / "formal_v2" / "scripts" / "build_server_bundle.sh"
+        ).read_text(encoding="utf-8")
+        for relative in (
+            "code_to_paper_reverse_matrix.md",
+            "formal_experiment_blockers.md",
+            "paper_to_code_traceability.md",
+            "source_conflict_register.md",
+            "v6_atomic_requirement_matrix_2026-08-08.csv",
+        ):
+            with self.subTest(relative=relative):
+                self.assertIn(relative, builder)
 
 
 if __name__ == "__main__":

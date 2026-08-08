@@ -41,8 +41,14 @@ cp -R "${PROJECT_ROOT}/paper/official_style/iclr2027" "${BUNDLE_ROOT}/paper/offi
 cp -p "${PROJECT_ROOT}/CSI-PAIRS-startup-package-v2.0.md" \
   "${BUNDLE_ROOT}/CSI-PAIRS-startup-package-v2.0.md"
 cp -p "${PROJECT_ROOT}/README.md" "${BUNDLE_ROOT}/README.md"
+cp -p "${PROJECT_ROOT}/artifacts/code_to_paper_reverse_matrix.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/formal_experiment_blockers.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/paper_to_code_traceability.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/source_conflict_register.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v2_0_claim_evidence_contract.json" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v2_0_verification.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/v6_atomic_requirement_matrix_2026-08-08.csv" \
+  "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/iclr2027_official_policy_recheck_2026-08-05.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/waibu_integration_audit_2026-08-06.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v6_traceability_audit_2026-08-07.md" "${BUNDLE_ROOT}/artifacts/"
