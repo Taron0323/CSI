@@ -152,7 +152,7 @@ reusing the earlier correlation contract.
 | C8 | Two target cities at strict k=0 and city-level k=8 | localization/statistics | `EXACT` | `BLOCKED` |
 | C9 | All four risk-gate families | risk/claims | `EXACT` | `BLOCKED` |
 | C10 | Path mechanism and zero-path equivalence | path/claims | `EXACT` | `BLOCKED` |
-| C11 | Independent RT calibration with structured raw fit/validation partitions, inline payloads, disjoint unit/scene identities, and mean per-unit absolute error | `formal_rt_calibration.py` | `PARTIAL/PROXY` external fit/validation execution | `BLOCKED` |
+| C11 | Independent RT calibration with source-asset SHA-bound raw fit/validation partitions, disjoint unit/scene/source-record/raw-unit identities, and mean per-unit absolute error | `formal_rt_calibration.py` | `PARTIAL/PROXY` external fit/validation execution | `BLOCKED` |
 | C12 | Independent RT engine or controlled real intervention | `formal_external_validity.py` | `PARTIAL/PROXY` external evidence | `BLOCKED` |
 | C13 | Current, auditable literature search and overlap decision | `formal_literature.py` | `PARTIAL/PROXY` external literature input | `BLOCKED` |
 

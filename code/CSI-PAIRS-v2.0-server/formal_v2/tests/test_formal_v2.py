@@ -1138,6 +1138,31 @@ class EvidenceAndPathTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def _rt_unit(
+        self,
+        unit_id,
+        scene_id,
+        source_asset_id,
+        batch_id,
+        source_record_id,
+        raw_unit_id,
+        payload,
+    ):
+        source_asset = self.root / source_asset_id
+        write_json(source_asset, {"source_asset_id": source_asset_id})
+        return {
+            "unit_id": unit_id,
+            "scene_id": scene_id,
+            "source": {
+                "asset_path": source_asset_id,
+                "asset_sha256": sha256_file(source_asset),
+                "generation_or_acquisition_batch_id": batch_id,
+                "source_record_id": source_record_id,
+                "raw_unit_id": raw_unit_id,
+            },
+            "payload": payload,
+        }
+
     def test_gate_and_claim_identifiers_are_fixed(self):
         self.assertEqual(GATE_IDS, tuple(f"G{i}" for i in range(9)))
         self.assertEqual(CLAIM_IDS, tuple(f"C{i}" for i in range(1, 14)))
@@ -1287,9 +1312,13 @@ class EvidenceAndPathTests(unittest.TestCase):
             "passed": True,
             "fit_validation_independence": {
                 "verified": True,
-                "rule": "raw_partition_unit_id_and_scene_id_disjoint",
+                "rule": "raw_partition_unit_scene_source_and_raw_unit_disjoint_v2",
                 "unit_id_overlap": [],
                 "scene_id_overlap": [],
+                "source_asset_sha256_overlap": [],
+                "source_record_identity_overlap": [],
+                "raw_unit_identity_overlap": [],
+                "canonical_payload_sha256_overlap_count": 0,
             },
             "protocol_sha256": "a" * 64,
             "input_manifest_sha256": "b" * 64,
@@ -1952,26 +1981,32 @@ class EvidenceAndPathTests(unittest.TestCase):
         fit = self.root / "rt-fit.json"
         validation_inputs = self.root / "rt-validation-inputs.json"
         validation_reference = self.root / "rt-validation-reference.csv"
+        fit_a = self._rt_unit(
+            "fit-a", "fit-scene-a", "fit-a-source.json", "fit-batch", "fit-record-a", "fit-raw-a", {"observation": 1}
+        )
+        fit_b = self._rt_unit(
+            "fit-b", "fit-scene-b", "fit-b-source.json", "fit-batch", "fit-record-b", "fit-raw-b", {"observation": 2}
+        )
+        validation_a = self._rt_unit(
+            "unit-a", "validation-scene-a", "validation-a-source.json", "validation-batch", "validation-record-a", "validation-raw-a", {"observation": 3}
+        )
+        validation_b = self._rt_unit(
+            "unit-b", "validation-scene-b", "validation-b-source.json", "validation-batch", "validation-record-b", "validation-raw-b", {"observation": 4}
+        )
         write_json(
             fit,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
                 "partition": "fit",
-                "units": [
-                    {"unit_id": "fit-a", "scene_id": "fit-scene-a", "payload": {"observation": 1}},
-                    {"unit_id": "fit-b", "scene_id": "fit-scene-b", "payload": {"observation": 2}},
-                ],
+                "units": [fit_a, fit_b],
             },
         )
         write_json(
             validation_inputs,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
                 "partition": "validation",
-                "units": [
-                    {"unit_id": "unit-a", "scene_id": "validation-scene-a", "payload": {"observation": 3}},
-                    {"unit_id": "unit-b", "scene_id": "validation-scene-b", "payload": {"observation": 4}},
-                ],
+                "units": [validation_a, validation_b],
             },
         )
         write_csv(
@@ -2098,15 +2133,21 @@ class EvidenceAndPathTests(unittest.TestCase):
     def test_rt_calibration_rejects_fit_validation_scene_or_unit_overlap(self):
         fit_path = self.root / "raw-fit.json"
         validation_path = self.root / "raw-validation.json"
+        fit_unit = self._rt_unit(
+            "fit-a", "shared-scene", "raw-fit-source.json", "fit-batch", "fit-record", "fit-raw", {"raw": 1}
+        )
+        validation_unit = self._rt_unit(
+            "validation-a", "shared-scene", "raw-validation-source.json", "validation-batch", "validation-record", "validation-raw", {"raw": 2}
+        )
         write_json(fit_path, {
-            "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
             "partition": "fit",
-            "units": [{"unit_id": "fit-a", "scene_id": "shared-scene", "payload": {"raw": 1}}],
+            "units": [fit_unit],
         })
         write_json(validation_path, {
-            "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
             "partition": "validation",
-            "units": [{"unit_id": "validation-a", "scene_id": "shared-scene", "payload": {"raw": 2}}],
+            "units": [validation_unit],
         })
         # A dishonest sidecar is irrelevant: the outer runner derives identity from raw inputs.
         write_json(self.root / "lying-sidecar.json", {
@@ -2117,11 +2158,158 @@ class EvidenceAndPathTests(unittest.TestCase):
         validation = read_rt_partition_contract(validation_path, "validation")
         with self.assertRaisesRegex(RuntimeError, "scene_overlap"):
             validate_rt_partition_independence(fit, validation, {"validation-a"})
-        validation = {
-            "fit-a": {"unit_id": "fit-a", "scene_id": "validation-scene", "payload": {"raw": 2}},
-        }
+        validation_unit["unit_id"] = "fit-a"
+        validation_unit["scene_id"] = "validation-scene"
+        write_json(validation_path, {
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+            "partition": "validation",
+            "units": [validation_unit],
+        })
+        validation = read_rt_partition_contract(validation_path, "validation")
         with self.assertRaisesRegex(RuntimeError, "unit_overlap"):
             validate_rt_partition_independence(fit, validation, {"fit-a"})
+
+    def test_rt_calibration_rejects_renamed_or_copied_raw_sources(self):
+        shared = self._rt_unit(
+            "fit-a",
+            "fit-scene",
+            "shared-source.json",
+            "batch-a",
+            "record-a",
+            "raw-a",
+            {"observation": [1, 2, 3]},
+        )
+        renamed = json.loads(json.dumps(shared))
+        renamed["unit_id"] = "validation-renamed"
+        renamed["scene_id"] = "validation-scene-renamed"
+        fit_path = self.root / "renamed-fit.json"
+        validation_path = self.root / "renamed-validation.json"
+        write_json(
+            fit_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "partition": "fit",
+                "units": [shared],
+            },
+        )
+        write_json(
+            validation_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "partition": "validation",
+                "units": [renamed],
+            },
+        )
+        fit = read_rt_partition_contract(fit_path, "fit")
+        validation = read_rt_partition_contract(validation_path, "validation")
+        with self.assertRaisesRegex(RuntimeError, "source_asset_sha256_overlap"):
+            validate_rt_partition_independence(
+                fit, validation, {"validation-renamed"}
+            )
+
+        copied = json.loads(json.dumps(renamed))
+        copied_asset = self.root / "renamed-copy.json"
+        copied_asset.write_bytes((self.root / "shared-source.json").read_bytes())
+        copied["source"]["asset_path"] = copied_asset.name
+        write_json(
+            validation_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "partition": "validation",
+                "units": [copied],
+            },
+        )
+        validation = read_rt_partition_contract(validation_path, "validation")
+        with self.assertRaisesRegex(RuntimeError, "source_asset_sha256_overlap"):
+            validate_rt_partition_independence(
+                fit, validation, {"validation-renamed"}
+            )
+
+    def test_rt_calibration_allows_equal_measurements_from_distinct_raw_units(self):
+        fit_unit = self._rt_unit(
+            "fit-a",
+            "fit-scene",
+            "independent-fit-source.json",
+            "fit-batch",
+            "fit-record",
+            "fit-raw",
+            {"a": 1, "nested": {"x": 2, "y": 3}},
+        )
+        validation_unit = self._rt_unit(
+            "validation-a",
+            "validation-scene",
+            "independent-validation-source.json",
+            "validation-batch",
+            "validation-record",
+            "validation-raw",
+            {"nested": {"y": 3, "x": 2}, "a": 1},
+        )
+        fit_path = self.root / "canonical-fit.json"
+        validation_path = self.root / "canonical-validation.json"
+        write_json(
+            fit_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "partition": "fit",
+                "units": [fit_unit],
+            },
+        )
+        write_json(
+            validation_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "partition": "validation",
+                "units": [validation_unit],
+            },
+        )
+        fit = read_rt_partition_contract(fit_path, "fit")
+        validation = read_rt_partition_contract(validation_path, "validation")
+        independence = validate_rt_partition_independence(
+            fit, validation, {"validation-a"}
+        )
+        self.assertTrue(independence["verified"])
+
+    def test_rt_calibration_rejects_same_logical_raw_unit_under_another_wrapper(self):
+        fit_unit = self._rt_unit(
+            "fit-a",
+            "fit-scene",
+            "wrapper-fit-source.json",
+            "shared-batch",
+            "shared-record",
+            "shared-raw",
+            {"observation": {"real": 1, "imag": 2}},
+        )
+        validation_unit = self._rt_unit(
+            "validation-a",
+            "validation-scene",
+            "wrapper-validation-source.json",
+            "shared-batch",
+            "shared-record",
+            "shared-raw",
+            {"wrapped": {"observation": {"imag": 2, "real": 1}}},
+        )
+        fit_path = self.root / "wrapper-fit.json"
+        validation_path = self.root / "wrapper-validation.json"
+        write_json(
+            fit_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "partition": "fit",
+                "units": [fit_unit],
+            },
+        )
+        write_json(
+            validation_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "partition": "validation",
+                "units": [validation_unit],
+            },
+        )
+        fit = read_rt_partition_contract(fit_path, "fit")
+        validation = read_rt_partition_contract(validation_path, "validation")
+        with self.assertRaisesRegex(RuntimeError, "raw_unit_identity_overlap"):
+            validate_rt_partition_independence(fit, validation, {"validation-a"})
 
     def test_literature_gate_rejects_unbound_or_contradictory_novelty_records(self):
         content = self.root / "paper.pdf"

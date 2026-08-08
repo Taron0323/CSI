@@ -74,10 +74,12 @@ and trained checkpoint, cover each held-out position with one exact four-conditi
 base-map-cluster bootstrap intervals rather than row-level point estimates. RT calibration V4
 manifests bind separate fit data, validation inputs, and an independent per-unit validation-reference
 CSV. Fit data and validation inputs are themselves strict JSON partition contracts; every unit
-contains its `unit_id`, stable `scene_id`, and nonempty inline payload under the file's authenticated
-hash. The outer runner derives both identifier sets and scene sets from these raw contracts, requires
-them to be disjoint, and requires validation units to match the reference CSV exactly. No sidecar
-identity assertion is accepted. The adapter cannot
+contains its `unit_id`, stable `scene_id`, nonempty inline payload, and a V2 `source` record binding
+the source asset path and SHA-256, generation/acquisition batch, source record, and physical raw-unit
+ID. The outer runner requires unit, scene, source-asset content, source-record, and raw-unit
+identities to be disjoint while recording equal canonical payloads as a diagnostic rather than
+rejecting equal measurements from genuinely distinct physical units. Validation units must match
+the reference CSV exactly; no identity sidecar is accepted. The adapter cannot
 receive the reference path; it emits per-unit simulated statistics. The outer runner preserves every
 per-unit absolute error and evaluates each C11 statistic by frozen mean absolute error per unit, so
 opposite signed errors cannot cancel. G8 adapters emit raw independent-engine CSI in

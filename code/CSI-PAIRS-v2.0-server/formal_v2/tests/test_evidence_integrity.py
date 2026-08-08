@@ -30,6 +30,7 @@ from formal_v2.formal_controls import (
     _validate_v3_profiler,
 )
 from formal_v2.external_adapters.resource_control import (
+    _evaluate_localization,
     _payload_resource_parameter_count,
 )
 from formal_v2.formal_external import (
@@ -103,6 +104,87 @@ class EvidenceIntegrityTests(unittest.TestCase):
                     }
                 )
         return rows
+
+    def test_resource_localization_authentication_is_constant_in_result_rows(self):
+        evidence = {
+            "dataset_sha256": "a" * 64,
+            "config_sha256": "b" * 64,
+            "fixture": False,
+        }
+        config = {
+            "localization": {
+                "label_draws": 1,
+                "label_budgets": [0],
+                "sigma_min": 0.001,
+            },
+            "model": {"state_dim": 2},
+        }
+
+        def evaluate(scene_count):
+            dataset = SimpleNamespace(
+                source_path=ROOT / "unused-dataset.npz",
+                is_fixture=False,
+                city_ids=np.full(scene_count, "target-a"),
+                bank_ids=np.asarray([f"bank-{index}" for index in range(scene_count)]),
+                base_map_cluster_ids=np.full(scene_count, "cluster-a"),
+                position_ids=np.full((scene_count, 1), "query-a"),
+                positions=np.zeros((scene_count, 1, 2), dtype=np.float64),
+                indices_for_role=lambda role: np.arange(scene_count) if role == "target" else np.asarray([]),
+                canonical_base_map_digest=lambda scene: "c" * 64,
+            )
+            representations = {
+                scene: np.zeros((1, 2), dtype=np.float64)
+                for scene in range(scene_count)
+            }
+            with (
+                patch(
+                    "formal_v2.external_adapters.resource_control.city_support_candidates",
+                    return_value=[],
+                ),
+                patch(
+                    "formal_v2.external_adapters.resource_control.eligible_query_indices",
+                    return_value=np.asarray([0]),
+                ),
+                patch(
+                    "formal_v2.external_adapters.resource_control.adapt_position_head",
+                    return_value=object(),
+                ),
+                patch(
+                    "formal_v2.external_adapters.resource_control.predict_position_distribution",
+                    return_value=(np.zeros((1, 2)), None, None),
+                ),
+                patch(
+                    "formal_v2.external_adapters.resource_control._canonical_bank_digest",
+                    return_value="d" * 64,
+                ),
+                patch("formal_v2.external_adapters.resource_control.sha256_file") as file_hash,
+                patch("formal_v2.external_adapters.resource_control.evidence_context") as context,
+            ):
+                rows = _evaluate_localization(
+                    "equal_flop_alignment",
+                    representations,
+                    dataset,
+                    config,
+                    1,
+                    None,
+                    object(),
+                    evidence["dataset_sha256"],
+                    evidence["config_sha256"],
+                    evidence["fixture"],
+                )
+            self.assertEqual(len(rows), scene_count)
+            self.assertEqual(file_hash.call_count, 0)
+            self.assertEqual(context.call_count, 0)
+            self.assertTrue(
+                all(
+                    row["dataset_sha256"] == evidence["dataset_sha256"]
+                    and row["config_sha256"] == evidence["config_sha256"]
+                    for row in rows
+                )
+            )
+
+        evaluate(1)
+        evaluate(10_000)
 
     def test_shipped_wiser_is_style_control_and_c1_stays_underidentified(self):
         manifest = json.loads(

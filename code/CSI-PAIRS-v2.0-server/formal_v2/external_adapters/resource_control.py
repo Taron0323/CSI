@@ -171,6 +171,9 @@ def run_control(control_id, dataset_path, run_root, output_root, architecture_pa
                 seed,
                 bottleneck,
                 source_head,
+                evidence["dataset_sha256"],
+                evidence["config_sha256"],
+                evidence["fixture"],
             )
         )
         checkpoint_dir = output / "checkpoints" / f"seed_{seed}"
@@ -614,6 +617,9 @@ def _evaluate_localization(
     seed,
     bottleneck,
     source_head,
+    dataset_sha256,
+    config_sha256,
+    fixture,
 ):
     transformed = {
         scene: _apply_bottleneck(values, bottleneck)
@@ -688,15 +694,9 @@ def _evaluate_localization(
                             "utility_neg_log_median": -math.log(
                                 max(median, 1e-12)
                             ),
-                            "dataset_sha256": sha256_file(dataset.source_path),
-                            "config_sha256": evidence_context(
-                                config,
-                                dataset,
-                                "FORBIDDEN"
-                                if dataset.is_fixture
-                                else "CANDIDATE_NOT_CLAIM",
-                            )["config_sha256"],
-                            "fixture": dataset.is_fixture,
+                            "dataset_sha256": dataset_sha256,
+                            "config_sha256": config_sha256,
+                            "fixture": fixture,
                         }
                     )
     return rows
