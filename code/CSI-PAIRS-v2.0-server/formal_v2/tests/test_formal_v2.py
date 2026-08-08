@@ -1149,7 +1149,20 @@ class EvidenceAndPathTests(unittest.TestCase):
         payload,
     ):
         source_asset = self.root / source_asset_id
-        write_json(source_asset, {"source_asset_id": source_asset_id})
+        write_json(
+            source_asset,
+            {
+                "schema_version": "csi-pairs-v6-rt-source-asset-v1",
+                "records": [
+                    {
+                        "generation_or_acquisition_batch_id": batch_id,
+                        "source_record_id": source_record_id,
+                        "raw_unit_id": raw_unit_id,
+                        "payload": payload,
+                    }
+                ],
+            },
+        )
         return {
             "unit_id": unit_id,
             "scene_id": scene_id,
@@ -1944,7 +1957,7 @@ class EvidenceAndPathTests(unittest.TestCase):
 
     def test_rt_calibration_manifest_requires_bound_input_and_source_paths(self):
         manifest = {
-            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v4",
+            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v5",
             "protocol_path": "protocol.json",
             "protocol_sha256": "a" * 64,
             "fit_dataset_path": "fit.bin",
@@ -1996,7 +2009,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             fit,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "fit",
                 "units": [fit_a, fit_b],
             },
@@ -2004,7 +2017,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             validation_inputs,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "validation",
                 "units": [validation_a, validation_b],
             },
@@ -2047,7 +2060,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "out=Path(a.output); fitted=out/'fitted.json'; fitted.write_text('{\"gain\":1.0}', encoding='utf-8')\n"
             "sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
             "sim=out/'simulated_statistics.csv'; sim.write_text('unit_id,path_loss,delay_spread,angular_spread,visible_path_count\\nunit-a,1.05,2.05,3.05,4\\nunit-b,2.05,3.05,4.05,5\\n',encoding='utf-8')\n"
-            "payload={'schema_version':'csi-pairs-v6-rt-calibration-adapter-result-v4','fit_dataset_sha256':sha(a.fit),'validation_inputs_sha256':sha(a.validation_inputs),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'simulated_statistics_path':sim.name,'simulated_statistics_sha256':sha(sim)}\n"
+            "payload={'schema_version':'csi-pairs-v6-rt-calibration-adapter-result-v5','fit_dataset_sha256':sha(a.fit),'validation_inputs_sha256':sha(a.validation_inputs),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'simulated_statistics_path':sim.name,'simulated_statistics_sha256':sha(sim)}\n"
             "(out/'adapter_result.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
             encoding="utf-8",
         )
@@ -2055,7 +2068,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             manifest,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v4",
+                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v5",
                 "protocol_path": str(protocol),
                 "protocol_sha256": sha256_file(protocol),
                 "fit_dataset_path": str(fit),
@@ -2140,12 +2153,12 @@ class EvidenceAndPathTests(unittest.TestCase):
             "validation-a", "shared-scene", "raw-validation-source.json", "validation-batch", "validation-record", "validation-raw", {"raw": 2}
         )
         write_json(fit_path, {
-            "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
             "partition": "fit",
             "units": [fit_unit],
         })
         write_json(validation_path, {
-            "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
             "partition": "validation",
             "units": [validation_unit],
         })
@@ -2161,7 +2174,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         validation_unit["unit_id"] = "fit-a"
         validation_unit["scene_id"] = "validation-scene"
         write_json(validation_path, {
-            "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
             "partition": "validation",
             "units": [validation_unit],
         })
@@ -2187,7 +2200,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             fit_path,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "fit",
                 "units": [shared],
             },
@@ -2195,7 +2208,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             validation_path,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "validation",
                 "units": [renamed],
             },
@@ -2214,7 +2227,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             validation_path,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "validation",
                 "units": [copied],
             },
@@ -2224,6 +2237,31 @@ class EvidenceAndPathTests(unittest.TestCase):
             validate_rt_partition_independence(
                 fit, validation, {"validation-renamed"}
             )
+
+    def test_rt_calibration_rejects_payload_not_present_in_source_asset(self):
+        unit = self._rt_unit(
+            "fit-a",
+            "fit-scene",
+            "bound-source.json",
+            "fit-batch",
+            "fit-record",
+            "fit-raw",
+            {"observation": [1, 2, 3]},
+        )
+        unit["payload"] = {"observation": [9, 9, 9]}
+        fit_path = self.root / "unbound-payload-fit.json"
+        write_json(
+            fit_path,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
+                "partition": "fit",
+                "units": [unit],
+            },
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "payload differs from its authenticated source record"
+        ):
+            read_rt_partition_contract(fit_path, "fit")
 
     def test_rt_calibration_allows_equal_measurements_from_distinct_raw_units(self):
         fit_unit = self._rt_unit(
@@ -2249,7 +2287,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             fit_path,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "fit",
                 "units": [fit_unit],
             },
@@ -2257,7 +2295,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             validation_path,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "validation",
                 "units": [validation_unit],
             },
@@ -2293,7 +2331,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             fit_path,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "fit",
                 "units": [fit_unit],
             },
@@ -2301,7 +2339,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             validation_path,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-partition-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v3",
                 "partition": "validation",
                 "units": [validation_unit],
             },

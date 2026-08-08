@@ -67,7 +67,7 @@ EARLY_STAGE_GATES = {
     "independent_rt": (
         "qualification/rt_calibration/gate.json",
         "qualification/rt_calibration/manifest.json",
-        "csi-pairs-v6-rt-calibration-gate-v4",
+        "csi-pairs-v6-rt-calibration-gate-v5",
     ),
     "data_verification": (
         "data_verification/gate.json",

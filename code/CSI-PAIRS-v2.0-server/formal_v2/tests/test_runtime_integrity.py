@@ -7,6 +7,8 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -221,8 +223,54 @@ class RuntimeIntegrityTests(unittest.TestCase):
         documents += (formal_root / "external_adapters" / "README.md",)
         for document in documents:
             for line in document.read_text(encoding="utf-8").splitlines():
-                if ("/python" in line or "python3" in line) and "-m" in line:
+                if any(token in line for token in ("/python", "python3", " python ")) and " -m " in line:
                     self.assertIn("PYTHONDONTWRITEBYTECODE=1", line, document)
+                self.assertNotIn(" -m py_compile", line, document)
+
+    def test_syntax_checker_compiles_in_memory_without_pyc(self):
+        source_root = self.root / "syntax-source"
+        source_root.mkdir()
+        source = source_root / "sample.py"
+        source.write_text("VALUE = 1\n", encoding="utf-8")
+        project_root = Path(__file__).resolve().parents[2]
+        environment = {
+            **os.environ,
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPATH": str(project_root),
+        }
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "formal_v2.scripts.check_python_syntax",
+                str(source_root),
+            ],
+            cwd=project_root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("syntax-ok files=1", completed.stdout)
+        self.assertEqual(list(source_root.rglob("*.pyc")), [])
+
+        source.write_text("def broken(:\n", encoding="utf-8")
+        failed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "formal_v2.scripts.check_python_syntax",
+                str(source_root),
+            ],
+            cwd=project_root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(list(source_root.rglob("*.pyc")), [])
 
 
 if __name__ == "__main__":

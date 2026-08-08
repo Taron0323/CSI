@@ -71,12 +71,14 @@ so the controls are executable protocol surfaces rather than scientific evidence
 
 External evidence contracts are fail-closed. Scene-ID adapters must bind their implementation source
 and trained checkpoint, cover each held-out position with one exact four-condition unit, and pass
-base-map-cluster bootstrap intervals rather than row-level point estimates. RT calibration V4
+base-map-cluster bootstrap intervals rather than row-level point estimates. RT calibration V5
 manifests bind separate fit data, validation inputs, and an independent per-unit validation-reference
 CSV. Fit data and validation inputs are themselves strict JSON partition contracts; every unit
-contains its `unit_id`, stable `scene_id`, nonempty inline payload, and a V2 `source` record binding
+contains its `unit_id`, stable `scene_id`, nonempty inline payload, and a V3 `source` record binding
 the source asset path and SHA-256, generation/acquisition batch, source record, and physical raw-unit
-ID. The outer runner requires unit, scene, source-asset content, source-record, and raw-unit
+ID. Each source asset is a strict record contract; the outer runner locates the declared record and
+requires its identity and canonical payload to match the partition row exactly. It then requires
+unit, scene, source-asset content, source-record, and raw-unit
 identities to be disjoint while recording equal canonical payloads as a diagnostic rather than
 rejecting equal measurements from genuinely distinct physical units. Validation units must match
 the reference CSV exactly; no identity sidecar is accepted. The adapter cannot

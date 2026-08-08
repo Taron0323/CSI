@@ -103,7 +103,7 @@ current 198-test or final-package totals recorded above.
 
 | Check | Command | Result |
 |---|---|---|
-| Static compilation | `python3 -m py_compile formal_v2/*.py formal_v2/external_adapters/*.py formal_v2/tests/test_formal_v2.py` | PASS |
+| Static compilation | `PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.scripts.check_python_syntax formal_v2` | PASS |
 | Static lint | `ruff check formal_v2 --exclude formal_v2/external_adapters/vendor` | PASS |
 | Pure schema/semantic tests | the 85-test `formal_v2.tests.test_formal_v2` suite, executed in six class groups after evicting read-only Torch pages between groups to stay below the 2 GiB verification cgroup | 85/85 PASS; every group returned exit 0 |
 | Supplied external-resource authentication | `formal_cli verify-waibu-resources` | 10/10 PASS; authenticates bytes only |

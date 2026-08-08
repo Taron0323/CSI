@@ -54,7 +54,7 @@ than merely recorded.
 Use a new output path:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.scripts.check_python_syntax formal_v2
 PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m unittest discover -s formal_v2/tests -v
 ```
 

@@ -57,7 +57,7 @@ STAGE_SPECS = {
     ),
     "rt_calibration": (
         "qualification/rt_calibration/gate.json",
-        "csi-pairs-v6-rt-calibration-gate-v4",
+        "csi-pairs-v6-rt-calibration-gate-v5",
     ),
 }
 

@@ -16,7 +16,8 @@ from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_c
 
 STATISTICS = ("path_loss", "delay_spread", "angular_spread", "visible_path_count")
 STATISTIC_COLUMNS = ("unit_id", *STATISTICS)
-PARTITION_SCHEMA = "csi-pairs-v6-rt-calibration-partition-v2"
+PARTITION_SCHEMA = "csi-pairs-v6-rt-calibration-partition-v3"
+SOURCE_ASSET_SCHEMA = "csi-pairs-v6-rt-source-asset-v1"
 
 
 def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
@@ -113,7 +114,7 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
     }
     if not isinstance(result_record, dict) or set(result_record) != required_result:
         raise RuntimeError("RT calibration adapter-result fields must be exact")
-    if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-result-v4":
+    if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-result-v5":
         raise RuntimeError("RT calibration adapter-result schema mismatch")
     for key in ("fit_dataset_sha256", "validation_inputs_sha256"):
         if result_record[key] != manifest[key]:
@@ -143,7 +144,7 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
     gate = {
-        "schema_version": "csi-pairs-v6-rt-calibration-gate-v4",
+        "schema_version": "csi-pairs-v6-rt-calibration-gate-v5",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
@@ -200,7 +201,7 @@ def _validate_manifest(manifest):
     }
     if not isinstance(manifest, dict) or set(manifest) != required:
         raise ValueError("RT calibration manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-v4":
+    if manifest["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-v5":
         raise ValueError("RT calibration manifest schema mismatch")
     digest_keys = (
         "protocol_sha256",
@@ -289,6 +290,7 @@ def _read_partition_contract(path, partition):
         raise RuntimeError(f"RT calibration {partition} partition must be nonempty")
     parsed = {}
     source_hashes = {}
+    source_records = {}
     raw_unit_identities = set()
     for row in contract["units"]:
         if not isinstance(row, dict) or set(row) != {
@@ -354,18 +356,25 @@ def _read_partition_contract(path, partition):
             source_hashes[asset] = actual_sha256
         if actual_sha256 != source_sha256:
             raise RuntimeError(f"RT calibration {partition} source asset hash mismatch")
+        records = source_records.get(asset)
+        if records is None:
+            records = _read_source_asset_records(asset, partition)
+            source_records[asset] = records
+        if identity_values not in records:
+            raise RuntimeError(
+                f"RT calibration {partition} source identity is absent from its authenticated asset"
+            )
+        canonical_payload = _canonical_json_bytes(row["payload"])
+        if canonical_payload != records[identity_values]:
+            raise RuntimeError(
+                f"RT calibration {partition} payload differs from its authenticated source record"
+            )
         raw_unit_identity = identity_values[2]
         if raw_unit_identity in raw_unit_identities:
             raise RuntimeError(
                 f"RT calibration {partition} raw-unit identities must be unique"
             )
         raw_unit_identities.add(raw_unit_identity)
-        canonical_payload = json.dumps(
-            row["payload"],
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=True,
-        ).encode("utf-8")
         parsed[unit_id] = {
             **row,
             "_source_asset_sha256": actual_sha256,
@@ -374,6 +383,61 @@ def _read_partition_contract(path, partition):
             "_canonical_payload_sha256": hashlib.sha256(canonical_payload).hexdigest(),
         }
     return parsed
+
+
+def _canonical_json_bytes(payload):
+    return json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _read_source_asset_records(asset, partition):
+    payload = read_strict_json(asset)
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"schema_version", "records"}
+        or payload["schema_version"] != SOURCE_ASSET_SCHEMA
+        or not isinstance(payload["records"], list)
+        or not payload["records"]
+    ):
+        raise RuntimeError(
+            f"RT calibration {partition} source asset contract is invalid"
+        )
+    records = {}
+    required = {
+        "generation_or_acquisition_batch_id",
+        "source_record_id",
+        "raw_unit_id",
+        "payload",
+    }
+    for record in payload["records"]:
+        if not isinstance(record, dict) or set(record) != required:
+            raise RuntimeError(
+                f"RT calibration {partition} source asset record fields must be exact"
+            )
+        identity = (
+            record["generation_or_acquisition_batch_id"],
+            record["source_record_id"],
+            record["raw_unit_id"],
+        )
+        if (
+            any(
+                not isinstance(value, str) or not value or value.strip() != value
+                for value in identity
+            )
+            or identity in records
+            or not isinstance(record["payload"], dict)
+            or not record["payload"]
+        ):
+            raise RuntimeError(
+                f"RT calibration {partition} source asset records require unique stable identity and payload"
+            )
+        records[identity] = _canonical_json_bytes(record["payload"])
+    return records
 
 
 def _validate_partition_independence(fit_partition, validation_partition, reference_unit_ids):

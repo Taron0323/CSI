@@ -136,7 +136,7 @@ formal_v2/scripts/setup_formal_v2.sh /unused/path/csi-pairs-v2-env
 ### 7.2 先做代码检查（不运行实验）
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.scripts.check_python_syntax formal_v2
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s formal_v2/tests -v
 ```
 
