@@ -5,10 +5,11 @@
   "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
   "audited_code_sha": "2c0969a7b67086de83471f40f7e65d328bf1ded4",
   "launch_status": "BLOCKED",
-  "author_decision_blockers": [
-    "SC-GAUGE-001: choose one shared RT reference or one source-derived per-pair gauge without changing the estimand silently",
-    "SC-ROUTE-002: reconcile native full-channel r^A Response with the query-level r^{R,q} unified probe"
-  ],
+  "author_decision_blockers": [],
+  "frozen_author_decisions": {
+    "SC-GAUGE-001": "A: world-independent shared_complex_reference",
+    "SC-ROUTE-002": "R1: native full-channel r^A and unified patch r^{R,q} remain separate estimands"
+  },
   "inherited_frozen_evidence": {
     "status": "POST_AUDIT_NO_GO",
     "scientific_use": "FORBIDDEN",

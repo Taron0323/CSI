@@ -7,12 +7,12 @@
 
 ## 2026-08-08 current PR addendum
 
-- Current `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`.
-- Current `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`.
-- Current source-tree verification: `271/271` tests, Python compilation, Ruff `E9,F`, dependency
+- Current `BASE_SHA`: `bf5764afb52cc5c29fd41f230b66f9d869dfb8cb`.
+- Last completed exact-head CI before this delivery: `853a369447618a11c3384342ab38f8f53734dcb0`.
+- Current source-tree verification: `293/293` tests, Python compilation, dependency
   health, strict V2.3 configs, 25 CLI help paths, shell syntax, and vendored hashes pass.
 - The regenerated atomic matrix contains 2,124 rows from the workspace's unique V6 authority:
-  829 `EXACT`, 1,268 `PARTIAL/PROXY`, 19 `MISSING`, and 8 `CONFLICT`. Markdown table data cells are
+  837 `EXACT`, 1,268 `PARTIAL/PROXY`, 19 `MISSING`, and 0 `CONFLICT`. Markdown table data cells are
   normative without keyword inference; source CI rebuilds the matrix and compares every tracked row.
 - The formal CPython 3.12 lock admits only reviewed macOS arm64 and Linux x86_64 wheels. Runtime
   evidence binds the pip installation receipt, wheel hashes, installed RECORD/file contents,
@@ -32,8 +32,8 @@
 
 Current layered verdicts are `PACKAGE_INTEGRITY=PASS` for the verified source and package mechanisms,
 `SOFTWARE_READY=PASS` on the recorded CPython 3.12 CPU environment,
-`V6_PROTOCOL_FIDELITY=BLOCKED` by `SC-GAUGE-001` and `SC-ROUTE-002`,
-`PAPER_PROTOCOL_READY=BLOCKED`, `FORMAL_INPUT_READY=BLOCKED`,
+`V6_PROTOCOL_FIDELITY=PASS` and `PAPER_PROTOCOL_READY=PASS` after the A + R1 author decision,
+`FORMAL_INPUT_READY=BLOCKED`,
 `LAUNCH_READY=BLOCKED`, `ANONYMOUS_RELEASE_READY=PASS` for mechanical packaging only, and
 `SCIENTIFIC_EVIDENCE=NOT_ASSESSED`. The historical counts and verdict tables below remain attached to
 their 2026-08-07 snapshot and must not replace this addendum.

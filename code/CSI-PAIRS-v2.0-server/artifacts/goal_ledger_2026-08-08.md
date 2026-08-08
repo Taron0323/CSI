@@ -5,12 +5,11 @@ Last updated: 2026-08-08 (Asia/Shanghai)
 ## Immutable context
 
 - Repository: `yiweinanzi/CSI`
-- `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`
-- Branch: `codex/fix-formal-experiment-readiness`
-- Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
-- Starting PR head: `1f5c5fafa0fd76cf1a243f18fcb234c3418a08a6`
-- `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`
-- Last remote PR head replayed cleanly: `009b43c8b9df78bf1133e7d8a7dc225232d4382e`
+- `BASE_SHA`: `bf5764afb52cc5c29fd41f230b66f9d869dfb8cb`
+- Branch: `codex/freeze-a-r1-protocols`
+- Previous repair PR: `https://github.com/yiweinanzi/CSI/pull/4` (merged)
+- Initial repair commit: `6fbfea3da3fbb6d95603914c473ca950ab4c2407`
+- Last exact-head CI SHA: `853a369447618a11c3384342ab38f8f53734dcb0`
 
 ## Authority inputs
 
@@ -25,7 +24,7 @@ copied or used to restore code.
 
 ## Current phase
 
-`Delivery metadata, deterministic package replay, and remote PR validation`
+`Author-frozen protocol decisions and external-input handoff`
 
 ## Closed code findings
 
@@ -56,7 +55,7 @@ All independently reproduced code-level P0/P1 findings are repaired at `AUDITED_
   installed RECORD files, interpreter/platform floor, source tree, and deterministic Torch state.
 - section-level atomic trace fallbacks; all normative clauses now resolve through an explicit
   semantic evidence family plus their exact clause SHA, while unknown subsections, formal-result
-  rows, author conflicts, and external-input boundaries remain fail closed.
+rows and external-input boundaries remain fail closed. Author decision A + R1 is now frozen.
 
 The last supply-chain sweep found that the main runtime could record but not reject an internally
 consistent unlocked environment. The unified evidence context now requires CPython 3.12, an exact
@@ -80,7 +79,7 @@ suite passes after the repair.
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `271/271 PASS`, 155.117 s at `AUDITED_CODE_SHA` |
+| Full unittest discovery | `293/293 PASS`, 453.520 s at exact head `853a369` |
 | Compilation, Ruff 0.16.2 `E9,F`, `pip check` | PASS; Ruff is isolated from the formal runtime lock |
 | CLI help | `25/25 PASS` (top level plus 24 subcommands) |
 | Formal/smoke strict config | V2.3 V6 PASS |
@@ -88,36 +87,34 @@ suite passes after the repair.
 | Wi-GATr vendor hash | PASS |
 | ICLR preflight on clean paper build | zero findings |
 | PDF render | 10/10 pages inspected; no overlap, clipping or identity metadata |
-| Remote main drift | none after fetch; `origin/main` remains `BASE_SHA` |
-| Hosted Linux CPU CI | `test-and-package` PASS at `b2d22e56cf5ff4b2ab5ce1d9bc1a2e50035df01b` ([run 31223556644](https://github.com/yiweinanzi/CSI/actions/runs/31223556644)) |
+| Remote main drift | branch created directly from `origin/main` at `BASE_SHA` |
+| Hosted Linux CPU CI | `test-and-package` PASS at exact head `853a369` ([run 31254239881](https://github.com/yiweinanzi/CSI/actions/runs/31254239881)); 293 tests pass in 1255.989 s |
 | CI action supply chain | official `checkout@v7.0.1` and `setup-python@v7.0.0` commits pinned; both use Node 24 |
 | Anonymous exported-suite regression | PASS after fresh build/extraction; internal audit tooling absent |
 | Pull-request merge-ref anonymity regression | PASS against the actual PR merge-ref committer identity |
-| Deterministic server delivery | SHA-256 `b8673a47ae96d4cf75cdeceb58846cdbb54934509287d00f8de5a687d5d21a50`; two byte-identical builds; 181 files including the 180-entry package inventory |
-| Deterministic anonymous delivery | SHA-256 `0b051b2d009d808792526b4b4dfc3edcdfaa155a2e7e83297a2c20a207eb3d25`; two byte-identical builds; 156 files including the 155-entry package inventory |
-| Fresh server package | 180 inventory entries; 271 tests pass with two expected source-only skips; outer verifier authenticates the expected fixture failure and returns `0` without claim promotion |
-| Fresh anonymous package | 155 inventory entries; 248 tests pass; pre/post tree and ZIP anonymity scans pass |
+| Deterministic server delivery | Two byte-identical builds and both sidecars pass in exact-head CI; the temporary digest is not retained by the workflow log |
+| Deterministic anonymous delivery | Two byte-identical builds and both sidecars pass in exact-head CI; the temporary digest is not retained by the workflow log |
+| Fresh server package | Extracted server verification passes in exact-head CI, including authenticated fixture failure without claim promotion |
+| Fresh anonymous package | Extracted anonymous full-suite replay and anonymity scans pass in exact-head CI |
 | Reproducible paper PDF | two builds and tracked PDF share SHA-256 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e` |
 | Final ICLR/PDF check | clean-build preflight has zero findings; 10/10 rendered pages and anonymous metadata pass |
 
 ## Atomic trace state
 
 - Public rows: 2,124, all derived from the unique frozen V6 reader.
-- `EXACT`: 829 software-protocol clauses with explicit semantic-family evidence.
+- `EXACT`: 837 software-protocol clauses with explicit semantic-family evidence.
 - `PARTIAL/PROXY`: 1,268: 1,080 non-normative context rows, 137 external-data rows, and
   51 license/access rows.
 - `MISSING`: 19, all formal result cells requiring external execution.
-- `CONFLICT`: 8, all mapped to the shared-reference gauge decision.
-- Separate route-estimand conflict: `SC-ROUTE-002`.
+- `CONFLICT`: 0 after the A + R1 author decision.
 
 The registry has no section-level fallback: every normative row binds a semantic family and exact
 clause SHA, and unknown normative subsections fail generation. RQ and claim-gate clauses mentioning
 `q_comp` or `p_fail` retain their external-evidence boundary rather than being promoted by a keyword.
-`GOAL_COMPLETE` remains blocked by the author and external conditions below, not a code trace backlog.
+`GOAL_COMPLETE` remains blocked by the external conditions below, not a code trace backlog.
 
-## External and author boundaries
+## External boundaries
 
-- `SC-GAUGE-001` and `SC-ROUTE-002` require author decisions.
 - No complete qualified formal dataset, independent RT calibration or shared-reference evidence.
 - No second genuine C1-eligible model.
 - No authenticated external-engine/controlled-real paired evidence.
@@ -127,7 +124,6 @@ clause SHA, and unknown normative subsections fail generation. RQ and claim-gate
 
 ## Next single action
 
-Regenerate the repository SHA inventory, replay both deterministic delivery builders, rebuild and
-inspect the paper, then push the metadata commit and re-run the complete validation from the remote
-PR head. Formal execution remains unauthorized until the two author decisions and every external
-input in `artifacts/formal_experiment_blockers.md` are closed.
+Regenerate the requirement matrix and repository SHA inventory, run the affected audit tests, push
+the A + R1 protocol-freeze commit, and require exact-head CI. Formal execution remains unauthorized
+until every external input in `artifacts/formal_experiment_blockers.md` is closed.

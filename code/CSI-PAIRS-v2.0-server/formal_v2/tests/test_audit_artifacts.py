@@ -170,7 +170,7 @@ class AtomicRequirementMatrixTests(unittest.TestCase):
             "p_fail",
         )
 
-    def test_result_rows_and_gauge_conflicts_cannot_be_promoted(self):
+    def test_result_rows_and_frozen_gauge_are_separately_classified(self):
         source = self.root / "reader.md"
         source.write_text(
             "## 3. Routing\n### 3.1 Teacher\n"
@@ -186,8 +186,8 @@ class AtomicRequirementMatrixTests(unittest.TestCase):
             rows = matrix.build_rows("reader", source, matrix.Path.cwd(), True)
 
         gauge = next(row for row in rows if row["evidence_family"] == "gauge")
-        self.assertEqual(gauge["status"], "CONFLICT")
-        self.assertEqual(gauge["blocking_type"], "AUTHOR_DECISION_REQUIRED")
+        self.assertEqual(gauge["status"], "EXACT")
+        self.assertEqual(gauge["blocking_type"], "NONE")
         results = [row for row in rows if row["section"] == "13"]
         self.assertTrue(results)
         self.assertEqual({row["evidence_family"] for row in results}, {"results"})
@@ -284,7 +284,8 @@ class AtomicRequirementMatrixTests(unittest.TestCase):
                     self.assertNotIn("NOT_APPLICABLE", row[field])
         gauge_rows = [row for row in rows if row["evidence_family"] == "gauge"]
         self.assertTrue(gauge_rows)
-        self.assertEqual({row["status"] for row in gauge_rows}, {"CONFLICT"})
+        self.assertEqual({row["status"] for row in gauge_rows}, {"EXACT"})
+        self.assertEqual({row["blocking_type"] for row in gauge_rows}, {"NONE"})
 
 
 class RequirementsLockTests(unittest.TestCase):

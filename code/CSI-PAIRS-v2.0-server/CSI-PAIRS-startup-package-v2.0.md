@@ -217,4 +217,4 @@ PYTHONDONTWRITEBYTECODE=1 /unused/path/csi-pairs-v2-env/bin/python -m formal_v2.
 5. 至少两个不同且满足 C1 资格规则的外部 map-conditioned models；当前仓库只有 Wi-GATr 合格；
 6. 正式 GPU 预算与训练时长。
 
-因此 V2.1 的准确裁决是：**允许执行 fixture smoke 与正式输入的只读 preflight；`SC-GAUGE-001`、`SC-ROUTE-002`、外部输入、许可、CUDA 和预算未关闭前，`PAPER_PROTOCOL_GO=NO-GO`、`FORMAL_GO=NO-GO`、`SCIENTIFIC_EVIDENCE=NOT_ASSESSED`，不能启动正式训练或论文主结果写作。**
+因此 V2.1 的准确裁决是：**A + R1 已冻结，`PAPER_PROTOCOL_GO=GO`；允许执行 fixture smoke 与正式输入的只读 preflight。外部输入、许可、CUDA 和预算未关闭前，`FORMAL_GO=NO-GO`、`SCIENTIFIC_EVIDENCE=NOT_ASSESSED`，不能启动正式训练或论文主结果写作。**

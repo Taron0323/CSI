@@ -2,13 +2,11 @@
 
 Date: 2026-08-08 (Asia/Shanghai)
 
-`FORMAL_INPUT_READY=BLOCKED`, `LAUNCH_READY=BLOCKED`, and
-`SCIENTIFIC_EVIDENCE=NOT_ASSESSED` are mandatory until every P0 row below closes.
+`PROTOCOL_READY=PASS`. `FORMAL_INPUT_READY=BLOCKED`, `LAUNCH_READY=BLOCKED`, and
+`SCIENTIFIC_EVIDENCE=NOT_ASSESSED` remain mandatory until every P0 row below closes.
 
 | ID | Severity/type | Missing decision or input | Acceptance check | Consequence |
 |---|---|---|---|---|
-| `SC-GAUGE-001` | P0 `AUTHOR_DECISION_REQUIRED` | Freeze shared RT complex reference, a fully specified source-derived transform/inverse, or a named phase-invariant representation. | Update frozen protocol, config/data contract, tests and paper as one change. | G1, paper protocol and formal launch remain blocked. |
-| `SC-ROUTE-002` | P0 `AUTHOR_DECISION_REQUIRED` | Confirm whether native full-channel mask-cover remains on `r^A` while the unified patch probe uses `r^{R,q}`, or replace the native estimand with an explicitly defined assembly rule. | One unambiguous formula and matching code/config/test/paper contract. | Response protocol and formal launch remain blocked. |
 | `INPUT-DATA-001` | P0 `EXTERNAL_DATA_REQUIRED` | Complete non-fixture V2.1 NPZ with seven source roles, two target cities, external role, independent repeats, clean CSI, immutable assets and per-city cluster minimums. | `inspect-data` and independent `verify-data` pass on untouched bytes. | G1-G8 cannot run. |
 | `INPUT-RT-001` | P0 `EXTERNAL_DATA_REQUIRED` | Independent regeneration and RT calibration fit/validation manifests, shared reference evidence and raw rows. | `run-rt-calibration` plus G1 four-statistic/noise-floor checks pass. | C11 and qualification remain blocked. |
 | `MODEL-C1-001` | P0 `LICENSE_OR_ACCESS_REQUIRED` | A second genuine C1-eligible map-conditioned model, checkpoint, source revision, license and executable six-condition adapter. | External-baseline V3 gate passes in every city for two distinct models. | C1 remains blocked. |
@@ -16,6 +14,13 @@ Date: 2026-08-08 (Asia/Shanghai)
 | `RESOURCE-001` | P0 `LICENSE_OR_ACCESS_REQUIRED` | Four nonredistributable papers must be fetched locally from registered URLs; all selected assets/checkpoints need permission records. | `fetch_waibu_resources` then `verify-waibu-resources`; compute-plan license acknowledgements match. | G0/full preflight remains blocked. |
 | `COMPUTE-001` | P0 `COMPUTE_REQUIRED` | Linux CUDA host, required Wi-GATr/Sionna runtimes, disk estimate, wall-time and authorized GPU-hour budget. | Formal compute-plan preflight passes actual GPU memory, driver, disk and budget checks. | Formal training is not authorized. |
 | `RESULTS-001` | P0 `EXTERNAL_DATA_REQUIRED` | Authenticated non-fixture Response qualification, four-arm, two-city, controls and external runs. | Same-run gate chain and claim assembly pass; per-unit rows populate planned cells. | Scientific claims and submission-ready result panels remain absent. |
+
+## Closed author protocol decisions
+
+| ID | Decision | Existing implementation evidence |
+|---|---|---|
+| `SC-GAUGE-001` | `A`: freeze `shared_complex_reference` for the formal study. | `formal_dataset.py`, `DATA_CONTRACT.md`, the phase-gauge regression tests and `paper_v2/main.tex` already agree. |
+| `SC-ROUTE-002` | `R1`: native full-channel Response remains on `r^A`; the unified patch probe remains on `r^{R,q}`. | `formal_routing.py`, qualification/evaluation tests, formal config and `paper_v2/main.tex` already agree. |
 
 ## Closed code-controlled blockers
 
@@ -31,4 +36,4 @@ Date: 2026-08-08 (Asia/Shanghai)
   30 minutes wall time and 5 GiB output per run. Stop on any nonzero exit, manifest mismatch,
   route-coverage failure or null-safety failure. Every artifact remains `scientific_use=FORBIDDEN`.
 - `FORMAL_GO=NO-GO`: do not start formal Stage-0, Wi-GATr training, four-arm training, two-city
-  evaluation or G8 until the two author decisions and every required external preflight row close.
+  evaluation or G8 until every required external preflight row closes.

@@ -2,17 +2,17 @@
 
 Date: 2026-08-08 (Asia/Shanghai)
 
-- `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`
-- `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`
-- Branch: `codex/fix-formal-experiment-readiness`
-- Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
+- `BASE_SHA`: `bf5764afb52cc5c29fd41f230b66f9d869dfb8cb`
+- Last completed exact-head CI before this delivery: `853a369447618a11c3384342ab38f8f53734dcb0`
+- Branch: `codex/freeze-a-r1-protocols`
+- Previous repair PR: `https://github.com/yiweinanzi/CSI/pull/4` (merged)
 - Environment: CPython 3.12.10, locked packages, macOS arm64, CPU-only
 
-## Code verification at audited SHA
+## Code verification at the last completed exact head
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `271/271 PASS` in 155.117 s |
+| Full unittest discovery | `293/293 PASS` in 453.520 s |
 | Python compilation | PASS for core, adapters and tests |
 | Ruff 0.16.2 `E9,F` | PASS in an isolated audit-tool environment |
 | Dependency health | `pip check` PASS |
@@ -60,11 +60,11 @@ failed tests.
 
 | Check | Result |
 |---|---|
-| Server bundle reproducibility | Two byte-identical 181-file builds; SHA-256 `b8673a47ae96d4cf75cdeceb58846cdbb54934509287d00f8de5a687d5d21a50` |
-| Anonymous bundle reproducibility | Two byte-identical 156-file builds; SHA-256 `0b051b2d009d808792526b4b4dfc3edcdfaa155a2e7e83297a2c20a207eb3d25` |
+| Server bundle reproducibility | Two byte-identical builds and both sidecars pass in exact-head CI; temporary bundle digest is not retained by the workflow log |
+| Anonymous bundle reproducibility | Two byte-identical builds and both sidecars pass in exact-head CI; temporary bundle digest is not retained by the workflow log |
 | Bundle sidecars | All four generated sidecars verify |
-| Fresh server extraction | Exact 180-entry inventory; 271 tests pass with two expected source-only Git/workflow skips |
-| Fresh anonymous extraction | Exact 155-entry inventory; 248 tests pass; pre/post-test tree and ZIP anonymity scans pass |
+| Fresh server extraction | Extracted server verifier passes in exact-head CI |
+| Fresh anonymous extraction | Extracted anonymous full-suite replay and pre/post anonymity scans pass in exact-head CI |
 | Anonymous exclusions | No internal matrix builder, internal audit test, audit artifacts, PDF, `.DS_Store`, bytecode or identity/path finding |
 | Extracted server dry run | Outer verifier PASS after authenticating inner exit `1`, `passed=false`, `DRY_RUN_FAIL_NOT_EVIDENCE`, and fixture `scientific_use=FORBIDDEN` |
 | Reproducible paper | Two byte-identical builds and tracked PDF share SHA-256 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e` |
@@ -80,15 +80,15 @@ fixture, smoke, unit-test or expected values.
 | Layer | Verdict | Boundary |
 |---|---|---|
 | `PACKAGE_INTEGRITY` | `PASS` | Deterministic local builds, sidecars and fresh extractions pass. |
-| `SOFTWARE_READY` | `PASS` | No open reproduced code-level P0/P1 remains; clean-clone replay and hosted Linux CPU CI pass at `b2d22e56cf5ff4b2ab5ce1d9bc1a2e50035df01b`. |
-| `V6_PROTOCOL_FIDELITY` | `BLOCKED` | `SC-GAUGE-001` and `SC-ROUTE-002` require author decisions. |
-| `PAPER_PROTOCOL_READY` | `BLOCKED` | The paper is mechanically valid, but the two protocol conflicts prevent a scientific protocol GO. |
+| `SOFTWARE_READY` | `PASS` | No open reproduced code-level P0/P1 remains; clean-clone replay and hosted Linux CPU CI pass at `853a369447618a11c3384342ab38f8f53734dcb0`. |
+| `V6_PROTOCOL_FIDELITY` | `PASS` | A freezes the shared complex reference and R1 preserves the two registered Response estimands. |
+| `PAPER_PROTOCOL_READY` | `PASS` | Code, configuration, data contract, tests and paper already agree with A + R1. |
 | `FORMAL_INPUT_READY` | `BLOCKED` | Formal data, RT/reference evidence, a second C1 model, licenses and authorized CUDA compute are absent. |
 | `LAUNCH_READY` | `BLOCKED` | Software readiness alone cannot authorize formal execution. |
 | `ANONYMOUS_RELEASE_READY` | `PASS` | Mechanical anonymous packaging passes; no scientific evidence is implied. |
 | `SCIENTIFIC_EVIDENCE` | `NOT_ASSESSED` | No authenticated non-fixture result exists and no formal training was run. |
 
 `SMOKE_GO=GO`, `PILOT_GO=CONDITIONAL-GO`, `FORMAL_GO=NO-GO`, and
-`PAPER_PROTOCOL_GO=NO-GO`. Remote PR-head clean-clone verification and hosted CI completed at the
+`PAPER_PROTOCOL_GO=GO`. Remote PR-head clean-clone verification and hosted CI completed at the
 last experiment-code-bearing head. Later ledger and CI-maintenance close commits do not alter
 executable or paper content.
