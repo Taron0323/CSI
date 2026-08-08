@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import csv
 import email.parser
 import hashlib
@@ -8,6 +9,7 @@ import importlib.metadata
 import json
 from pathlib import Path, PurePosixPath
 import re
+import os
 import sysconfig
 from typing import Iterable
 import zipfile
@@ -28,6 +30,16 @@ def _sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _sha256_files(paths: Iterable[Path]) -> dict[Path, str]:
+    ordered = list(paths)
+    if not ordered:
+        return {}
+    workers = min(8, os.cpu_count() or 1, len(ordered))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        digests = executor.map(_sha256_file, ordered)
+        return dict(zip(ordered, digests))
 
 
 def _urlsafe_sha256(path: Path) -> str:
@@ -206,8 +218,9 @@ def reviewed_wheel_manifest(
         _normalize_distribution_name(name): (name, record) for name, record in expected.items()
     }
     inspected: dict[str, dict[str, object]] = {}
+    wheel_digests = _sha256_files(wheels)
     for wheel in wheels:
-        digest = _sha256_file(wheel)
+        digest = wheel_digests[wheel]
         candidates = [
             (name, record)
             for name, record in expected.items()
@@ -358,8 +371,12 @@ def validate_installed_wheel_closure(
             "main runtime installed-file closure mismatch: "
             f"missing={missing[:10]}, unexpected={unexpected[:10]}"
         )
+    installed_digests = _sha256_files(expected_files)
     for path, (encoded_hash, size, _) in expected_files.items():
-        if path.stat().st_size != size or _urlsafe_sha256(path) != encoded_hash:
+        actual_hash = base64.urlsafe_b64encode(
+            bytes.fromhex(installed_digests[path])
+        ).rstrip(b"=").decode("ascii")
+        if path.stat().st_size != size or actual_hash != encoded_hash:
             raise RuntimeError(f"main runtime file differs from reviewed wheel: {path}")
 
     if observed_distribution_names is None:
