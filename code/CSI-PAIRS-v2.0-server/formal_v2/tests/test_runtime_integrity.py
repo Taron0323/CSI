@@ -215,6 +215,15 @@ class RuntimeIntegrityTests(unittest.TestCase):
         for name in ("run_formal_v2.sh", "run_formal_v2_dry_run.sh"):
             self.assertIn("export PYTHONDONTWRITEBYTECODE=1", (scripts / name).read_text())
 
+    def test_documented_python_commands_disable_bytecode(self):
+        formal_root = Path(__file__).resolve().parents[1]
+        documents = (*formal_root.parent.glob("*.md"), *formal_root.glob("*.md"))
+        documents += (formal_root / "external_adapters" / "README.md",)
+        for document in documents:
+            for line in document.read_text(encoding="utf-8").splitlines():
+                if ("/python" in line or "python3" in line) and "-m" in line:
+                    self.assertIn("PYTHONDONTWRITEBYTECODE=1", line, document)
+
 
 if __name__ == "__main__":
     unittest.main()

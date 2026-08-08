@@ -136,8 +136,8 @@ formal_v2/scripts/setup_formal_v2.sh /unused/path/csi-pairs-v2-env
 ### 7.2 先做代码检查（不运行实验）
 
 ```bash
-python3 -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py
-python3 -m unittest discover -s formal_v2/tests -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s formal_v2/tests -v
 ```
 
 这只证明静态导入和已覆盖语义测试通过，不证明资格、四臂或科学 gate。
@@ -145,7 +145,7 @@ python3 -m unittest discover -s formal_v2/tests -v
 ### 7.3 检查正式数据
 
 ```bash
-/unused/path/csi-pairs-v2-env/bin/python -m formal_v2.formal_cli inspect-data \
+PYTHONDONTWRITEBYTECODE=1 /unused/path/csi-pairs-v2-env/bin/python -m formal_v2.formal_cli inspect-data \
   --config formal_v2/configs/formal_v2.json \
   --dataset /path/to/csi_pairs_formal_v2_1_v6.npz \
   --output /unused/path/data-inspection
@@ -170,7 +170,7 @@ CSI_PAIRS_FULL_RUN_PHASE=prepare \
 `prepare` 在任何正式后期训练前认证资源、运行时、许可、预算、G0、独立 RT、数据再生成与 G1/G2，然后写入 `approval/request.json` 并停止。人工复核该 request 及早期 gate 后，在 run root 外签发一次性 approval：
 
 ```bash
-/unused/path/csi-pairs-v2-env/bin/python -m formal_v2.formal_cli create-run-approval \
+PYTHONDONTWRITEBYTECODE=1 /unused/path/csi-pairs-v2-env/bin/python -m formal_v2.formal_cli create-run-approval \
   --request /unused/path/formal-run/approval/request.json \
   --output /path/to/formal-run-human-approval.json \
   --approver REVIEWED_HUMAN_IDENTIFIER \

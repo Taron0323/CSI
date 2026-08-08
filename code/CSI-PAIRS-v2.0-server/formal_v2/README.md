@@ -22,7 +22,7 @@ Unavailable data, external models, independent RT calibration, or unrun controls
 CLI stages are visible with:
 
 ```bash
-python3 -m formal_v2.formal_cli --help
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli --help
 ```
 
 Formal orchestration is split between `prepare-full-run` and `all`. Preparation performs the complete
@@ -113,7 +113,7 @@ permission, so it is not an anonymous submission artifact. It excludes every
 `redistribution_allowed=false` resource even if that file exists in the builder's local `waibu/`
 directory. `scripts/build_anonymous_supplement.sh` creates the separate deterministic anonymous
 package and excludes all of `waibu/`, internal Git provenance, and identity-bearing delivery audits.
-Use `python3 -m formal_v2.fetch_waibu_resources --registry ... --waibu-root ...` to obtain omitted
+Use `PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.fetch_waibu_resources --registry ... --waibu-root ...` to obtain omitted
 inputs directly from their frozen source URLs; formal resource verification remains strict and fails
 until all ten local files authenticate.
 

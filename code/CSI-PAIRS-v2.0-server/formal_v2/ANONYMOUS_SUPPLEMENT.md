@@ -12,10 +12,10 @@ Local byte authentication does not establish paper fidelity or scientific eviden
 Fetch missing inputs directly from those sources and authenticate the complete local set:
 
 ```bash
-python3 -m formal_v2.fetch_waibu_resources \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.fetch_waibu_resources \
   --registry formal_v2/configs/waibu_resources_v1.json \
   --waibu-root waibu
-python3 -m formal_v2.formal_cli verify-waibu-resources \
+PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_cli verify-waibu-resources \
   --registry formal_v2/configs/waibu_resources_v1.json \
   --waibu-root waibu \
   --output runs/resource-auth-001

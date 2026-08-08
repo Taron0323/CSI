@@ -54,8 +54,8 @@ than merely recorded.
 Use a new output path:
 
 ```bash
-"$PWD/.venv/bin/python" -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py
-"$PWD/.venv/bin/python" -m unittest discover -s formal_v2/tests -v
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m py_compile formal_v2/*.py formal_v2/tests/test_formal_v2.py
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m unittest discover -s formal_v2/tests -v
 ```
 
 Expected software outcome:
@@ -84,7 +84,7 @@ four bytes. Fetch every missing input directly from its recorded source, then au
 ten-file local set before any formal preflight or external experiment:
 
 ```bash
-"$PWD/.venv/bin/python" -m formal_v2.fetch_waibu_resources \
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.fetch_waibu_resources \
   --registry "$PWD/formal_v2/configs/waibu_resources_v1.json" \
   --waibu-root "$PWD/waibu"
 ```
@@ -94,7 +94,7 @@ fetcher refuses to overwrite existing bytes and accepts a download only when its
 registry. Source URL, license URL, and redistribution status remain separate from byte authentication:
 
 ```bash
-"$PWD/.venv/bin/python" -m formal_v2.formal_cli verify-waibu-resources \
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.formal_cli verify-waibu-resources \
   --registry "$PWD/formal_v2/configs/waibu_resources_v1.json" \
   --waibu-root "$PWD/waibu" \
   --output "$PWD/runs/resource-auth-001"
@@ -122,8 +122,7 @@ their Mitsuba/Dr.Jit/Open3D stack:
 
 ```bash
 formal_v2/external_adapters/setup_sionna.sh
-"$PWD/formal_v2/external_adapters/.runtime-sionna/venv/bin/python" \
-  -m formal_v2.sionna_facility \
+PYTHONDONTWRITEBYTECODE=1 "$PWD/formal_v2/external_adapters/.runtime-sionna/venv/bin/python" -m formal_v2.sionna_facility \
   --runtime-root "$PWD/formal_v2/external_adapters/.runtime-sionna" verify
 ```
 
@@ -162,7 +161,7 @@ report-only.
 Do not start training first. Validate the NPZ against the frozen contract:
 
 ```bash
-"$PWD/.venv/bin/python" -m formal_v2.formal_cli inspect-data \
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.formal_cli inspect-data \
   --config "$PWD/formal_v2/configs/formal_v2.json" \
   --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
   --output "$PWD/runs/data-inspection-001"
@@ -227,7 +226,7 @@ request, `qualification/response_gate.csv`, `qualification/null_safety.csv`, G0,
 the compute plan. An authorized human then creates an approval outside the run root:
 
 ```bash
-"$PWD/.venv/bin/python" -m formal_v2.formal_cli create-run-approval \
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.formal_cli create-run-approval \
   --request "$PWD/runs/formal-001/approval/request.json" \
   --output /absolute/path/formal-001-human-approval.json \
   --approver REVIEWED_HUMAN_IDENTIFIER \
