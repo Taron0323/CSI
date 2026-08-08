@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -196,7 +197,10 @@ class RuntimeIntegrityTests(unittest.TestCase):
 
     def test_each_validation_rescans_install_tree(self):
         self.validate()
-        (self.site / "example" / "__init__.py").write_bytes(b"VALUE = 2\n")
+        module = self.site / "example" / "__init__.py"
+        original = module.stat()
+        module.write_bytes(b"VALUE = 2\n")
+        os.utime(module, ns=(original.st_atime_ns, original.st_mtime_ns))
         with self.assertRaisesRegex(RuntimeError, "differs from reviewed wheel"):
             self.validate()
 

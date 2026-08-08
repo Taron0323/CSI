@@ -10,7 +10,9 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import os
+import stat
 import sysconfig
+import threading
 from typing import Iterable
 import zipfile
 
@@ -18,6 +20,21 @@ import zipfile
 WHEELHOUSE_NAME = "csi-pairs-reviewed-wheels"
 WHEEL_MANIFEST_NAME = "csi-pairs-reviewed-wheel-manifest.json"
 WHEEL_MANIFEST_SCHEMA = "csi-pairs-reviewed-wheel-closure-v1"
+_DIGEST_CACHE: dict[Path, tuple[tuple[int, ...], str]] = {}
+_DIGEST_CACHE_LOCK = threading.Lock()
+
+
+def _file_fingerprint(path: Path) -> tuple[int, ...]:
+    record = path.stat()
+    return (
+        record.st_dev,
+        record.st_ino,
+        stat.S_IFMT(record.st_mode),
+        stat.S_IMODE(record.st_mode),
+        record.st_size,
+        record.st_mtime_ns,
+        record.st_ctime_ns,
+    )
 
 
 def _normalize_distribution_name(name: str) -> str:
@@ -25,11 +42,22 @@ def _normalize_distribution_name(name: str) -> str:
 
 
 def _sha256_file(path: Path) -> str:
+    before = _file_fingerprint(path)
+    with _DIGEST_CACHE_LOCK:
+        cached = _DIGEST_CACHE.get(path)
+    if cached is not None and cached[0] == before:
+        return cached[1]
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
-    return digest.hexdigest()
+    after = _file_fingerprint(path)
+    if after != before:
+        raise RuntimeError(f"runtime file changed while it was being authenticated: {path}")
+    value = digest.hexdigest()
+    with _DIGEST_CACHE_LOCK:
+        _DIGEST_CACHE[path] = (after, value)
+    return value
 
 
 def _sha256_files(paths: Iterable[Path]) -> dict[Path, str]:
@@ -371,6 +399,9 @@ def validate_installed_wheel_closure(
             "main runtime installed-file closure mismatch: "
             f"missing={missing[:10]}, unexpected={unexpected[:10]}"
         )
+    for path in expected_files:
+        if not path.is_file() or path.is_symlink():
+            raise RuntimeError(f"main runtime installed file is missing or unsafe: {path}")
     installed_digests = _sha256_files(expected_files)
     for path, (encoded_hash, size, _) in expected_files.items():
         actual_hash = base64.urlsafe_b64encode(
