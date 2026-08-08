@@ -15,8 +15,8 @@ This record supersedes the previous V2.0 dry-run report. Archived V1/V1.26 fixtu
 
 The current repair starts from `BASE_SHA`
 `eef3040c13264829cda1f4398009f691b52038ae`; code and regression tests are fixed at
-`AUDITED_CODE_SHA` `7560120ca588c2cce76507116d58ed98c49895bf`. The source-tree suite passes
-`258/258` tests under CPython 3.12.10. Compilation, Ruff `E9,F`, `pip check`, strict V2.3
+`AUDITED_CODE_SHA` `2c0969a7b67086de83471f40f7e65d328bf1ded4`. The source-tree suite passes
+`271/271` tests under CPython 3.12.10. Compilation, Ruff `E9,F`, `pip check`, strict V2.3
 formal/smoke configuration loading, 25 CLI help paths, shell syntax, and vendored hashes pass.
 
 The anonymous-release regression now builds a fresh archive, excludes the private requirement-matrix
@@ -36,7 +36,8 @@ owners, project commit SHAs, and personal-path detection.
 A subsequent GitHub Actions replay completed the code assertions but two nested integration
 subprocesses exceeded their former 120-second limits on the hosted Linux CPU. Those bounded waits
 are now 300 seconds without skipping tests or changing assertions. Both targeted regressions and
-the complete 258-test source suite pass locally at the audited SHA.
+the then-current 258-test source suite passed locally. The current 271-test suite passes at the
+audited SHA after adding the hashed-runtime and atomic-trace regressions.
 
 The reproducible paper build has SHA-256
 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e`, contains 10 PDF

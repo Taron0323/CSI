@@ -3,7 +3,7 @@
 Date: 2026-08-08 (Asia/Shanghai)
 
 - `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`
-- `AUDITED_CODE_SHA`: `7560120ca588c2cce76507116d58ed98c49895bf`
+- `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`
 - Branch: `codex/fix-formal-experiment-readiness`
 - Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
 - Environment: CPython 3.12.10, locked packages, macOS arm64, CPU-only
@@ -12,13 +12,13 @@ Date: 2026-08-08 (Asia/Shanghai)
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `258/258 PASS` in 122.409 s |
+| Full unittest discovery | `271/271 PASS` in 155.117 s |
 | Python compilation | PASS for core, adapters and tests |
-| Ruff `E9,F` | PASS |
+| Ruff 0.16.2 `E9,F` | PASS in an isolated audit-tool environment |
 | Dependency health | `pip check` PASS |
 | CLI help | `25/25 PASS` (top level plus 24 subcommands) |
 | Strict config load | formal and smoke both `csi-pairs-formal-config-v2.3-v6` |
-| Shell syntax | 9 scripts PASS |
+| Shell syntax | 8 scripts PASS |
 | Wi-GATr vendor inventory | PASS |
 | `git diff --check` | PASS |
 
@@ -50,16 +50,21 @@ failed tests.
   regressions plus the complete source suite pass.
 - GitHub Actions checkout and Python setup are pinned to the current official Node 24 release
   commits rather than floating legacy majors that emit a Node 20 deprecation annotation.
+- formal installation is wheel-only and hash-locked for the supported macOS arm64 and Linux x86_64
+  targets; runtime evidence authenticates the pip receipt, wheel/RECORD/file hashes, platform floor,
+  source tree, CUDA inventory, and deterministic Torch state.
+- all normative V6 rows resolve through an explicit semantic family and clause SHA without a
+  section-level fallback; formal results and external/author boundaries remain unpromoted.
 
 ## Final local delivery checks
 
 | Check | Result |
 |---|---|
-| Server bundle reproducibility | Two byte-identical builds; SHA-256 `4a3134d577f390f93d1b4eac665e0f343c3e8ca60790fb978bf3f8717c768dd5` |
-| Anonymous bundle reproducibility | Two byte-identical builds; SHA-256 `3bf2be70ae0fe776d3e28821a4cc21b8dcd4a0895249ed704a95915758fd0d50` |
+| Server bundle reproducibility | Two byte-identical 181-file builds; SHA-256 `b8673a47ae96d4cf75cdeceb58846cdbb54934509287d00f8de5a687d5d21a50` |
+| Anonymous bundle reproducibility | Two byte-identical 156-file builds; SHA-256 `0b051b2d009d808792526b4b4dfc3edcdfaa155a2e7e83297a2c20a207eb3d25` |
 | Bundle sidecars | All four generated sidecars verify |
-| Fresh server extraction | Exact 174-entry inventory; 258 tests pass with one expected source-only Git-history test skipped |
-| Fresh anonymous extraction | Exact 155-entry inventory; 247 tests pass; pre/post-test tree and ZIP anonymity scans pass |
+| Fresh server extraction | Exact 180-entry inventory; 271 tests pass with two expected source-only Git/workflow skips |
+| Fresh anonymous extraction | Exact 155-entry inventory; 248 tests pass; pre/post-test tree and ZIP anonymity scans pass |
 | Anonymous exclusions | No internal matrix builder, internal audit test, audit artifacts, PDF, `.DS_Store`, bytecode or identity/path finding |
 | Extracted server dry run | Outer verifier PASS after authenticating inner exit `1`, `passed=false`, `DRY_RUN_FAIL_NOT_EVIDENCE`, and fixture `scientific_use=FORBIDDEN` |
 | Reproducible paper | Two byte-identical builds and tracked PDF share SHA-256 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e` |

@@ -16,8 +16,13 @@ Date: 2026-08-08 (Asia/Shanghai)
 | `RESOURCE-001` | P0 `LICENSE_OR_ACCESS_REQUIRED` | Four nonredistributable papers must be fetched locally from registered URLs; all selected assets/checkpoints need permission records. | `fetch_waibu_resources` then `verify-waibu-resources`; compute-plan license acknowledgements match. | G0/full preflight remains blocked. |
 | `COMPUTE-001` | P0 `COMPUTE_REQUIRED` | Linux CUDA host, required Wi-GATr/Sionna runtimes, disk estimate, wall-time and authorized GPU-hour budget. | Formal compute-plan preflight passes actual GPU memory, driver, disk and budget checks. | Formal training is not authorized. |
 | `RESULTS-001` | P0 `EXTERNAL_DATA_REQUIRED` | Authenticated non-fixture Response qualification, four-arm, two-city, controls and external runs. | Same-run gate chain and claim assembly pass; per-unit rows populate planned cells. | Scientific claims and submission-ready result panels remain absent. |
-| `TRACE-001` | P2 `CODE_REQUIRED` | 1,875 atomic rows still use conservative section-level anchors rather than clause-specific `EXACT` mappings. | Each promoted row gains a clause-specific code/config/test/dynamic-evidence link. | Blocks `GOAL_COMPLETE`, but is not a reproduced runtime correctness defect. |
-| `LOCK-001` | P2 `CODE_REQUIRED` | Main requirements pin versions but do not carry per-wheel download hashes. | Add a reviewed cross-platform hashed resolver lock without changing supported runtimes. | Reconstruction remains partial; formal evidence still rejects version/RECORD drift. |
+
+## Closed code-controlled blockers
+
+| ID | Closed at | Evidence |
+|---|---|---|
+| `TRACE-001` | `6b0ccdcfb4f03909ed377151ff906d9f0c162adf` | All 2,772 rows bind a source clause SHA. Every normative row resolves through an explicit semantic family; unknown subsections fail closed; RQ/result/claim and author-conflict rows cannot be promoted by a section or keyword fallback. |
+| `LOCK-001` | `6b0ccdcfb4f03909ed377151ff906d9f0c162adf` | The CPython 3.12 lock contains complete reviewed wheel hashes for macOS 14+ arm64 and glibc 2.28+ Linux x86_64. Setup enforces hash/binary-only installation and evidence reauthenticates the pip receipt, versions, RECORD contents, installed files, platform, and deterministic Torch state. |
 
 ## Permitted work before closure
 

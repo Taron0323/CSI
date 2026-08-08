@@ -9,8 +9,8 @@ Last updated: 2026-08-08 (Asia/Shanghai)
 - Branch: `codex/fix-formal-experiment-readiness`
 - Draft PR: `https://github.com/yiweinanzi/CSI/pull/3`
 - Starting PR head: `1f5c5fafa0fd76cf1a243f18fcb234c3418a08a6`
-- `AUDITED_CODE_SHA`: `7560120ca588c2cce76507116d58ed98c49895bf`
-- Last code-bearing remote PR head replayed cleanly: `b2d22e56cf5ff4b2ab5ce1d9bc1a2e50035df01b`
+- `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`
+- Last remote PR head replayed cleanly: `009b43c8b9df78bf1133e7d8a7dc225232d4382e`
 
 ## Authority inputs
 
@@ -18,14 +18,15 @@ Last updated: 2026-08-08 (Asia/Shanghai)
 |---|---|---|
 | Frozen V6 zero-background reader | `e6d19a65325b688b75472d9814dc9bae26b1d36e08db68cefedc1918696a635b` | complete |
 | Frozen V6 complete research plan | `75f7e4e4ce82834216f9a8bf76fcd0785377c6de38aae62cabf4d1e88170dd4a` | complete |
-| Integrated Goal prompt | `79b759141bd31a75fbefc80365ef5e6467e6cfedfa58457fa78b4ddebb4bb132` | complete |
+| Integrated Goal prompt (superseded) | `79b759141bd31a75fbefc80365ef5e6467e6cfedfa58457fa78b4ddebb4bb132` | complete |
+| Active Goal continuation prompt | `7ddb84cdb605428409b0f38b7d8d58f1d6f169b8c4a0aa7cd20024fbe638173c` | complete |
 
 The GitHub checkout is the only implementation source. Historical local implementations were not
 copied or used to restore code.
 
 ## Current phase
 
-`Clean remote re-review complete; external/author blocker handoff`
+`Delivery metadata, deterministic package replay, and remote PR validation`
 
 ## Closed code findings
 
@@ -51,11 +52,18 @@ All independently reproduced code-level P0/P1 findings are repaired at `AUDITED_
   integration bounds; the bounds are now 300 seconds without skipping work or weakening assertions.
 - GitHub-hosted runners deprecating the Node 20 runtime used by floating legacy action majors; the
   workflow now pins the current official Node 24 checkout/setup-python release commits.
+- version-only dependencies and self-reported runtime provenance; installation now accepts only the
+  reviewed macOS arm64 or Linux x86_64 wheel hashes, and evidence reauthenticates the pip receipt,
+  installed RECORD files, interpreter/platform floor, source tree, and deterministic Torch state.
+- section-level atomic trace fallbacks; all normative clauses now resolve through an explicit
+  semantic evidence family plus their exact clause SHA, while unknown subsections, formal-result
+  rows, author conflicts, and external-input boundaries remain fail closed.
 
-The last hypothesis-driven sweep found one additional P1: the main runtime could record but not
-reject an internally consistent unlocked environment. The unified evidence context now requires
-CPython 3.12, every exact pinned version and a nonempty installed-distribution RECORD digest. The
-new version/missing-package/RECORD mutations pass.
+The last supply-chain sweep found that the main runtime could record but not reject an internally
+consistent unlocked environment. The unified evidence context now requires CPython 3.12, an exact
+supported platform, a hash-locked wheel receipt, exact versions, per-distribution RECORD digests,
+installed-file hash/size agreement, and deterministic Torch/CUBLAS settings. Wheel, receipt,
+version, missing-package, RECORD, installed-file, platform, and determinism mutations pass.
 
 The first remote-head replay found the two delivery findings above. The dry-run wrapper now
 requires exact exit `1` and reauthenticates the complete `DRY_RUN_FAIL_NOT_EVIDENCE`,
@@ -66,18 +74,18 @@ repository owners, project SHAs, and personal paths. Both repairs have regressio
 The second remote-head replay completed every assertion but GitHub Actions reported two
 `TimeoutExpired` errors: the extracted anonymous public suite and the complete fixture dry-run took
 longer than 120 seconds on the hosted Linux CPU. Their subprocess bounds are now 300 seconds. The
-targeted tests pass locally in 63.532 and 51.993 seconds, and the unchanged complete 258-test suite
-passes after the repair.
+targeted tests pass locally in 63.532 and 51.993 seconds, and the then-current complete 258-test
+suite passes after the repair.
 
 ## Latest local verification
 
 | Check | Result |
 |---|---|
-| Full unittest discovery | `258/258 PASS`, 122.409 s after the hosted-runner timeout repair |
-| Compilation, Ruff `E9,F`, `pip check` | PASS |
+| Full unittest discovery | `271/271 PASS`, 155.117 s at `AUDITED_CODE_SHA` |
+| Compilation, Ruff 0.16.2 `E9,F`, `pip check` | PASS; Ruff is isolated from the formal runtime lock |
 | CLI help | `25/25 PASS` (top level plus 24 subcommands) |
 | Formal/smoke strict config | V2.3 V6 PASS |
-| Shell syntax | 9/9 PASS |
+| Shell syntax | 8/8 PASS |
 | Wi-GATr vendor hash | PASS |
 | ICLR preflight on clean paper build | zero findings |
 | PDF render | 10/10 pages inspected; no overlap, clipping or identity metadata |
@@ -86,23 +94,27 @@ passes after the repair.
 | CI action supply chain | official `checkout@v7.0.1` and `setup-python@v7.0.0` commits pinned; both use Node 24 |
 | Anonymous exported-suite regression | PASS after fresh build/extraction; internal audit tooling absent |
 | Pull-request merge-ref anonymity regression | PASS against the actual PR merge-ref committer identity |
-| Deterministic server delivery | SHA-256 `4a3134d577f390f93d1b4eac665e0f343c3e8ca60790fb978bf3f8717c768dd5`; two byte-identical builds |
-| Deterministic anonymous delivery | SHA-256 `3bf2be70ae0fe776d3e28821a4cc21b8dcd4a0895249ed704a95915758fd0d50`; two byte-identical builds |
-| Fresh server package | 174 inventory entries; 258 tests pass with one expected source-only skip; outer verifier authenticates the expected fixture failure and returns `0` without claim promotion |
-| Fresh anonymous package | 155 inventory entries; 247 tests pass; pre/post tree and ZIP anonymity scans pass |
+| Deterministic server delivery | SHA-256 `b8673a47ae96d4cf75cdeceb58846cdbb54934509287d00f8de5a687d5d21a50`; two byte-identical builds; 181 files including the 180-entry package inventory |
+| Deterministic anonymous delivery | SHA-256 `0b051b2d009d808792526b4b4dfc3edcdfaa155a2e7e83297a2c20a207eb3d25`; two byte-identical builds; 156 files including the 155-entry package inventory |
+| Fresh server package | 180 inventory entries; 271 tests pass with two expected source-only skips; outer verifier authenticates the expected fixture failure and returns `0` without claim promotion |
+| Fresh anonymous package | 155 inventory entries; 248 tests pass; pre/post tree and ZIP anonymity scans pass |
 | Reproducible paper PDF | two builds and tracked PDF share SHA-256 `35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e` |
 | Final ICLR/PDF check | clean-build preflight has zero findings; 10/10 rendered pages and anonymous metadata pass |
 
 ## Atomic trace state
 
 - Public rows: 2,772.
-- `PARTIAL/PROXY`: 2,719.
+- `EXACT`: 966 software-protocol clauses with explicit semantic-family evidence.
+- `PARTIAL/PROXY`: 1,757: 1,578 non-normative context rows, 146 external-data rows, and
+  33 license/access rows.
 - `MISSING`: 38, all formal result cells requiring external execution.
-- `CONFLICT`: 15, all mapped to the shared-reference gauge decision.
+- `CONFLICT`: 11, all mapped to the shared-reference gauge decision.
 - Separate route-estimand conflict: `SC-ROUTE-002`.
 
-The conservative matrix does not equate a section-level function/test with clause-level `EXACT`.
-This prevents false completeness and leaves `GOAL_COMPLETE` blocked.
+The registry has no section-level fallback: every normative row binds a semantic family and exact
+clause SHA, and unknown normative subsections fail generation. RQ and claim-gate clauses mentioning
+`q_comp` or `p_fail` retain their external-evidence boundary rather than being promoted by a keyword.
+`GOAL_COMPLETE` remains blocked by the author and external conditions below, not a code trace backlog.
 
 ## External and author boundaries
 
@@ -116,7 +128,7 @@ This prevents false completeness and leaves `GOAL_COMPLETE` blocked.
 
 ## Next single action
 
-The authors must freeze `SC-GAUGE-001` and then `SC-ROUTE-002` in the V6 protocol. After both
-decisions are reflected in config, code, tests and paper, obtain the non-fixture data/RT/model/license
-and CUDA inputs listed above and run `prepare-full-run`. Until then, only the bounded smoke and
-non-scientific pilot operations in `artifacts/formal_experiment_blockers.md` are authorized.
+Regenerate the repository SHA inventory, replay both deterministic delivery builders, rebuild and
+inspect the paper, then push the metadata commit and re-run the complete validation from the remote
+PR head. Formal execution remains unauthorized until the two author decisions and every external
+input in `artifacts/formal_experiment_blockers.md` are closed.

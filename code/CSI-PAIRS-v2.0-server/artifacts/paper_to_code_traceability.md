@@ -2,7 +2,7 @@
 
 Date: 2026-08-08 (Asia/Shanghai)
 
-Audited code: `7560120ca588c2cce76507116d58ed98c49895bf`
+Audited code: `2c0969a7b67086de83471f40f7e65d328bf1ded4`
 
 ## Atomic source ledger
 
@@ -14,14 +14,16 @@ from the public repository; the private companion remains outside Git.
 
 | Atomic status | Rows | Meaning |
 |---|---:|---|
-| `PARTIAL/PROXY` | 2,719 | A section-level implementation/test anchor exists, but the row does not meet the matrix's clause-specific `EXACT` standard or still lacks formal dynamic evidence. |
+| `EXACT` | 966 | The normative clause has an explicit semantic family, reachable code/config/test anchors, and a replayable software check. This is not a scientific-result verdict. |
+| `PARTIAL/PROXY` | 1,757 | 1,578 rows are retained non-normative context; 146 require external data/execution and 33 require licensed or access-controlled inputs. |
 | `MISSING` | 38 | Authenticated non-fixture result cells do not exist. This is an external-data/execution boundary, not permission to use fixture values. |
-| `CONFLICT` | 15 | The shared-reference gauge clauses require an author protocol decision. |
+| `CONFLICT` | 11 | The shared-reference gauge clauses require an author protocol decision. |
 
-The matrix deliberately does not promote a clause to `EXACT` from a same-section function or test.
-The 1,875 `CODE_REQUIRED` partial rows are therefore an atomic trace-granularity backlog. They are
-not counted as closed scientific evidence and prevent `GOAL_COMPLETE`, even though the independent
-P0/P1 runtime review found no remaining reproducible code defect at the audited commit.
+The matrix has no section-level fallback. Each normative row is bound to a semantic evidence family
+and its exact clause hash; a new or unknown normative subsection aborts generation. Formal result
+rows remain `MISSING`, author gauge clauses remain `CONFLICT`, and RQ/claim-gate mentions of
+`q_comp` or `p_fail` retain their external-evidence family. There is no remaining `CODE_REQUIRED`
+trace row, but no `EXACT` software row is counted as a completed scientific result.
 
 ## Decision-critical mappings
 

@@ -8,9 +8,15 @@
 ## 2026-08-08 current PR addendum
 
 - Current `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`.
-- Current `AUDITED_CODE_SHA`: `7560120ca588c2cce76507116d58ed98c49895bf`.
-- Current source-tree verification: `258/258` tests, Python compilation, Ruff `E9,F`, dependency
+- Current `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`.
+- Current source-tree verification: `271/271` tests, Python compilation, Ruff `E9,F`, dependency
   health, strict V2.3 configs, 25 CLI help paths, shell syntax, and vendored hashes pass.
+- The atomic matrix contains 2,772 source-bound rows: 966 `EXACT`, 1,757 `PARTIAL/PROXY`,
+  38 `MISSING`, and 11 `CONFLICT`. Normative rows use an explicit semantic family and exact clause
+  SHA; no section fallback exists, and external RQ/claim rows cannot be promoted by metric keywords.
+- The formal CPython 3.12 lock admits only reviewed macOS arm64 and Linux x86_64 wheels. Runtime
+  evidence binds the pip installation receipt, wheel hashes, installed RECORD/file contents,
+  interpreter and platform floors, source tree, CUDA inventory, and deterministic Torch settings.
 - The anonymous exporter now omits internal requirement-matrix code and audit tests together. A
   source-tree regression builds and extracts the archive and runs the complete exported public suite.
 - Remote replay additionally closes the bundle verifier's expected fixture-exit propagation and the
@@ -26,8 +32,8 @@
 
 Current layered verdicts are `PACKAGE_INTEGRITY=PASS` for the verified source and package mechanisms,
 `SOFTWARE_READY=PASS` on the recorded CPython 3.12 CPU environment,
-`V6_PROTOCOL_FIDELITY=BLOCKED` by `SC-GAUGE-001`, `SC-ROUTE-002`, and conservative clause-level
-trace gaps, `PAPER_PROTOCOL_READY=BLOCKED`, `FORMAL_INPUT_READY=BLOCKED`,
+`V6_PROTOCOL_FIDELITY=BLOCKED` by `SC-GAUGE-001` and `SC-ROUTE-002`,
+`PAPER_PROTOCOL_READY=BLOCKED`, `FORMAL_INPUT_READY=BLOCKED`,
 `LAUNCH_READY=BLOCKED`, `ANONYMOUS_RELEASE_READY=PASS` for mechanical packaging only, and
 `SCIENTIFIC_EVIDENCE=NOT_ASSESSED`. The historical counts and verdict tables below remain attached to
 their 2026-08-07 snapshot and must not replace this addendum.

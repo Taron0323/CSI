@@ -2,7 +2,7 @@
 
 Date: 2026-08-08 (Asia/Shanghai)
 
-Audited code: `7560120ca588c2cce76507116d58ed98c49895bf`
+Audited code: `2c0969a7b67086de83471f40f7e65d328bf1ded4`
 
 Every public CLI entry is listed below. `FORBIDDEN` means that an output cannot enter a paper claim;
 `CANDIDATE` means it must still pass its registered scientific gate and claim assembly.
