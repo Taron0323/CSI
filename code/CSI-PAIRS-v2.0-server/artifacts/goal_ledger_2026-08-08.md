@@ -16,8 +16,7 @@ Last updated: 2026-08-08 (Asia/Shanghai)
 
 | Input | SHA-256 | Read state |
 |---|---|---|
-| Frozen V6 zero-background reader | `e6d19a65325b688b75472d9814dc9bae26b1d36e08db68cefedc1918696a635b` | complete |
-| Frozen V6 complete research plan | `75f7e4e4ce82834216f9a8bf76fcd0785377c6de38aae62cabf4d1e88170dd4a` | complete |
+| Unique frozen V6 reader | `5866888fac736bcb812ebe3630b38095ad4989979a9fdf68cabcdbfe286f737e` | complete |
 | Integrated Goal prompt (superseded) | `79b759141bd31a75fbefc80365ef5e6467e6cfedfa58457fa78b4ddebb4bb132` | complete |
 | Active Goal continuation prompt | `7ddb84cdb605428409b0f38b7d8d58f1d6f169b8c4a0aa7cd20024fbe638173c` | complete |
 
@@ -103,12 +102,12 @@ suite passes after the repair.
 
 ## Atomic trace state
 
-- Public rows: 2,772.
-- `EXACT`: 966 software-protocol clauses with explicit semantic-family evidence.
-- `PARTIAL/PROXY`: 1,757: 1,578 non-normative context rows, 146 external-data rows, and
-  33 license/access rows.
-- `MISSING`: 38, all formal result cells requiring external execution.
-- `CONFLICT`: 11, all mapped to the shared-reference gauge decision.
+- Public rows: 2,124, all derived from the unique frozen V6 reader.
+- `EXACT`: 829 software-protocol clauses with explicit semantic-family evidence.
+- `PARTIAL/PROXY`: 1,268: 1,080 non-normative context rows, 137 external-data rows, and
+  51 license/access rows.
+- `MISSING`: 19, all formal result cells requiring external execution.
+- `CONFLICT`: 8, all mapped to the shared-reference gauge decision.
 - Separate route-estimand conflict: `SC-ROUTE-002`.
 
 The registry has no section-level fallback: every normative row binds a semantic family and exact

@@ -14,6 +14,7 @@ from .formal_io import artifact_manifest, read_strict_json, sha256_file, write_c
 
 STATISTICS = ("path_loss", "delay_spread", "angular_spread", "visible_path_count")
 STATISTIC_COLUMNS = ("unit_id", *STATISTICS)
+PARTITION_SCHEMA = "csi-pairs-v6-rt-calibration-partition-v1"
 
 
 def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
@@ -46,10 +47,15 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
     )
     data_paths = {fit_dataset_path, validation_inputs_path, validation_reference_path}
     if len(data_paths) != 3:
-        raise RuntimeError("RT calibration fit, validation inputs, and validation reference must be independent files")
+        raise RuntimeError("RT calibration fit, validation inputs, and reference must be distinct files")
     protocol = read_strict_json(protocol_path)
     _validate_protocol(protocol)
     reference_rows = _read_statistics_csv(validation_reference_path, "validation reference")
+    fit_partition = _read_partition_contract(fit_dataset_path, "fit")
+    validation_partition = _read_partition_contract(validation_inputs_path, "validation")
+    independence = _validate_partition_independence(
+        fit_partition, validation_partition, set(reference_rows)
+    )
     if len(reference_rows) < int(protocol["minimum_validation_units"]):
         raise RuntimeError("RT calibration validation reference has too few units")
 
@@ -105,7 +111,7 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
     }
     if not isinstance(result_record, dict) or set(result_record) != required_result:
         raise RuntimeError("RT calibration adapter-result fields must be exact")
-    if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-result-v3":
+    if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-result-v4":
         raise RuntimeError("RT calibration adapter-result schema mismatch")
     for key in ("fit_dataset_sha256", "validation_inputs_sha256"):
         if result_record[key] != manifest[key]:
@@ -135,7 +141,7 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
     gate = {
-        "schema_version": "csi-pairs-v6-rt-calibration-gate-v3",
+        "schema_version": "csi-pairs-v6-rt-calibration-gate-v4",
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
         **evidence,
@@ -154,8 +160,13 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
         "validated_statistics_path": validated_path.name,
         "validated_statistics_sha256": sha256_file(validated_path),
         "validation_unit_count": len(validated_rows),
-        "aggregation": "mean_per_unit",
-        "fit_validation_are_independent": True,
+        "aggregation": "mean_absolute_error_per_unit",
+        "fit_unit_count": len(fit_partition),
+        "fit_scene_count": len({row["scene_id"] for row in fit_partition.values()}),
+        "validation_scene_count": len(
+            {row["scene_id"] for row in validation_partition.values()}
+        ),
+        "fit_validation_independence": independence,
         "statistics": assessments,
     }
     write_json(output_dir / "gate.json", gate)
@@ -187,7 +198,7 @@ def _validate_manifest(manifest):
     }
     if not isinstance(manifest, dict) or set(manifest) != required:
         raise ValueError("RT calibration manifest fields must be exact")
-    if manifest["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-v3":
+    if manifest["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-v4":
         raise ValueError("RT calibration manifest schema mismatch")
     digest_keys = (
         "protocol_sha256",
@@ -201,7 +212,7 @@ def _validate_manifest(manifest):
         if not _lower_sha256(value):
             raise ValueError(f"RT calibration {key} must be lowercase SHA-256")
     if len({manifest[key] for key in digest_keys[1:4]}) != 3:
-        raise ValueError("RT calibration fit, validation inputs, and validation reference must be independent")
+        raise ValueError("RT calibration fit, validation inputs, and reference must be distinct")
     if not isinstance(manifest["command"], list) or not manifest["command"]:
         raise ValueError("RT calibration command must be nonempty argv")
     command = manifest["command"]
@@ -264,6 +275,65 @@ def _read_statistics_csv(path, label):
     return rows
 
 
+def _read_partition_contract(path, partition):
+    contract = read_strict_json(path)
+    required = {"schema_version", "partition", "units"}
+    if not isinstance(contract, dict) or set(contract) != required:
+        raise RuntimeError(f"RT calibration {partition} partition fields must be exact")
+    if contract["schema_version"] != PARTITION_SCHEMA or contract["partition"] != partition:
+        raise RuntimeError(f"RT calibration {partition} partition schema/role mismatch")
+    if not isinstance(contract["units"], list) or not contract["units"]:
+        raise RuntimeError(f"RT calibration {partition} partition must be nonempty")
+    parsed = {}
+    for row in contract["units"]:
+        if not isinstance(row, dict) or set(row) != {"unit_id", "scene_id", "payload"}:
+            raise RuntimeError(f"RT calibration {partition} unit fields must be exact")
+        unit_id = row["unit_id"]
+        scene_id = row["scene_id"]
+        if (
+            not isinstance(unit_id, str)
+            or not unit_id
+            or unit_id.strip() != unit_id
+            or unit_id in parsed
+            or not isinstance(scene_id, str)
+            or not scene_id
+            or scene_id.strip() != scene_id
+            or not isinstance(row["payload"], dict)
+            or not row["payload"]
+        ):
+            raise RuntimeError(
+                f"RT calibration {partition} units require unique IDs, stable scene IDs, and nonempty inline payloads"
+            )
+        parsed[unit_id] = dict(row)
+    return parsed
+
+
+def _validate_partition_independence(fit_partition, validation_partition, reference_unit_ids):
+    validation_units = set(validation_partition)
+    if validation_units != set(reference_unit_ids):
+        missing = sorted(set(reference_unit_ids).difference(validation_units))
+        unexpected = sorted(validation_units.difference(reference_unit_ids))
+        raise RuntimeError(
+            "RT calibration validation partition differs from validation reference: "
+            f"missing={missing[:5]}, unexpected={unexpected[:5]}"
+        )
+    unit_overlap = sorted(set(fit_partition).intersection(validation_partition))
+    fit_scenes = {row["scene_id"] for row in fit_partition.values()}
+    validation_scenes = {row["scene_id"] for row in validation_partition.values()}
+    scene_overlap = sorted(fit_scenes.intersection(validation_scenes))
+    if unit_overlap or scene_overlap:
+        raise RuntimeError(
+            "RT calibration raw fit and validation partitions are not independent: "
+            f"unit_overlap={unit_overlap[:5]}, scene_overlap={scene_overlap[:5]}"
+        )
+    return {
+        "verified": True,
+        "rule": "raw_partition_unit_id_and_scene_id_disjoint",
+        "unit_id_overlap": [],
+        "scene_id_overlap": [],
+    }
+
+
 def _join_and_assess(reference_rows, simulated_rows, tolerances):
     if set(reference_rows) != set(simulated_rows):
         missing = sorted(set(reference_rows).difference(simulated_rows))
@@ -285,6 +355,13 @@ def _join_and_assess(reference_rows, simulated_rows, tolerances):
                     f"simulated_{statistic}": simulated_rows[unit_id][statistic]
                     for statistic in STATISTICS
                 },
+                **{
+                    f"absolute_error_{statistic}": abs(
+                        simulated_rows[unit_id][statistic]
+                        - reference_rows[unit_id][statistic]
+                    )
+                    for statistic in STATISTICS
+                },
             }
         )
     assessments = {}
@@ -292,13 +369,16 @@ def _join_and_assess(reference_rows, simulated_rows, tolerances):
         reference = float(np.mean([row[f"reference_{statistic}"] for row in validated]))
         simulated = float(np.mean([row[f"simulated_{statistic}"] for row in validated]))
         tolerance = float(tolerances[statistic])
-        difference = abs(simulated - reference)
+        per_unit_errors = [row[f"absolute_error_{statistic}"] for row in validated]
+        mean_absolute_error = float(np.mean(per_unit_errors))
         assessments[statistic] = {
-            "reference": reference,
-            "simulated": simulated,
-            "absolute_difference": difference,
+            "reference_mean": reference,
+            "simulated_mean": simulated,
+            "mean_absolute_error_per_unit": mean_absolute_error,
+            "maximum_absolute_error_per_unit": float(np.max(per_unit_errors)),
             "absolute_tolerance": tolerance,
-            "passed": difference <= tolerance,
+            "unit_count": len(per_unit_errors),
+            "passed": mean_absolute_error <= tolerance,
         }
     return validated, assessments
 
@@ -349,7 +429,7 @@ def _validate_protocol(protocol):
     }
     if not isinstance(protocol, dict) or set(protocol) != required:
         raise ValueError("RT calibration protocol fields must be exact")
-    if protocol["schema_version"] != "csi-pairs-v6-rt-calibration-protocol-v2":
+    if protocol["schema_version"] != "csi-pairs-v6-rt-calibration-protocol-v4":
         raise ValueError("RT calibration protocol schema mismatch")
     if not isinstance(protocol["frozen_utc"], str) or not protocol["frozen_utc"].endswith("Z"):
         raise ValueError("RT calibration protocol requires a frozen UTC timestamp")
@@ -362,8 +442,8 @@ def _validate_protocol(protocol):
         raise ValueError("RT calibration exclusion rules must be frozen")
     if type(protocol["minimum_validation_units"]) is not int or protocol["minimum_validation_units"] < 2:
         raise ValueError("RT calibration requires at least two validation units")
-    if protocol["aggregation"] != "mean_per_unit":
-        raise ValueError("RT calibration aggregation must be mean_per_unit")
+    if protocol["aggregation"] != "mean_absolute_error_per_unit":
+        raise ValueError("RT calibration aggregation must be mean_absolute_error_per_unit")
 
 
 def _lower_sha256(value):

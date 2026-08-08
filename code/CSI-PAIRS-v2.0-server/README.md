@@ -146,7 +146,9 @@ G8 PASS uses the lower cluster-bootstrap confidence bound for active direction a
 cluster-level null-equivalence interval; repeated rows from one base map cannot increase its weight.
 The built-in source-only SigMap scene-ID runner uses the V3 adapter/provenance contract and is
 selected by default. RT-calibration and literature manifests use the evidence schemas documented
-in `formal_v2/README.md`; legacy aggregate-only manifests are rejected.
+in `formal_v2/README.md`; legacy aggregate-only and RT V3 manifests are rejected. RT V4 additionally
+requires structured fit/validation partitions with inline payloads and disjoint stable scene/unit IDs and
+uses mean per-unit absolute error rather than a difference between aggregate means.
 
 Shuffled-pair, retention, and all five resource controls are first-party executable adapters under
 `formal_v2/external_adapters/`. Each run binds source, config, dataset, checkpoints, per-unit rows,

@@ -142,6 +142,7 @@ def write_nonscientific_fixture(
             [[1, 4], [1, 6], [2, 4], [2, 6], [4, 1], [6, 1], [4, 4], [6, 6]],
             dtype=np.float64,
         )
+        fixed += 0.01 * scene
         remaining = rng.uniform(0.5, map_size - 0.5, size=(positions - fixed.shape[0], 2))
         coordinates[scene] = np.vstack((fixed, remaining))[:positions]
         for position_index in range(positions):

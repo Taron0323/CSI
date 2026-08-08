@@ -257,7 +257,8 @@ def _flatten_cfr(array, channel_count):
 
 
 def _quaternion_to_euler(quaternion):
-    x, y, z, w = (float(value) for value in quaternion)
+    # DATA_CONTRACT freezes bs_pose as scalar-first (w, x, y, z).
+    w, x, y, z = (float(value) for value in quaternion)
     roll = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
     pitch = math.asin(max(-1.0, min(1.0, 2 * (w * y - z * x))))
     yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))

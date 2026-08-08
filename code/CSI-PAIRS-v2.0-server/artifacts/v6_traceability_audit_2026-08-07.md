@@ -11,9 +11,9 @@
 - Current `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`.
 - Current source-tree verification: `271/271` tests, Python compilation, Ruff `E9,F`, dependency
   health, strict V2.3 configs, 25 CLI help paths, shell syntax, and vendored hashes pass.
-- The atomic matrix contains 2,772 source-bound rows: 966 `EXACT`, 1,757 `PARTIAL/PROXY`,
-  38 `MISSING`, and 11 `CONFLICT`. Normative rows use an explicit semantic family and exact clause
-  SHA; no section fallback exists, and external RQ/claim rows cannot be promoted by metric keywords.
+- The regenerated atomic matrix contains 2,124 rows from the workspace's unique V6 authority:
+  829 `EXACT`, 1,268 `PARTIAL/PROXY`, 19 `MISSING`, and 8 `CONFLICT`. Markdown table data cells are
+  normative without keyword inference; source CI rebuilds the matrix and compares every tracked row.
 - The formal CPython 3.12 lock admits only reviewed macOS arm64 and Linux x86_64 wheels. Runtime
   evidence binds the pip installation receipt, wheel hashes, installed RECORD/file contents,
   interpreter and platform floors, source tree, CUDA inventory, and deterministic Torch settings.
@@ -152,7 +152,7 @@ reusing the earlier correlation contract.
 | C8 | Two target cities at strict k=0 and city-level k=8 | localization/statistics | `EXACT` | `BLOCKED` |
 | C9 | All four risk-gate families | risk/claims | `EXACT` | `BLOCKED` |
 | C10 | Path mechanism and zero-path equivalence | path/claims | `EXACT` | `BLOCKED` |
-| C11 | Independent RT calibration with all registered validation statistics | `formal_rt_calibration.py` | `PARTIAL/PROXY` external fit/validation execution | `BLOCKED` |
+| C11 | Independent RT calibration with structured raw fit/validation partitions, inline payloads, disjoint unit/scene identities, and mean per-unit absolute error | `formal_rt_calibration.py` | `PARTIAL/PROXY` external fit/validation execution | `BLOCKED` |
 | C12 | Independent RT engine or controlled real intervention | `formal_external_validity.py` | `PARTIAL/PROXY` external evidence | `BLOCKED` |
 | C13 | Current, auditable literature search and overlap decision | `formal_literature.py` | `PARTIAL/PROXY` external literature input | `BLOCKED` |
 

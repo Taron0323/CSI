@@ -32,10 +32,13 @@ mkdir -p "${BUNDLE_ROOT}/artifacts" "${BUNDLE_ROOT}/output/pdf" "${BUNDLE_ROOT}/
   cd "${BUNDLE_ROOT}"
   tar -xf -
 )
-PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_resources stage-redistributable \
-  --registry "${PROJECT_ROOT}/formal_v2/configs/waibu_resources_v1.json" \
-  --source-root "${PROJECT_ROOT}/waibu" \
-  --destination-root "${BUNDLE_ROOT}/waibu"
+(
+  cd "${PROJECT_ROOT}"
+  PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_resources stage-redistributable \
+    --registry "${PROJECT_ROOT}/formal_v2/configs/waibu_resources_v1.json" \
+    --source-root "${PROJECT_ROOT}/waibu" \
+    --destination-root "${BUNDLE_ROOT}/waibu"
+)
 cp -R "${PROJECT_ROOT}/paper_v2" "${BUNDLE_ROOT}/"
 cp -R "${PROJECT_ROOT}/paper/official_style/iclr2027" "${BUNDLE_ROOT}/paper/official_style/"
 cp -p "${PROJECT_ROOT}/CSI-PAIRS-startup-package-v2.0.md" \

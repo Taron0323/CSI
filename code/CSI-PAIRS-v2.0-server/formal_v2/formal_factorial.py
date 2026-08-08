@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from .formal_config import ARMS, public_formal_config
-from .formal_dataset import FormalDataset
+from .formal_dataset import FormalDataset, same_physical_position
 from .formal_evidence import (
     FACTORIAL_SCHEMA,
     bind_rows,
@@ -1771,20 +1771,34 @@ def _stable_city_seed(city):
 
 
 def city_support_candidates(dataset: FormalDataset, city: str) -> list[tuple[int, int]]:
-    by_position = {}
-    for scene in (int(value) for value in dataset.indices_for_role("target")):
-        if str(dataset.city_ids[scene]) != str(city):
-            continue
-        for position in np.flatnonzero(dataset.position_roles[scene] == "support_pool"):
-            identifier = str(dataset.position_ids[scene, position])
-            by_position.setdefault(identifier, (scene, int(position)))
-    return [by_position[identifier] for identifier in sorted(by_position)]
+    candidates = dataset.unique_target_support_positions(city)
+    return sorted(
+        candidates,
+        key=lambda row: str(dataset.position_ids[row[0], row[1]]),
+    )
 
 
 def eligible_query_indices(dataset: FormalDataset, scene: int, support_ids: set[str]) -> np.ndarray:
     candidates = np.flatnonzero(dataset.position_roles[scene] == "query")
+    city = str(dataset.city_ids[scene])
+    support_coordinates = [
+        dataset.positions[target_scene, position]
+        for target_scene_value in dataset.indices_for_role("target")
+        for target_scene in (int(target_scene_value),)
+        if str(dataset.city_ids[target_scene]) == city
+        for position in range(dataset.position_count)
+        if str(dataset.position_ids[target_scene, position]) in support_ids
+    ]
     selected = np.asarray(
-        [position for position in candidates if str(dataset.position_ids[scene, position]) not in support_ids],
+        [
+            position
+            for position in candidates
+            if str(dataset.position_ids[scene, position]) not in support_ids
+            and not any(
+                same_physical_position(dataset.positions[scene, position], coordinate)
+                for coordinate in support_coordinates
+            )
+        ],
         dtype=np.int64,
     )
     if selected.size == 0:

@@ -42,6 +42,9 @@ print(f"validated setup target: {system} {machine}")
 PY
 
 "${PYTHON_BIN}" -m venv "${ENVIRONMENT_PATH}"
+WHEELHOUSE_PATH="${ENVIRONMENT_PATH}/csi-pairs-reviewed-wheels"
+WHEEL_MANIFEST_PATH="${ENVIRONMENT_PATH}/csi-pairs-reviewed-wheel-manifest.json"
+mkdir -p "${WHEELHOUSE_PATH}"
 PIP_CERT_ARGS=()
 if [[ -n "${CSI_PAIRS_PIP_CERT:-}" ]]; then
   if [[ ! -f "${CSI_PAIRS_PIP_CERT}" ]]; then
@@ -52,12 +55,47 @@ if [[ -n "${CSI_PAIRS_PIP_CERT:-}" ]]; then
 elif [[ "$(uname -s)" == "Darwin" && -f /etc/ssl/cert.pem ]]; then
   PIP_CERT_ARGS=(--cert /etc/ssl/cert.pem)
 fi
-"${ENVIRONMENT_PATH}/bin/python" -m pip install \
+"${ENVIRONMENT_PATH}/bin/python" -m pip download \
   "${PIP_CERT_ARGS[@]}" \
+  --require-hashes \
+  --only-binary=:all: \
+  --dest "${WHEELHOUSE_PATH}" \
+  --requirement "${PROJECT_ROOT}/formal_v2/requirements-lock.txt"
+"${ENVIRONMENT_PATH}/bin/python" -m pip install \
+  --no-index \
+  --find-links "${WHEELHOUSE_PATH}" \
+  --no-compile \
   --require-hashes \
   --only-binary=:all: \
   --report "${ENVIRONMENT_PATH}/csi-pairs-install-report.json" \
   --requirement "${PROJECT_ROOT}/formal_v2/requirements-lock.txt"
-chmod 0444 "${ENVIRONMENT_PATH}/csi-pairs-install-report.json"
 "${ENVIRONMENT_PATH}/bin/python" -m pip check
 "${ENVIRONMENT_PATH}/bin/python" -c 'import numpy, torch; print("numpy", numpy.__version__, "torch", torch.__version__)'
+PYTHONPATH="${PROJECT_ROOT}" "${ENVIRONMENT_PATH}/bin/python" - \
+  "${WHEELHOUSE_PATH}" "${WHEEL_MANIFEST_PATH}" \
+  "${PROJECT_ROOT}/formal_v2/requirements-lock.txt" <<'PY'
+import sys
+from pathlib import Path
+
+from formal_v2.formal_evidence import _locked_requirement_records
+from formal_v2.formal_io import sha256_file
+from formal_v2.formal_runtime_integrity import write_reviewed_wheel_manifest
+
+wheelhouse = Path(sys.argv[1])
+manifest = Path(sys.argv[2])
+requirements = Path(sys.argv[3])
+write_reviewed_wheel_manifest(
+    wheelhouse,
+    manifest,
+    _locked_requirement_records(requirements),
+    sha256_file(requirements),
+)
+PY
+"${ENVIRONMENT_PATH}/bin/python" -m pip uninstall --yes pip
+find "${ENVIRONMENT_PATH}/lib/python3.12/site-packages" -type f \
+  \( -name '*.pyc' -o -name '*.pyo' \) -delete
+find "${ENVIRONMENT_PATH}/lib/python3.12/site-packages" -type d \
+  -name '__pycache__' -empty -delete
+chmod 0444 "${ENVIRONMENT_PATH}/csi-pairs-install-report.json" "${WHEEL_MANIFEST_PATH}"
+find "${WHEELHOUSE_PATH}" -type f -exec chmod 0444 {} +
+find "${WHEELHOUSE_PATH}" -type d -exec chmod 0555 {} +

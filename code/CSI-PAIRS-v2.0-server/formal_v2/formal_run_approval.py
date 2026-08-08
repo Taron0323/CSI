@@ -67,7 +67,7 @@ EARLY_STAGE_GATES = {
     "independent_rt": (
         "qualification/rt_calibration/gate.json",
         "qualification/rt_calibration/manifest.json",
-        "csi-pairs-v6-rt-calibration-gate-v3",
+        "csi-pairs-v6-rt-calibration-gate-v4",
     ),
     "data_verification": (
         "data_verification/gate.json",
@@ -98,6 +98,9 @@ def preflight_full_run(
     resume: bool = False,
 ) -> dict:
     """Validate every static full-chain dependency before creating run artifacts."""
+    dataset.validate_target_support_capacity(
+        max(int(value) for value in config["localization"]["label_budgets"])
+    )
     output = Path(output_root).resolve()
     if resume:
         if output.is_symlink() or not output.is_dir():

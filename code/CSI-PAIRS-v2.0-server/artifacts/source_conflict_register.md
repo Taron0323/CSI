@@ -4,12 +4,11 @@ Date: 2026-08-08 (Asia/Shanghai)
 
 Authority hashes:
 
-- frozen zero-background reader: `e6d19a65325b688b75472d9814dc9bae26b1d36e08db68cefedc1918696a635b`
-- frozen complete research plan: `75f7e4e4ce82834216f9a8bf76fcd0785377c6de38aae62cabf4d1e88170dd4a`
+- unique frozen V6 reader: `5866888fac736bcb812ebe3630b38095ad4989979a9fdf68cabcdbfe286f737e`
 - integrated Goal prompt: `79b759141bd31a75fbefc80365ef5e6467e6cfedfa58457fa78b4ddebb4bb132`
 
-The private atomic matrix retains the source clauses. The public matrix records source line,
-document hash, and clause hash without redistributing the private prose.
+The optional private matrix retains clause text. The tracked matrix records source line, document
+hash, and clause hash without duplicating the authority prose into every row.
 
 ## Decisions that remain open
 

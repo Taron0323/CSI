@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -109,6 +110,30 @@ class AtomicRequirementMatrixTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "no semantic trace family"):
                 matrix.build_rows("reader", source, matrix.Path.cwd(), True)
 
+    def test_markdown_table_data_cells_are_normative_without_keyword_guessing(self):
+        source = self.root / "reader.md"
+        source.write_text(
+            "## 0. Overview\n"
+            "| Requirement | Evidence |\n"
+            "|---|---|\n"
+            "| Per-position map construction | Mandatory regression coverage |\n",
+            encoding="utf-8",
+        )
+        source_spec = {
+            "sha256": matrix.sha256_file(source),
+            "prefix": "TEST",
+        }
+        with patch.dict(matrix.SOURCE_SPECS, {"reader": source_spec}):
+            rows = matrix.build_rows("reader", source, matrix.Path.cwd(), True)
+
+        header = [row for row in rows if row["source_line"] == "2"]
+        data = [row for row in rows if row["source_line"] == "4"]
+        self.assertTrue(header)
+        self.assertTrue(data)
+        self.assertTrue(all(not matrix.is_normative_signal(row["normative_signal"]) for row in header))
+        self.assertTrue(all(row["normative_signal"] == "NORMATIVE_TABLE_CELL" for row in data))
+        self.assertTrue(all(row["evidence_family"] != "not_normative_context" for row in data))
+
     def test_rq_and_claim_gate_clauses_keep_external_evidence_boundaries(self):
         family_for_clause = matrix.evidence_family_for_clause
 
@@ -201,11 +226,26 @@ class AtomicRequirementMatrixTests(unittest.TestCase):
 
     def test_tracked_public_matrix_has_atomic_fail_closed_evidence(self):
         server_root = Path(__file__).resolve().parents[2]
+        repository_root = server_root.parents[1]
+        authority = (
+            repository_root
+            / "Idea1-CSI-PAIRS-冻结版-零基础阅读稿-v6_VSCode兼容版.md"
+        )
         artifact = server_root / "artifacts" / "v6_atomic_requirement_matrix_2026-08-08.csv"
         with artifact.open(newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
 
-        self.assertEqual(len(rows), 2772)
+        if authority.is_file():
+            expected_rows = matrix.build_rows(
+                "reader",
+                authority,
+                server_root,
+                False,
+            )
+            self.assertEqual(rows, expected_rows)
+        else:
+            expected_rows = rows
+        self.assertEqual(len(rows), len(expected_rows))
         self.assertEqual(tuple(rows[0]), matrix.FIELDNAMES)
         self.assertGreaterEqual(len({row["evidence_family"] for row in rows}), 40)
         self.assertEqual(
@@ -428,6 +468,22 @@ class RequirementsLockTests(unittest.TestCase):
         ):
             with self.subTest(relative=relative):
                 self.assertIn(relative, builder)
+
+    def test_server_builder_is_independent_of_calling_directory(self):
+        builder = self.server_root / "formal_v2" / "scripts" / "build_server_bundle.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "server.zip"
+            completed = subprocess.run(
+                [str(builder), str(output)],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertTrue(output.is_file())
+            self.assertTrue(Path(f"{output}.sha256").is_file())
 
 
 if __name__ == "__main__":

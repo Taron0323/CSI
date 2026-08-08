@@ -9,7 +9,6 @@ import os
 import platform
 import re
 import sys
-from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
@@ -17,6 +16,11 @@ from urllib.parse import urlparse
 from .formal_config import public_formal_config
 from .formal_dataset import FormalDataset
 from .formal_io import sha256_file
+from .formal_runtime_integrity import (
+    WHEELHOUSE_NAME,
+    WHEEL_MANIFEST_NAME,
+    validate_installed_wheel_closure,
+)
 
 
 QUALIFICATION_SCHEMA = "csi-pairs-formal-qualification-gate-v3-v6"
@@ -24,13 +28,17 @@ FACTORIAL_SCHEMA = "csi-pairs-formal-factorial-gate-v2.1-v6"
 GATE_IDS = tuple(f"G{index}" for index in range(9))
 CLAIM_IDS = tuple(f"C{index}" for index in range(1, 14))
 ASSESSMENT_STATES = {"PASS", "FAIL", "BLOCKED", "NOT_ASSESSED"}
-RUNTIME_PROVENANCE_SCHEMA = "csi-pairs-runtime-provenance-v2"
+RUNTIME_PROVENANCE_SCHEMA = "csi-pairs-runtime-provenance-v3"
 RUNTIME_PROVENANCE_FIELDS = {
     "schema_version",
     "source_tree_sha256",
     "requirements_lock_sha256",
     "installer_report_path",
     "installer_report_sha256",
+    "reviewed_wheelhouse_path",
+    "reviewed_wheelhouse_sha256",
+    "reviewed_wheel_manifest_path",
+    "reviewed_wheel_manifest_sha256",
     "python_version",
     "python_implementation",
     "python_executable",
@@ -94,28 +102,13 @@ def config_sha256(config: dict) -> str:
 
 
 def configure_reproducible_runtime() -> None:
-    changed = (
-        os.environ.get("CUBLAS_WORKSPACE_CONFIG") != ":4096:8"
-        or os.environ.get("PYTHONDONTWRITEBYTECODE") != "1"
-        or sys.dont_write_bytecode is not True
-    )
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
     sys.dont_write_bytecode = True
     try:
         import torch
     except ImportError:
-        if changed:
-            runtime_provenance.cache_clear()
         return
-    before = (
-        bool(torch.are_deterministic_algorithms_enabled()),
-        bool(torch.backends.cudnn.benchmark),
-        bool(torch.backends.cudnn.deterministic),
-        bool(torch.backends.cudnn.allow_tf32),
-        bool(torch.backends.cuda.matmul.allow_tf32),
-        str(torch.get_float32_matmul_precision()),
-    )
     torch.use_deterministic_algorithms(True)
     torch.set_float32_matmul_precision("highest")
     if hasattr(torch.backends, "cudnn"):
@@ -124,16 +117,6 @@ def configure_reproducible_runtime() -> None:
         torch.backends.cudnn.allow_tf32 = False
     if hasattr(torch.backends, "cuda") and hasattr(torch.backends.cuda, "matmul"):
         torch.backends.cuda.matmul.allow_tf32 = False
-    after = (
-        bool(torch.are_deterministic_algorithms_enabled()),
-        bool(torch.backends.cudnn.benchmark),
-        bool(torch.backends.cudnn.deterministic),
-        bool(torch.backends.cudnn.allow_tf32),
-        bool(torch.backends.cuda.matmul.allow_tf32),
-        str(torch.get_float32_matmul_precision()),
-    )
-    if changed or before != after:
-        runtime_provenance.cache_clear()
 
 
 def _logical_lock_lines(requirements: Path) -> list[str]:
@@ -357,12 +340,26 @@ def _validated_distribution_record(
     return hashlib.sha256(record.encode("utf-8")).hexdigest()
 
 
-@lru_cache(maxsize=1)
 def runtime_provenance() -> dict[str, object]:
     requirements = Path(__file__).resolve().parent / "requirements-lock.txt"
     expected = _locked_requirement_records(requirements)
-    report_path = Path(sys.prefix).resolve() / INSTALL_REPORT_NAME
+    prefix = Path(sys.prefix).resolve()
+    report_path = prefix / INSTALL_REPORT_NAME
     wheel_receipt = _wheel_receipt_from_install_report(report_path, expected)
+    wheelhouse = prefix / WHEELHOUSE_NAME
+    wheel_manifest_path = prefix / WHEEL_MANIFEST_NAME
+    requirements_digest = sha256_file(requirements)
+    closure = validate_installed_wheel_closure(
+        prefix,
+        wheelhouse,
+        wheel_manifest_path,
+        expected,
+        requirements_digest,
+    )
+    reviewed_wheels = {
+        str(record["normalized_name"]): record
+        for record in closure["manifest"]["wheels"]
+    }
     distributions = {}
     if requirements.is_file():
         for name in expected:
@@ -371,11 +368,8 @@ def runtime_provenance() -> dict[str, object]:
                 distribution = importlib.metadata.distribution(name)
                 distributions[name] = {
                     "version": distribution.version,
-                    "record_sha256": _validated_distribution_record(
-                        distribution,
-                        Path(sys.prefix).resolve(),
-                    ),
-                    "wheel_sha256": wheel_receipt[normalized],
+                    "record_sha256": closure["record_digests"][normalized],
+                    "wheel_sha256": reviewed_wheels[normalized]["sha256"],
                 }
             except importlib.metadata.PackageNotFoundError:
                 distributions[name] = {
@@ -432,11 +426,13 @@ def runtime_provenance() -> dict[str, object]:
     return {
         "schema_version": RUNTIME_PROVENANCE_SCHEMA,
         "source_tree_sha256": _source_tree_sha256(),
-        "requirements_lock_sha256": (
-            sha256_file(requirements) if requirements.is_file() else None
-        ),
+        "requirements_lock_sha256": requirements_digest,
         "installer_report_path": str(report_path),
         "installer_report_sha256": sha256_file(report_path),
+        "reviewed_wheelhouse_path": str(wheelhouse),
+        "reviewed_wheelhouse_sha256": closure["wheelhouse_sha256"],
+        "reviewed_wheel_manifest_path": str(wheel_manifest_path),
+        "reviewed_wheel_manifest_sha256": closure["manifest_sha256"],
         "python_version": platform.python_version(),
         "python_implementation": platform.python_implementation(),
         "python_executable": str(Path(sys.executable).resolve()),
@@ -511,6 +507,27 @@ def validate_runtime_provenance(runtime: object) -> dict[str, object]:
     ):
         raise RuntimeError("main runtime installer report provenance mismatch")
     wheel_receipt = _wheel_receipt_from_install_report(report_path, expected_records)
+
+    wheelhouse_path_value = runtime.get("reviewed_wheelhouse_path")
+    manifest_path_value = runtime.get("reviewed_wheel_manifest_path")
+    wheelhouse_path = prefix_path / WHEELHOUSE_NAME
+    manifest_path = prefix_path / WHEEL_MANIFEST_NAME
+    if (
+        not isinstance(wheelhouse_path_value, str)
+        or Path(wheelhouse_path_value).resolve() != wheelhouse_path
+        or not wheelhouse_path.is_dir()
+        or wheelhouse_path.is_symlink()
+        or not isinstance(manifest_path_value, str)
+        or Path(manifest_path_value).resolve() != manifest_path
+        or not manifest_path.is_file()
+        or manifest_path.is_symlink()
+        or runtime.get("reviewed_wheel_manifest_sha256") != sha256_file(manifest_path)
+        or re.fullmatch(
+            r"[0-9a-f]{64}", str(runtime.get("reviewed_wheelhouse_sha256", ""))
+        )
+        is None
+    ):
+        raise RuntimeError("main runtime reviewed-wheel provenance mismatch")
 
     installed = runtime.get("installed_distributions")
     if not isinstance(installed, dict) or set(installed) != set(expected):

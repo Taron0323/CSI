@@ -21,8 +21,8 @@ Date: 2026-08-08 (Asia/Shanghai)
 
 | ID | Closed at | Evidence |
 |---|---|---|
-| `TRACE-001` | `6b0ccdcfb4f03909ed377151ff906d9f0c162adf` | All 2,772 rows bind a source clause SHA. Every normative row resolves through an explicit semantic family; unknown subsections fail closed; RQ/result/claim and author-conflict rows cannot be promoted by a section or keyword fallback. |
-| `LOCK-001` | `6b0ccdcfb4f03909ed377151ff906d9f0c162adf` | The CPython 3.12 lock contains complete reviewed wheel hashes for macOS 14+ arm64 and glibc 2.28+ Linux x86_64. Setup enforces hash/binary-only installation and evidence reauthenticates the pip receipt, versions, RECORD contents, installed files, platform, and deterministic Torch state. |
+| `TRACE-001` | current delivery head | All 2,124 rows rebuild from the unique authority SHA `5866888f...`; table requirements are normative without keyword guessing, and source CI compares every regenerated row with the tracked artifact. |
+| `LOCK-001` | `6b0ccdcfb4f03909ed377151ff906d9f0c162adf` | The CPython 3.12 lock contains complete reviewed wheel hashes for macOS 14+ arm64 and glibc 2.28+ Linux x86_64. Setup retains those exact wheels, installs offline without bytecode, and removes pip after its integrity check. Every evidence context rehashes the retained wheels and compares their authenticated member union with the complete site-packages tree, independently of mutable pip reports or installed RECORD files; extra distributions, files, startup hooks, symlinks, or bytecode fail closed. |
 
 ## Permitted work before closure
 

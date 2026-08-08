@@ -301,6 +301,9 @@ def main(argv: list[str] | None = None) -> int:
                 ]
             ),
             minimum_banks_per_source_role=int(config["data"]["minimum_banks_per_source_role"]),
+            minimum_unique_support_positions_per_target_city=max(
+                int(value) for value in config["localization"]["label_budgets"]
+            ),
         )
         output = Path(args.output).resolve()
         full_run_preflight = None

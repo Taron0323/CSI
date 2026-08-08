@@ -28,12 +28,15 @@ Create the hash-locked Python 3.12 environment, then run the code tests:
 
 ```bash
 formal_v2/scripts/setup_formal_v2.sh "$PWD/.venv"
-"$PWD/.venv/bin/python" -m unittest discover -s formal_v2/tests -v
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m unittest discover -s formal_v2/tests -v
 ```
 
-Setup writes a read-only pip installation report inside the environment. Evidence commands reject
-missing reports, unsupported platforms, unreviewed wheel hashes, version/RECORD drift, and
-non-deterministic PyTorch state.
+Setup retains the exact lock-authenticated wheels, installs them offline with `--no-compile`, removes
+all bytecode, and writes a wheel-derived closure manifest plus an informational pip report. Every
+evidence context rehashes the retained wheels and the full installed-file closure. Rewriting a pip
+report or installed `RECORD` cannot authorize modified files; extra distributions, files, startup
+hooks, symlinks, and any `.pyc` are rejected along with unsupported platforms or nondeterministic
+PyTorch state.
 
 The optional fixture dry run is a fail-closed software check:
 

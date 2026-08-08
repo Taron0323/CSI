@@ -7,19 +7,21 @@ Audited code: `2c0969a7b67086de83471f40f7e65d328bf1ded4`
 ## Atomic source ledger
 
 The authoritative row-level index is
-`artifacts/v6_atomic_requirement_matrix_2026-08-08.csv`. It contains 2,772 rows and binds each
-row to the immutable source-document hash, source line, clause hash, executable entry, code,
-configuration, regression anchor, evidence boundary, and paper location. Source prose is omitted
-from the public repository; the private companion remains outside Git.
+`artifacts/v6_atomic_requirement_matrix_2026-08-08.csv`. It contains 2,124 rows derived from the
+workspace's single declared V6 authority and binds each row to the immutable source-document hash,
+source line, clause hash, executable entry, code,
+configuration, regression anchor, evidence boundary, and paper location. Matrix cells redact the
+duplicated clause text; the authoritative reader itself remains tracked at the repository root.
 
 | Atomic status | Rows | Meaning |
 |---|---:|---|
-| `EXACT` | 966 | The normative clause has an explicit semantic family, reachable code/config/test anchors, and a replayable software check. This is not a scientific-result verdict. |
-| `PARTIAL/PROXY` | 1,757 | 1,578 rows are retained non-normative context; 146 require external data/execution and 33 require licensed or access-controlled inputs. |
-| `MISSING` | 38 | Authenticated non-fixture result cells do not exist. This is an external-data/execution boundary, not permission to use fixture values. |
-| `CONFLICT` | 11 | The shared-reference gauge clauses require an author protocol decision. |
+| `EXACT` | 829 | The normative clause has an explicit semantic family, reachable code/config/test anchors, and a replayable software check. This is not a scientific-result verdict. |
+| `PARTIAL/PROXY` | 1,268 | 1,080 rows are retained non-normative context; 137 require external data/execution and 51 require licensed or access-controlled inputs. |
+| `MISSING` | 19 | Authenticated non-fixture result cells do not exist. This is an external-data/execution boundary, not permission to use fixture values. |
+| `CONFLICT` | 8 | The shared-reference gauge clauses require an author protocol decision. |
 
-The matrix has no section-level fallback. Each normative row is bound to a semantic evidence family
+The matrix has no section-level fallback. Markdown table data cells are normative without keyword
+guessing, and source CI rebuilds and compares the complete public matrix. Each normative row is bound to a semantic evidence family
 and its exact clause hash; a new or unknown normative subsection aborts generation. Formal result
 rows remain `MISSING`, author gauge clauses remain `CONFLICT`, and RQ/claim-gate mentions of
 `q_comp` or `p_fail` retain their external-evidence family. There is no remaining `CODE_REQUIRED`

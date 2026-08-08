@@ -86,7 +86,7 @@
     {"claim_id":"C8","status":"BLOCKED","requires":["authenticated G3, G4 and G5 PASS artifacts from the same run","two target cities","strict k=0 and city-level k=8","minimum practical improvement"]},
     {"claim_id":"C9","status":"BLOCKED","requires":["frozen map-only proposals","k=0 common support","calibration and risk-coverage gates"]},
     {"claim_id":"C10","status":"BLOCKED","requires":["A_path matching","balanced strata","zero-path equivalence","A_path_loc preregistration"]},
-    {"claim_id":"C11","status":"BLOCKED","requires":["independent RT calibration","four validation statistics"]},
+    {"claim_id":"C11","status":"BLOCKED","requires":["structured raw fit/validation partitions with inline payloads and disjoint unit/scene identities","four validation statistics evaluated by mean per-unit absolute error"]},
     {"claim_id":"C12","status":"BLOCKED","requires":["second RT engine or controlled real intervention"]},
     {"claim_id":"C13","status":"BLOCKED","requires":["current prior-work search with auditable evidence"]}
   ],

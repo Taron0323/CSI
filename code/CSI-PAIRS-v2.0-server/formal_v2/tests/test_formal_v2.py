@@ -89,6 +89,7 @@ from formal_v2.external_adapters.wigatr_adapter import (
 from formal_v2.external_adapters.sionna_external_validity import (
     _numpy_cfr as sionna_numpy_cfr,
     _point3 as sionna_point3,
+    _quaternion_to_euler as sionna_quaternion_to_euler,
     load_scene_manifest,
 )
 from formal_v2.external_adapters.wigatr_protocol import (
@@ -129,6 +130,9 @@ from formal_v2.formal_resources import validate_resource_registry_structure
 from formal_v2.formal_qualification import qualification_blocking_scenes
 from formal_v2.formal_literature import _validate_manifest as validate_literature_manifest
 from formal_v2.formal_rt_calibration import (
+    _join_and_assess as assess_rt_calibration,
+    _read_partition_contract as read_rt_partition_contract,
+    _validate_partition_independence as validate_rt_partition_independence,
     _validate_manifest as validate_rt_calibration_manifest,
     run_rt_calibration_gate,
 )
@@ -702,6 +706,30 @@ class DatasetTests(unittest.TestCase):
         remaining = eligible_query_indices(self.dataset, scene, support_ids)
         self.assertNotIn(query, remaining.tolist())
 
+    def test_support_sibling_coordinates_are_removed_even_if_id_is_relabelled(self):
+        target_scenes = self.dataset.indices_for_role("target")
+        first = int(target_scenes[0])
+        second = int(
+            next(
+                scene
+                for scene in target_scenes
+                if scene != first
+                and self.dataset.city_ids[scene] == self.dataset.city_ids[first]
+            )
+        )
+        support = int(
+            np.flatnonzero(self.dataset.position_roles[first] == "support_pool")[0]
+        )
+        query = int(np.flatnonzero(self.dataset.position_roles[second] == "query")[0])
+        support_id = str(self.dataset.position_ids[first, support])
+        self.dataset.positions[second, query] = self.dataset.positions[first, support]
+        self.assertNotEqual(
+            str(self.dataset.position_ids[second, query]),
+            support_id,
+        )
+        remaining = eligible_query_indices(self.dataset, second, {support_id})
+        self.assertNotIn(query, remaining.tolist())
+
     def test_target_metric_iterator_excludes_support_pool(self):
         for scene_value in self.dataset.indices_for_role("target"):
             scene = int(scene_value)
@@ -735,6 +763,43 @@ class DatasetTests(unittest.TestCase):
         np.savez_compressed(malformed, **arrays)
         with self.assertRaisesRegex(FormalDatasetError, "cross support_pool/query"):
             FormalDataset.load(malformed)
+
+    def test_target_physical_position_cannot_be_relabelled_across_banks(self):
+        arrays = _archive_arrays(self.fixture)
+        target_scenes = np.flatnonzero(arrays["scene_roles"] == "target")
+        first = int(target_scenes[0])
+        second = int(
+            next(
+                scene
+                for scene in target_scenes
+                if scene != first and arrays["city_ids"][scene] == arrays["city_ids"][first]
+            )
+        )
+        support = int(np.flatnonzero(arrays["position_roles"][first] == "support_pool")[0])
+        query = int(np.flatnonzero(arrays["position_roles"][second] == "query")[0])
+        self.assertNotEqual(
+            str(arrays["position_ids"][first, support]),
+            str(arrays["position_ids"][second, query]),
+        )
+        arrays["positions"] = arrays["positions"].copy()
+        arrays["positions"][second, query] = arrays["positions"][first, support]
+        malformed = self.root / "same-coordinate-different-id.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(
+            FormalDatasetError,
+            "same city-level BS-centered coordinate.*one position_id",
+        ):
+            FormalDataset.load(malformed)
+
+    def test_target_support_capacity_uses_unique_physical_positions(self):
+        smoke = load_formal_config(SMOKE_CONFIG)
+        required = max(smoke["localization"]["label_budgets"])
+        self.dataset.validate_target_support_capacity(required)
+        formal = load_formal_config(ROOT / "formal_v2" / "configs" / "formal_v2.json")
+        formal_required = max(formal["localization"]["label_budgets"])
+        self.assertEqual(formal_required, 128)
+        with self.assertRaisesRegex(FormalDatasetError, "fewer than configured max k"):
+            self.dataset.validate_target_support_capacity(formal_required)
 
     def test_target_city_cluster_minimum_uses_canonical_foundations(self):
         self.dataset.validate(
@@ -1220,7 +1285,12 @@ class EvidenceAndPathTests(unittest.TestCase):
         rt = {
             "status": "PASS",
             "passed": True,
-            "fit_validation_are_independent": True,
+            "fit_validation_independence": {
+                "verified": True,
+                "rule": "raw_partition_unit_id_and_scene_id_disjoint",
+                "unit_id_overlap": [],
+                "scene_id_overlap": [],
+            },
             "protocol_sha256": "a" * 64,
             "input_manifest_sha256": "b" * 64,
             "adapter_source_sha256": "c" * 64,
@@ -1232,8 +1302,11 @@ class EvidenceAndPathTests(unittest.TestCase):
             "simulated_statistics_sha256": "2" * 64,
             "validated_statistics_path": "validated_statistics.csv",
             "validated_statistics_sha256": "3" * 64,
+            "fit_unit_count": 2,
+            "fit_scene_count": 2,
             "validation_unit_count": 2,
-            "aggregation": "mean_per_unit",
+            "validation_scene_count": 2,
+            "aggregation": "mean_absolute_error_per_unit",
             "statistics": {
                 name: {"passed": True}
                 for name in ("path_loss", "delay_spread", "angular_spread", "visible_path_count")
@@ -1328,8 +1401,6 @@ class EvidenceAndPathTests(unittest.TestCase):
     def test_direct_evidence_entrypoint_configures_deterministic_torch(self):
         torch.use_deterministic_algorithms(False)
         torch.backends.cudnn.deterministic = False
-        runtime_provenance.cache_clear()
-
         evidence = evidence_context(self.config, self.dataset, "FORBIDDEN")
 
         self.assertTrue(evidence["runtime_provenance"]["torch"]["deterministic_algorithms"])
@@ -1844,7 +1915,7 @@ class EvidenceAndPathTests(unittest.TestCase):
 
     def test_rt_calibration_manifest_requires_bound_input_and_source_paths(self):
         manifest = {
-            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v3",
+            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v4",
             "protocol_path": "protocol.json",
             "protocol_sha256": "a" * 64,
             "fit_dataset_path": "fit.bin",
@@ -1878,11 +1949,31 @@ class EvidenceAndPathTests(unittest.TestCase):
             validate_rt_calibration_manifest(manifest)
 
     def test_rt_calibration_stage_executes_and_binds_fitted_artifacts_end_to_end(self):
-        fit = self.root / "rt-fit.bin"
-        validation_inputs = self.root / "rt-validation-inputs.bin"
+        fit = self.root / "rt-fit.json"
+        validation_inputs = self.root / "rt-validation-inputs.json"
         validation_reference = self.root / "rt-validation-reference.csv"
-        fit.write_bytes(b"independent fit")
-        validation_inputs.write_bytes(b"independent validation inputs")
+        write_json(
+            fit,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+                "partition": "fit",
+                "units": [
+                    {"unit_id": "fit-a", "scene_id": "fit-scene-a", "payload": {"observation": 1}},
+                    {"unit_id": "fit-b", "scene_id": "fit-scene-b", "payload": {"observation": 2}},
+                ],
+            },
+        )
+        write_json(
+            validation_inputs,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+                "partition": "validation",
+                "units": [
+                    {"unit_id": "unit-a", "scene_id": "validation-scene-a", "payload": {"observation": 3}},
+                    {"unit_id": "unit-b", "scene_id": "validation-scene-b", "payload": {"observation": 4}},
+                ],
+            },
+        )
         write_csv(
             validation_reference,
             [
@@ -1900,7 +1991,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             protocol,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-protocol-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-protocol-v4",
                 "frozen_utc": "2026-08-06T00:00:00Z",
                 "absolute_tolerances": {
                     "path_loss": 0.2,
@@ -1910,7 +2001,7 @@ class EvidenceAndPathTests(unittest.TestCase):
                 },
                 "exclusion_rules": [],
                 "minimum_validation_units": 2,
-                "aggregation": "mean_per_unit",
+                "aggregation": "mean_absolute_error_per_unit",
             },
         )
         adapter = self.root / "rt_adapter.py"
@@ -1921,7 +2012,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "out=Path(a.output); fitted=out/'fitted.json'; fitted.write_text('{\"gain\":1.0}', encoding='utf-8')\n"
             "sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
             "sim=out/'simulated_statistics.csv'; sim.write_text('unit_id,path_loss,delay_spread,angular_spread,visible_path_count\\nunit-a,1.05,2.05,3.05,4\\nunit-b,2.05,3.05,4.05,5\\n',encoding='utf-8')\n"
-            "payload={'schema_version':'csi-pairs-v6-rt-calibration-adapter-result-v3','fit_dataset_sha256':sha(a.fit),'validation_inputs_sha256':sha(a.validation_inputs),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'simulated_statistics_path':sim.name,'simulated_statistics_sha256':sha(sim)}\n"
+            "payload={'schema_version':'csi-pairs-v6-rt-calibration-adapter-result-v4','fit_dataset_sha256':sha(a.fit),'validation_inputs_sha256':sha(a.validation_inputs),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'simulated_statistics_path':sim.name,'simulated_statistics_sha256':sha(sim)}\n"
             "(out/'adapter_result.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
             encoding="utf-8",
         )
@@ -1929,7 +2020,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         write_json(
             manifest,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v3",
+                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v4",
                 "protocol_path": str(protocol),
                 "protocol_sha256": sha256_file(protocol),
                 "fit_dataset_path": str(fit),
@@ -1959,6 +2050,10 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertTrue(gate["passed"])
         self.assertEqual(len(gate["statistics"]), 4)
         self.assertEqual(gate["validation_unit_count"], 2)
+        self.assertTrue(gate["fit_validation_independence"]["verified"])
+        self.assertAlmostEqual(
+            gate["statistics"]["path_loss"]["mean_absolute_error_per_unit"], 0.05
+        )
         _validate_stage_bound_input(
             output / "qualification/rt_calibration/gate.json",
             gate,
@@ -1973,6 +2068,60 @@ class EvidenceAndPathTests(unittest.TestCase):
                 self.config,
                 "rt_calibration",
             )
+
+    def test_rt_calibration_rejects_unit_error_cancellation(self):
+        statistics = (
+            "path_loss",
+            "delay_spread",
+            "angular_spread",
+            "visible_path_count",
+        )
+        reference = {
+            "unit-a": {"unit_id": "unit-a", **{name: 0.0 for name in statistics}},
+            "unit-b": {"unit_id": "unit-b", **{name: 100.0 for name in statistics}},
+        }
+        simulated = {
+            "unit-a": {"unit_id": "unit-a", **{name: 100.0 for name in statistics}},
+            "unit-b": {"unit_id": "unit-b", **{name: 0.0 for name in statistics}},
+        }
+        validated, assessments = assess_rt_calibration(
+            reference,
+            simulated,
+            {name: 0.01 for name in statistics},
+        )
+        self.assertTrue(all(row["absolute_error_path_loss"] == 100.0 for row in validated))
+        self.assertEqual(assessments["path_loss"]["reference_mean"], 50.0)
+        self.assertEqual(assessments["path_loss"]["simulated_mean"], 50.0)
+        self.assertEqual(assessments["path_loss"]["mean_absolute_error_per_unit"], 100.0)
+        self.assertFalse(assessments["path_loss"]["passed"])
+
+    def test_rt_calibration_rejects_fit_validation_scene_or_unit_overlap(self):
+        fit_path = self.root / "raw-fit.json"
+        validation_path = self.root / "raw-validation.json"
+        write_json(fit_path, {
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+            "partition": "fit",
+            "units": [{"unit_id": "fit-a", "scene_id": "shared-scene", "payload": {"raw": 1}}],
+        })
+        write_json(validation_path, {
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+            "partition": "validation",
+            "units": [{"unit_id": "validation-a", "scene_id": "shared-scene", "payload": {"raw": 2}}],
+        })
+        # A dishonest sidecar is irrelevant: the outer runner derives identity from raw inputs.
+        write_json(self.root / "lying-sidecar.json", {
+            "fit": [{"unit_id": "fake-fit", "scene_id": "fake-fit-scene"}],
+            "validation": [{"unit_id": "fake-validation", "scene_id": "fake-validation-scene"}],
+        })
+        fit = read_rt_partition_contract(fit_path, "fit")
+        validation = read_rt_partition_contract(validation_path, "validation")
+        with self.assertRaisesRegex(RuntimeError, "scene_overlap"):
+            validate_rt_partition_independence(fit, validation, {"validation-a"})
+        validation = {
+            "fit-a": {"unit_id": "fit-a", "scene_id": "validation-scene", "payload": {"raw": 2}},
+        }
+        with self.assertRaisesRegex(RuntimeError, "unit_overlap"):
+            validate_rt_partition_independence(fit, validation, {"fit-a"})
 
     def test_literature_gate_rejects_unbound_or_contradictory_novelty_records(self):
         content = self.root / "paper.pdf"
@@ -3071,6 +3220,15 @@ class WaibuIntegrationTests(unittest.TestCase):
         self.assertTrue(all(type(value) is float for value in point))
         with self.assertRaisesRegex(ValueError, "three finite"):
             sionna_point3((1.0, 2.0, np.inf))
+
+    def test_sionna_uses_scalar_first_wxyz_bs_pose_quaternions(self):
+        identity = sionna_quaternion_to_euler([1.0, 0.0, 0.0, 0.0])
+        self.assertTrue(np.allclose(identity, [0.0, 0.0, 0.0], atol=1e-12))
+        half_angle = np.pi / 4.0
+        yaw_90 = sionna_quaternion_to_euler(
+            [np.cos(half_angle), 0.0, 0.0, np.sin(half_angle)]
+        )
+        self.assertTrue(np.allclose(yaw_90, [np.pi / 2.0, 0.0, 0.0], atol=1e-12))
 
     def test_sionna_cfr_uses_numpy_without_a_torch_runtime_dependency(self):
         class Paths:

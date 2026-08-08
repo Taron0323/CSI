@@ -16,12 +16,8 @@ from formal_v2.scripts.v6_trace_registry import (
 
 SOURCE_SPECS = {
     "reader": {
-        "sha256": "e6d19a65325b688b75472d9814dc9bae26b1d36e08db68cefedc1918696a635b",
+        "sha256": "5866888fac736bcb812ebe3630b38095ad4989979a9fdf68cabcdbfe286f737e",
         "prefix": "ZR",
-    },
-    "plan": {
-        "sha256": "75f7e4e4ce82834216f9a8bf76fcd0785377c6de38aae62cabf4d1e88170dd4a",
-        "prefix": "CP",
     },
 }
 
@@ -107,19 +103,41 @@ def clauses_for_line(line: str) -> list[str]:
     return [part for part in SENTENCE_BOUNDARY.split(stripped) if part.strip()]
 
 
-def normative_signal(clause: str, raw_line: str) -> str:
+def normative_signal(
+    clause: str,
+    raw_line: str,
+    *,
+    table_requirement: bool = False,
+) -> str:
     terms = sorted(set(NORMATIVE_TERMS.findall(clause)))
     if terms:
         return "TERM:" + ",".join(terms)
     if FORMULA_MARKERS.search(clause):
         return "FORMULA_OR_CONDITION"
+    if table_requirement:
+        return "NORMATIVE_TABLE_CELL"
     if HEADING.match(raw_line.strip()):
         return "HEADING_INCLUDED_FOR_COMPLETENESS"
     return "CONTEXT_INCLUDED_FOR_COMPLETENESS"
 
 
 def is_normative_signal(signal: str) -> bool:
-    return signal.startswith("TERM:") or signal == "FORMULA_OR_CONDITION"
+    return (
+        signal.startswith("TERM:")
+        or signal in {"FORMULA_OR_CONDITION", "NORMATIVE_TABLE_CELL"}
+    )
+
+
+def _is_table_header(lines: list[str], index: int) -> bool:
+    if not lines[index].strip().startswith("|") or index + 1 >= len(lines):
+        return False
+    next_line = lines[index + 1].strip()
+    if not next_line.startswith("|"):
+        return False
+    cells = [cell.strip() for cell in next_line.strip("|").split("|")]
+    return bool(cells) and all(
+        cell and re.fullmatch(r"[-: ]+", cell) is not None for cell in cells
+    )
 
 
 def _context_mapping(clause_digest: str) -> dict[str, str]:
@@ -225,9 +243,9 @@ def build_rows(
     rows = []
     section = None
     heading = ""
-    for line_number, raw_line in enumerate(
-        source.read_text(encoding="utf-8").splitlines(), start=1
-    ):
+    source_lines = source.read_text(encoding="utf-8").splitlines()
+    for line_index, raw_line in enumerate(source_lines):
+        line_number = line_index + 1
         top = TOP_SECTION.match(raw_line)
         if top is not None:
             section = int(top.group(1))
@@ -235,10 +253,18 @@ def build_rows(
             continue
         if HEADING.match(raw_line.strip()):
             heading = HEADING.sub("", raw_line.strip())
+        table_requirement = bool(
+            raw_line.strip().startswith("|")
+            and not _is_table_header(source_lines, line_index)
+        )
         for clause_index, clause in enumerate(clauses_for_line(raw_line), start=1):
             clause = clause.strip()
             clause_digest = hashlib.sha256(clause.encode("utf-8")).hexdigest()
-            signal = normative_signal(clause, raw_line)
+            signal = normative_signal(
+                clause,
+                raw_line,
+                table_requirement=table_requirement,
+            )
             if section == 13 or is_normative_signal(signal):
                 mapping = _normative_mapping(
                     source_name,
@@ -337,7 +363,6 @@ def build_parser() -> argparse.ArgumentParser:
         description="Build privacy-safe public and private V6 atomic traceability matrices"
     )
     parser.add_argument("--reader", required=True)
-    parser.add_argument("--plan", required=True)
     parser.add_argument("--project-root", required=True)
     parser.add_argument("--public-output", required=True)
     parser.add_argument("--private-output", required=True)
@@ -347,10 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     project_root = Path(args.project_root).resolve()
-    sources = {
-        "reader": Path(args.reader).resolve(),
-        "plan": Path(args.plan).resolve(),
-    }
+    sources = {"reader": Path(args.reader).resolve()}
     public_rows = []
     private_rows = []
     for source_name, source in sources.items():

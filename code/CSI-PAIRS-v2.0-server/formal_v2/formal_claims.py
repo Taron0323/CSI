@@ -57,7 +57,7 @@ STAGE_SPECS = {
     ),
     "rt_calibration": (
         "qualification/rt_calibration/gate.json",
-        "csi-pairs-v6-rt-calibration-gate-v3",
+        "csi-pairs-v6-rt-calibration-gate-v4",
     ),
 }
 
@@ -438,13 +438,22 @@ def _semantic_status(name, payload):
                 return "FAIL"
     elif name == "rt_calibration":
         statistics = payload.get("statistics")
+        independence = payload.get("fit_validation_independence")
         if (
             not isinstance(statistics, dict)
             or set(statistics) != {"path_loss", "delay_spread", "angular_spread", "visible_path_count"}
             or any(not isinstance(value, dict) or value.get("passed") is not True for value in statistics.values())
-            or payload.get("fit_validation_are_independent") is not True
-            or payload.get("aggregation") != "mean_per_unit"
+            or independence != {
+                "verified": True,
+                "rule": "raw_partition_unit_id_and_scene_id_disjoint",
+                "unit_id_overlap": [],
+                "scene_id_overlap": [],
+            }
+            or payload.get("aggregation") != "mean_absolute_error_per_unit"
+            or int(payload.get("fit_unit_count", 0)) < 1
+            or int(payload.get("fit_scene_count", 0)) < 1
             or int(payload.get("validation_unit_count", 0)) < 2
+            or int(payload.get("validation_scene_count", 0)) < 1
             or len({
                 payload.get("fit_dataset_sha256"),
                 payload.get("validation_inputs_sha256"),
@@ -836,7 +845,9 @@ def _validate_stage_bound_input(
         from .formal_rt_calibration import (
             _bound_input,
             _join_and_assess,
+            _read_partition_contract,
             _read_statistics_csv,
+            _validate_partition_independence,
             _validate_manifest,
             _validate_protocol,
         )
@@ -867,7 +878,16 @@ def _validate_stage_bound_input(
             "adapter source",
         )
         if len({fit, validation_inputs, validation_reference}) != 3:
-            raise RuntimeError("RT calibration fit and validation paths are not independent")
+            raise RuntimeError("RT calibration fit and validation paths are not distinct")
+        for key in (
+            "protocol_sha256",
+            "fit_dataset_sha256",
+            "validation_inputs_sha256",
+            "validation_reference_sha256",
+            "adapter_source_sha256",
+        ):
+            if payload.get(key) != manifest[key]:
+                raise RuntimeError(f"RT calibration gate {key} differs from its bound manifest")
         protocol_payload = read_strict_json(protocol)
         _validate_protocol(protocol_payload)
         simulated_name = payload.get("simulated_statistics_path")
@@ -891,6 +911,11 @@ def _validate_stage_bound_input(
             ):
                 raise RuntimeError("RT calibration statistics artifact is not stage-authenticated")
         reference_rows = _read_statistics_csv(validation_reference, "validation reference")
+        fit_partition = _read_partition_contract(fit, "fit")
+        validation_partition = _read_partition_contract(validation_inputs, "validation")
+        independence = _validate_partition_independence(
+            fit_partition, validation_partition, set(reference_rows)
+        )
         simulated_rows = _read_statistics_csv(
             gate_path.parent / simulated_name, "simulated statistics"
         )
@@ -902,6 +927,12 @@ def _validate_stage_bound_input(
         if (
             len(validated_rows) != payload.get("validation_unit_count")
             or assessments != payload.get("statistics")
+            or independence != payload.get("fit_validation_independence")
+            or len(fit_partition) != payload.get("fit_unit_count")
+            or len({row["scene_id"] for row in fit_partition.values()})
+            != payload.get("fit_scene_count")
+            or len({row["scene_id"] for row in validation_partition.values()})
+            != payload.get("validation_scene_count")
         ):
             raise RuntimeError("RT calibration gate statistics differ from outer recomputation")
     elif stage_name in {"shuffled_pair", "retention"}:

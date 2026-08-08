@@ -15,11 +15,11 @@ Use one compressed NumPy archive with `allow_pickle=False`. `metadata_json` and 
 | `maps`, `noop_maps` | `[scene,world,map_channel,row,column]` | Canonical world and independent empty-edit rerender |
 | `map_channel_names` | `[map_channel]` | Must include `occupancy`, `height`, `material` |
 | `canonical_map_sha256`, `noop_map_sha256` | `[scene,world]` | Digest of every stored canonical rendering |
-| `positions` | `[scene,position,2]` | BS-centered right-handed meter coordinates |
-| `position_ids` | `[scene,position]` | Stable receiver-position identity used for city-level k |
+| `positions` | `[scene,position,2]` | BS-centered right-handed meter coordinates; within a city, the same physical coordinate must map to exactly one stable ID and role |
+| `position_ids` | `[scene,position]` | Stable receiver-position identity used for city-level k; IDs and physical coordinates are one-to-one within each city |
 | `free_space` | `[scene,world,position]` | Boolean common-free-space proof; every stored entry true |
 | `radio_config` | `[scene,radio_feature]` | Carrier/array/antenna configuration supplied to F |
-| `bs_pose` | `[scene,7]` | xyz plus unit quaternion in the frozen local frame |
+| `bs_pose` | `[scene,7]` | xyz plus scalar-first unit quaternion `(qw,qx,qy,qz)` in the frozen local frame (`wxyz` order) |
 | `repeat_seeds` | `[scene,world,position,repeat]` | Unique observation-noise seeds across sibling worlds |
 | `phase_reference_ids` | `[scene,position]` | Shared sibling-world phase/gauge reference identity |
 | `base_map_cluster_ids` | `[scene]` | Repeated foundations share split/city/statistical cluster |
@@ -47,6 +47,10 @@ The exact source ledger is:
 7. `source_final_unseen_bank`
 
 `target` and `external_validation` are separate evaluation roles. Source and target city IDs must be disjoint. Formal configuration requires at least two source cities, two target cities, multiple independent banks per target city, and the configured bank minimum in every source role. A base-map cluster may not cross a role or city.
+
+Every target city must contain at least `max(localization.label_budgets)` unique
+`support_pool` physical positions. The runner checks this capacity before creating formal run
+artifacts. Support/query exclusion compares both the stable ID and the BS-centered coordinate.
 
 ## Metadata
 
