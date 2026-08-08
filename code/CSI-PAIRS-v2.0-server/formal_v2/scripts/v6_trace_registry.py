@@ -162,22 +162,19 @@ TRACE_FAMILIES = {
         "formal_v2.tests.test_data_protocol_integrity.FrozenMaskContractTests.test_teacher_training_resamples_masks_at_every_step",
     ),
     "gauge": _family(
-        "Physical deltas use one frozen pair-consistent reference; unsupported phase-invariant targets fail before training.",
-        "inspect-data; verify-data; AUTHOR_DECISION_REQUIRED",
+        "Physical deltas use the author-frozen world-independent shared complex reference; unsupported phase-invariant targets fail before training.",
+        "inspect-data; verify-data",
         (("formal_v2/formal_dataset.py", 'phase_gauge_rule=shared_complex_reference'),),
         (("formal_v2/DATA_CONTRACT.md", 'phase_gauge_rule=shared_complex_reference'),),
         (("formal_v2/tests/test_data_protocol_integrity.py", "def test_phase_invariant_gauge_is_fail_closed_for_raw_complex_profile"),),
         "formal_v2.tests.test_data_protocol_integrity.DatasetIdentityAndNoiseTests.test_phase_invariant_gauge_is_fail_closed_for_raw_complex_profile",
-        status="CONFLICT",
-        blocker="AUTHOR_DECISION_REQUIRED",
         repair=(
-            "Keep the frozen world-independent shared reference unless the author "
-            "explicitly selects and freezes a different estimand; the phase-invariant "
-            "fallback is not implemented."
+            "Author decision A freezes shared_complex_reference for the formal study. "
+            "A phase-invariant target would be a separately versioned future protocol."
         ),
     ),
     "routing": _family(
-        "Alignment and response use their registered physical-only granularities; teacher sensitivity is an independent stratum.",
+        "Author decision R1 keeps native full-channel response on r^A and the unified patch probe on r^{R,q}; teacher sensitivity is an independent stratum.",
         "qualify",
         (("formal_v2/formal_routing.py", "def route_dataset"),),
         ((_FORMAL_CONFIG, '"qualification"'),),

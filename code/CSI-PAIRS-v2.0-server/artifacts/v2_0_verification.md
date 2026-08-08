@@ -45,9 +45,10 @@ pages with references beginning on page 9 and appendices after references, and p
 preflight with zero findings. All pages were visually inspected; no clipping, overlap, author/title
 metadata, unembedded font, undefined citation/reference, duplicate label, or overfull box was found.
 
-These are implementation and protocol checks, not experimental results. `PAPER_PROTOCOL_GO=NO-GO`,
+These are implementation and protocol checks, not experimental results. After the author froze
+A + R1, `PAPER_PROTOCOL_GO=GO` while
 `FORMAL_INPUT_READY=BLOCKED`, `LAUNCH_READY=BLOCKED`, `FORMAL_GO=NO-GO`, and
-`SCIENTIFIC_EVIDENCE=NOT_ASSESSED` remain binding for the author-decision and external-input blockers
+`SCIENTIFIC_EVIDENCE=NOT_ASSESSED` remain binding for the external-input blockers
 listed in `artifacts/formal_experiment_blockers.md`.
 
 ## 2026-08-07 readiness repair

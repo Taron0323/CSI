@@ -15,7 +15,7 @@ Branch: `codex/fix-formal-experiment-readiness`
 | Checkpoint schema | Teacher/factorial/control checkpoints bind source, config, seed, plan, and runtime | Existing payload roles remain; stale or weak payloads are rejected | Compatible authentication hardening |
 | F/P information budget | No-position F/P cannot receive receiver position, target CSI, route, target statistics, or IDs | Input allowlists and mutation tests are unchanged or stricter; oracle-x remains a separate diagnostic path | Preserved |
 | Teacher role | Teacher is CSI-only, frozen, and auxiliary to the physical target | Teacher sensitivity no longer selects primary raw-CSI routes; target replacement cannot change source-only artifacts | V6 Goal amendment, no model-input expansion |
-| Route semantics | Direction-invariant physical routes select losses/evaluation; route is never a model input | Alignment and patch Response routes are physical-only; native full-channel versus unified patch estimands remain separately registered pending `SC-ROUTE-002` | Preserved with declared author decision |
+| Route semantics | Direction-invariant physical routes select losses/evaluation; route is never a model input | Author-frozen R1 keeps native full-channel `r^A` and unified patch `r^{R,q}` as separate estimands | Preserved and frozen |
 | Four-arm design | Endpoint/A/R/Full share initialization, data, branch plan, masks, steps, downstream head, and information budget | Approval and evidence changes do not alter arm architecture or loss switches | Preserved |
 | Statistical unit | Scene bank/base-map foundation is the highest independent data unit; seeds/draws propagate uncertainty without inflating n | City-specific gates, canonical duplicate resistance, Holm family, and synchronized bootstrap are stricter | Preserved and hardened |
 | Claim promotion | Fixture, smoke, self-report, stale hash, missing dependency, and `NOT_ASSESSED` cannot promote G0-G8 or C1-C13 | C8 now reauthenticates G3/G4/G5; all downstream gates bind current inputs and runtime | Preserved and hardened |
@@ -26,5 +26,5 @@ Branch: `codex/fix-formal-experiment-readiness`
 
 No collaborator model architecture, loss estimand, data role, information allowlist, or public
 artifact meaning was silently replaced. Physical-only primary routing is the explicit later Goal
-amendment. The two unresolved changes that would alter an estimand are not implemented and are
-recorded in `artifacts/source_conflict_register.md`.
+amendment. The author-frozen A + R1 decisions preserve the existing implementation and are recorded
+in `artifacts/source_conflict_register.md`.
