@@ -51,9 +51,9 @@
       "citation_key": "lee2023pmnet",
       "source_revision": "a0e0c5926de721074beeb23f630f2d313f6508dd",
       "adapter_source_path": "formal_v2/external_adapters/pmnet_adapter.py",
-      "adapter_source_sha256": "37c628647a3d8eb0f761bac0f14fb1822ea4b48fa16e6c8b5213b86066d10ea3",
+      "adapter_source_sha256": "8e32f873015fa1c08a63b108fdcf5b6c3aa210bf71dd8ab59987118b1467c523",
       "adapter_config_path": "formal_v2/configs/pmnet_official_v1.json",
-      "adapter_config_sha256": "eaeb3fe14ead6c288d1307c0c31c15c0d20c78de47d24017e8c5e47e14cc73ec",
+      "adapter_config_sha256": "2811b9ba93950b05e48b03ddafbdd31e1b41b61f053a8619e376f27b8758828a",
       "map_conditioned": true,
       "c1_eligible": true,
       "command": [

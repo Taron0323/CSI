@@ -16,6 +16,9 @@ from formal_v2 import formal_evidence
 from formal_v2.scripts import build_v6_requirement_matrix as matrix
 
 
+SERVER_ROOT = Path(__file__).resolve().parents[2]
+
+
 class AtomicRequirementMatrixTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -24,6 +27,23 @@ class AtomicRequirementMatrixTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_claim_contract_uses_nonrecursive_delivery_provenance(self):
+        contract = json.loads(
+            (SERVER_ROOT / "artifacts/v2_0_claim_evidence_contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            contract["schema_version"],
+            "csi-pairs-v6-claim-evidence-contract-v2.6",
+        )
+        self.assertNotIn("audited_code_sha", contract)
+        self.assertEqual(
+            contract["review_base_sha"],
+            "bf5764afb52cc5c29fd41f230b66f9d869dfb8cb",
+        )
+        self.assertIn("SHA256SUMS", contract["delivery_binding"])
 
     def test_existing_private_target_leaves_public_target_absent(self):
         public = self.root / "public.csv"

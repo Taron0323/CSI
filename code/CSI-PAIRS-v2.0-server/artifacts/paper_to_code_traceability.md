@@ -16,7 +16,7 @@ duplicated clause text; the authoritative reader itself remains tracked at the r
 | Atomic status | Rows | Meaning |
 |---|---:|---|
 | `EXACT` | 837 | The normative clause has an explicit semantic family, reachable code/config/test anchors, and a replayable software check. This is not a scientific-result verdict. |
-| `PARTIAL/PROXY` | 1,268 | 1,080 rows are retained non-normative context; 137 require external data/execution and 51 require licensed or access-controlled inputs. |
+| `PARTIAL/PROXY` | 1,268 | 1,080 rows are retained non-normative context; 161 require external data/execution and 27 require licensed or access-controlled inputs. |
 | `MISSING` | 19 | Authenticated non-fixture result cells do not exist. This is an external-data/execution boundary, not permission to use fixture values. |
 | `CONFLICT` | 0 | The A + R1 author decision closes the former gauge and route conflicts. |
 

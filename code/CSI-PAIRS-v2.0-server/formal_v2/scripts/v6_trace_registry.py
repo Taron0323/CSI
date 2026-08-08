@@ -72,11 +72,11 @@ TRACE_FAMILIES = {
         "run-wrong-map; run-external-baselines",
         (("formal_v2/formal_external.py", "def _validate_six_condition_rows"),),
         (("formal_v2/external_adapters/all_map_adapters_v1.json", '"adapters"'),),
-        (("formal_v2/tests/test_evidence_integrity.py", "def test_fewer_than_two_faithful_c1_models_is_blocked_not_supported"),),
-        "formal_v2.tests.test_evidence_integrity.EvidenceIntegrityTests.test_fewer_than_two_faithful_c1_models_is_blocked_not_supported",
+        (("formal_v2/tests/test_pmnet_adapter.py", "def test_registry_exposes_pmnet_as_the_second_c1_model"),),
+        "formal_v2.tests.test_pmnet_adapter.PMNetAdapterTests.test_registry_exposes_pmnet_as_the_second_c1_model",
         status="PARTIAL/PROXY",
-        blocker="LICENSE_OR_ACCESS_REQUIRED",
-        repair="Supply and authenticate a second genuine C1-eligible model; controlled/style adapters cannot promote C1.",
+        blocker="EXTERNAL_DATA_REQUIRED",
+        repair="Execute both shipped C1-eligible adapters on authenticated non-fixture data and pass every per-city six-condition gate.",
     ),
     "scene_id": _family(
         "Scene-ID is assessed only through held-out positions and authenticated training provenance.",
@@ -162,12 +162,12 @@ TRACE_FAMILIES = {
         "formal_v2.tests.test_data_protocol_integrity.FrozenMaskContractTests.test_teacher_training_resamples_masks_at_every_step",
     ),
     "gauge": _family(
-        "Physical deltas use the author-frozen world-independent shared complex reference; unsupported phase-invariant targets fail before training.",
+        "Physical deltas use one sourced complex reference per scene-position with no world axis; independent regeneration authenticates the reference and CSI.",
         "inspect-data; verify-data",
-        (("formal_v2/formal_dataset.py", 'phase_gauge_rule=shared_complex_reference'),),
+        (("formal_v2/formal_dataset.py", "phase_reference_values must have world-independent shape"),),
         (("formal_v2/DATA_CONTRACT.md", 'phase_gauge_rule=shared_complex_reference'),),
-        (("formal_v2/tests/test_data_protocol_integrity.py", "def test_phase_invariant_gauge_is_fail_closed_for_raw_complex_profile"),),
-        "formal_v2.tests.test_data_protocol_integrity.DatasetIdentityAndNoiseTests.test_phase_invariant_gauge_is_fail_closed_for_raw_complex_profile",
+        (("formal_v2/tests/test_data_protocol_integrity.py", "def test_phase_reference_fields_reject_a_per_world_axis"),),
+        "formal_v2.tests.test_data_protocol_integrity.DatasetIdentityAndNoiseTests.test_phase_reference_fields_reject_a_per_world_axis",
         repair=(
             "Author decision A freezes shared_complex_reference for the formal study. "
             "A phase-invariant target would be a separately versioned future protocol."
@@ -175,11 +175,11 @@ TRACE_FAMILIES = {
     ),
     "routing": _family(
         "Author decision R1 keeps native full-channel response on r^A and the unified patch probe on r^{R,q}; teacher sensitivity is an independent stratum.",
-        "qualify",
-        (("formal_v2/formal_routing.py", "def route_dataset"),),
+        "qualify; run-factorial",
+        (("formal_v2/formal_evaluation.py", "def _native_response_route_is_active"),),
         ((_FORMAL_CONFIG, '"qualification"'),),
-        (("formal_v2/tests/test_data_protocol_integrity.py", "def test_teacher_latent_replacement_cannot_change_primary_routes"),),
-        "formal_v2.tests.test_data_protocol_integrity.QualificationCoverageTests.test_teacher_latent_replacement_cannot_change_primary_routes",
+        (("formal_v2/tests/test_route_estimand_contract.py", "def test_native_and_unified_response_keep_distinct_route_granularities"),),
+        "formal_v2.tests.test_route_estimand_contract.ResponseEstimandContractTests.test_native_and_unified_response_keep_distinct_route_granularities",
     ),
     "mask_query": _family(
         "Input masks hide every output query and preserve the frozen random and axis-block families.",

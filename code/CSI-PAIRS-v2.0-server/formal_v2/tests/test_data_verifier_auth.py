@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import csv
 import json
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from formal_v2.formal_cli import main as formal_cli_main
 from formal_v2.formal_config import load_formal_config
@@ -118,6 +120,40 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
             disk_gate,
         )
         require_verified_roles_from_root(output, self.config, self.dataset, ("target",))
+
+    def test_verifier_detects_regenerated_phase_reference_tampering_per_scene(self):
+        mutations = {
+            "phase_reference_values": (
+                "arrays['phase_reference_values'] = arrays['phase_reference_values'].copy()\n"
+                "    arrays['phase_reference_values'][0, 0] *= np.exp(0.25j)"
+            ),
+            "phase_reference_source_sha256": (
+                "arrays['phase_reference_source_sha256'] = "
+                "arrays['phase_reference_source_sha256'].astype('U64').copy()\n"
+                "    arrays['phase_reference_source_sha256'][0, 0] = '0' * 64"
+            ),
+        }
+        marker = "    np.savez_compressed(target, **arrays)"
+        original = FIXTURE_VERIFIER.read_text(encoding="utf-8")
+        self.assertIn(marker, original)
+        for field, mutation in mutations.items():
+            with self.subTest(field=field):
+                self.source.write_text(
+                    original.replace(marker, f"    {mutation}\n{marker}"),
+                    encoding="utf-8",
+                )
+                self._write_manifest()
+                with patch(
+                    "formal_v2.formal_data_verification.evidence_context",
+                    return_value={},
+                ):
+                    output, gate = self._verified_run(f"tampered-{field}")
+                self.assertFalse(gate["passed"])
+                with (output / "data_verification/per_scene.csv").open(
+                    newline="", encoding="utf-8"
+                ) as handle:
+                    rows = list(csv.DictReader(handle))
+                self.assertEqual(rows[0][f"{field}_match"], "False")
 
     def test_source_tampering_blocks_qualify_cli_and_downstream(self):
         output, _ = self._verified_run()

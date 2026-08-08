@@ -146,4 +146,4 @@ Therefore no G0-G8 gate and no C1-C13 claim is promoted by this record. `NOT_ASS
 
 ## Remaining external inputs
 
-Formal execution still requires a qualified non-fixture dataset, independent regeneration and RT calibration evidence, actual Wi-GATr plus a second C1-eligible model's checkpoints/six-condition rows, non-fixture executions of the shipped controls, licensed external-validation scene assets, and a completed Sionna G8 retrace. The inherited No-X/null failures and the four named warnings remain binding until untouched non-fixture evidence replaces them through the registered gates.
+Formal execution still requires a qualified non-fixture dataset, independent regeneration and RT calibration evidence, authenticated Wi-GATr and PMNet checkpoints/six-condition rows, non-fixture executions of the shipped controls, licensed external-validation scene assets, and a completed Sionna G8 retrace. The inherited No-X/null failures and the four named warnings remain binding until untouched non-fixture evidence replaces them through the registered gates.

@@ -37,6 +37,8 @@ REQUIRED_ARRAYS = {
     "bs_pose",
     "repeat_seeds",
     "phase_reference_ids",
+    "phase_reference_values",
+    "phase_reference_source_sha256",
     "base_map_cluster_ids",
     "canonical_map_sha256",
     "noop_maps",
@@ -102,6 +104,8 @@ class FormalDataset:
     bs_pose: np.ndarray
     repeat_seeds: np.ndarray
     phase_reference_ids: np.ndarray
+    phase_reference_values: np.ndarray
+    phase_reference_source_sha256: np.ndarray
     base_map_cluster_ids: np.ndarray
     canonical_map_sha256: np.ndarray
     noop_maps: np.ndarray
@@ -150,6 +154,10 @@ class FormalDataset:
                 bs_pose=np.asarray(archive["bs_pose"], dtype=np.float64),
                 repeat_seeds=np.asarray(archive["repeat_seeds"], dtype=np.int64),
                 phase_reference_ids=_string_array(archive["phase_reference_ids"]),
+                phase_reference_values=_complex_array(archive["phase_reference_values"]),
+                phase_reference_source_sha256=_string_array(
+                    archive["phase_reference_source_sha256"]
+                ),
                 base_map_cluster_ids=_string_array(archive["base_map_cluster_ids"]),
                 canonical_map_sha256=_string_array(archive["canonical_map_sha256"]),
                 noop_maps=np.asarray(archive["noop_maps"], dtype=np.float64),
@@ -388,6 +396,24 @@ class FormalDataset:
             raise FormalDatasetError("phase_reference_ids must have shape [scene, position]")
         if np.any(self.phase_reference_ids == ""):
             raise FormalDatasetError("phase_reference_ids must be nonempty and shared by sibling worlds")
+        if self.phase_reference_values.shape != (scenes, positions):
+            raise FormalDatasetError(
+                "phase_reference_values must have world-independent shape [scene, position]"
+            )
+        if not np.all(np.isfinite(self.phase_reference_values)) or np.any(
+            np.abs(self.phase_reference_values) == 0.0
+        ):
+            raise FormalDatasetError(
+                "phase_reference_values must contain finite nonzero complex references"
+            )
+        if self.phase_reference_source_sha256.shape != (scenes, positions):
+            raise FormalDatasetError(
+                "phase_reference_source_sha256 must have world-independent shape [scene, position]"
+            )
+        if any(not _sha256(str(value)) for value in self.phase_reference_source_sha256.flat):
+            raise FormalDatasetError(
+                "phase_reference_source_sha256 must contain lowercase SHA-256 digests"
+            )
         if self.base_map_cluster_ids.shape != (scenes,):
             raise FormalDatasetError("base_map_cluster_ids must have shape [scene]")
         if self.canonical_map_sha256.shape != (scenes, worlds):
@@ -903,6 +929,13 @@ def _string_array(value: np.ndarray) -> np.ndarray:
     if array.dtype.kind not in {"U", "S"}:
         raise FormalDatasetError("identifier arrays must use fixed-width string dtype, not object")
     return array.astype(str)
+
+
+def _complex_array(value: np.ndarray) -> np.ndarray:
+    array = np.asarray(value)
+    if array.dtype.kind != "c":
+        raise FormalDatasetError("phase_reference_values must use a complex numeric dtype")
+    return np.asarray(array, dtype=np.complex128)
 
 
 def _exact_object(value: object, keys: set[str], name: str) -> None:

@@ -103,8 +103,8 @@ suite passes after the repair.
 
 - Public rows: 2,124, all derived from the unique frozen V6 reader.
 - `EXACT`: 837 software-protocol clauses with explicit semantic-family evidence.
-- `PARTIAL/PROXY`: 1,268: 1,080 non-normative context rows, 137 external-data rows, and
-  51 license/access rows.
+- `PARTIAL/PROXY`: 1,268: 1,080 non-normative context rows, 161 external-data rows, and
+  27 license/access rows.
 - `MISSING`: 19, all formal result cells requiring external execution.
 - `CONFLICT`: 0 after the A + R1 author decision.
 
@@ -116,7 +116,7 @@ clause SHA, and unknown normative subsections fail generation. RQ and claim-gate
 ## External boundaries
 
 - No complete qualified formal dataset, independent RT calibration or shared-reference evidence.
-- No second genuine C1-eligible model.
+- Both genuine C1-eligible adapters are shipped, but neither has authenticated non-fixture checkpoint/results in this delivery.
 - No authenticated external-engine/controlled-real paired evidence.
 - No Linux CUDA capacity or authorized formal compute budget.
 - Four registered papers must be fetched locally and cannot be redistributed.
@@ -124,6 +124,6 @@ clause SHA, and unknown normative subsections fail generation. RQ and claim-gate
 
 ## Next single action
 
-Regenerate the requirement matrix and repository SHA inventory, run the affected audit tests, push
-the A + R1 protocol-freeze commit, and require exact-head CI. Formal execution remains unauthorized
-until every external input in `artifacts/formal_experiment_blockers.md` is closed.
+Regenerate the requirement matrix and repository SHA inventory, run the affected audit tests, and
+require exact-head CI. Formal execution remains unauthorized until every external input in
+`artifacts/formal_experiment_blockers.md` is closed.

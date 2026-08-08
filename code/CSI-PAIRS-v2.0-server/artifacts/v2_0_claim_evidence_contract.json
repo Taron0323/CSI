@@ -1,9 +1,10 @@
 {
-  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.5",
+  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.6",
   "artifact_label": "csi-pairs-formal-v2.1-v6",
   "status": "CODE_READY_FOR_FORMAL_INPUT",
   "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
-  "audited_code_sha": "2c0969a7b67086de83471f40f7e65d328bf1ded4",
+  "review_base_sha": "bf5764afb52cc5c29fd41f230b66f9d869dfb8cb",
+  "delivery_binding": "tracked file hashes are authenticated by SHA256SUMS; the release commit is recorded by Git rather than embedded recursively",
   "launch_status": "BLOCKED",
   "author_decision_blockers": [],
   "frozen_author_decisions": {
@@ -50,7 +51,7 @@
     "retention": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
     "scene_id": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
     "resource_controls": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
-    "second_c1_eligible_map_model": "EXTERNAL_MODEL_OR_LICENSE_ACCESS_REQUIRED",
+    "second_c1_eligible_map_model": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
     "independent_rt_and_g8": "EXTERNAL_DATA_AND_LICENSE_REQUIRED"
   },
   "qualification_gate_additions": {

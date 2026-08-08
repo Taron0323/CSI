@@ -804,21 +804,24 @@ def _validate_execution_manifest(adapter, output_dir, result_path, dataset):
         "results_sha256",
     }
     external_wigatr_runtime = ".venv-wigatr" in adapter["command"][0]
-    if external_wigatr_runtime:
+    main_pmnet_runtime = adapter["model_name"] == "PMNet"
+    if external_wigatr_runtime or main_pmnet_runtime:
         required.update(
             {
                 "runtime_provenance_path",
                 "runtime_provenance_sha256",
-                "runtime_environment_sha256",
             }
         )
+    if external_wigatr_runtime:
+        required.add("runtime_environment_sha256")
     if not isinstance(payload, dict) or set(payload) != required:
         raise RuntimeError("external execution manifest fields must be exact")
-    expected_schema = (
-        "csi-pairs-v6-external-execution-v3"
-        if external_wigatr_runtime
-        else "csi-pairs-v6-external-execution-v2"
-    )
+    if external_wigatr_runtime:
+        expected_schema = "csi-pairs-v6-external-execution-v3"
+    elif main_pmnet_runtime:
+        expected_schema = "csi-pairs-v6-external-execution-v4"
+    else:
+        expected_schema = "csi-pairs-v6-external-execution-v2"
     if payload["schema_version"] != expected_schema:
         raise RuntimeError("external execution manifest schema mismatch")
     for key in (
@@ -894,6 +897,20 @@ def _validate_execution_manifest(adapter, output_dir, result_path, dataset):
             )
         if payload["runtime_environment_sha256"] != runtime_record["environment_sha256"]:
             raise RuntimeError("external runtime environment digest mismatch")
+    elif main_pmnet_runtime:
+        from .formal_evidence import runtime_provenance, validate_runtime_provenance
+
+        runtime_path = (output_dir / payload["runtime_provenance_path"]).resolve()
+        if output_dir.resolve() not in runtime_path.parents or not runtime_path.is_file():
+            raise RuntimeError("PMNet runtime provenance is missing or escapes adapter output")
+        if sha256_file(runtime_path) != payload["runtime_provenance_sha256"]:
+            raise RuntimeError("PMNet runtime provenance hash mismatch")
+        runtime_record = validate_runtime_provenance(read_strict_json(runtime_path))
+        independently_probed = validate_runtime_provenance(runtime_provenance())
+        if runtime_record != independently_probed:
+            raise RuntimeError(
+                "PMNet runtime provenance differs from the independently probed interpreter"
+            )
 
 
 def _expected_six_condition_units(config, dataset, output_root):

@@ -22,6 +22,8 @@ Use one compressed NumPy archive with `allow_pickle=False`. `metadata_json` and 
 | `bs_pose` | `[scene,7]` | xyz plus scalar-first unit quaternion `(qw,qx,qy,qz)` in the frozen local frame (`wxyz` order) |
 | `repeat_seeds` | `[scene,world,position,repeat]` | Unique observation-noise seeds across sibling worlds |
 | `phase_reference_ids` | `[scene,position]` | Shared sibling-world phase/gauge reference identity |
+| `phase_reference_values` | `[scene,position]` complex | Finite nonzero complex reference divided out of every sibling-world CSI value; a world axis is forbidden |
+| `phase_reference_source_sha256` | `[scene,position]` | Lowercase SHA-256 of the exact calibration/renderer source record from which each complex reference was regenerated; a world axis is forbidden |
 | `base_map_cluster_ids` | `[scene]` | Repeated foundations share split/city/statistical cluster |
 | `world_bits` | `[world,bit]` | Complete binary hypercube |
 | `primitive_ids`, `anchor_bits` | `[scene,bit]` | Per-bank primitive permutation and randomized anchor |
@@ -61,7 +63,10 @@ artifacts. Support/query exclusion compares both the stable ID and the BS-center
 - The current raw-complex P0 implementation requires
   `representation.phase_gauge_rule=shared_complex_reference`. The frozen V6
   `phase_invariant_delay_angle_power` fallback is not implemented and is rejected
-  before training rather than silently changing the physical target.
+  before training rather than silently changing the physical target. Each
+  `(scene, position)` stores exactly one nonzero complex reference and its source-record
+  SHA-256, with no world axis. Every sibling world applies
+  `csi_gauge_fixed = csi_raw * conj(reference) / abs(reference)`.
 - P0 sets `alignment_physical_representation=complex_csi_plus_delay_angle_power`; its source-train normalization is frozen and Response remains patch-local in the physical dead-zone units.
 - `coordinate_system` is exactly `bs_centered_right_handed_meters`; map and position units are `m`.
 - Antenna count, subcarrier count, `patch_antenna_size`, `patch_subcarrier_size`, and complex patch area must define an exact 2D tiling of the real-then-imag CSI grid.
@@ -76,7 +81,7 @@ artifacts. Support/query exclusion compares both the stable ID and the BS-center
 
 The loader verifies shapes, finite values, hypercube completeness, canonical digests, engine-config digest, common-free-space declarations, phase/coordinate enums, categorical materials, unique repeat seeds, exact copied residual noise, role/city/bank constraints, path/no-op tensor consistency, and asset-field completeness.
 
-Before qualification, `verify-data` executes a separately registered renderer command and compares regenerated maps, clean/repeated CSI, common-free-space masks, phase-reference IDs, paths, and no-op retraces against the archive. Engine source revision, engine license, asset licenses, dataset hash, and config hash are bound into its gate. Only `source_encoder_train` and `source_method_selection` failures are blocking for startup. Every later stage separately requires regeneration PASS for each role it reads, so a target/probe/calibration/final-unseen failure blocks that downstream stage without controlling startup. The fixture copy verifier is permanently non-scientific and refuses non-fixture input.
+Before qualification, `verify-data` executes a separately registered renderer command and compares regenerated maps, clean/repeated CSI, common-free-space masks, phase-reference IDs, complex reference values, reference-source SHA-256 values, paths, and no-op retraces against the archive independently for every scene. Engine source revision, engine license, asset licenses, dataset hash, and config hash are bound into its gate. Only `source_encoder_train` and `source_method_selection` failures are blocking for startup. Every later stage separately requires regeneration PASS for each role it reads, so a target/probe/calibration/final-unseen failure blocks that downstream stage without controlling startup. The fixture copy verifier is permanently non-scientific and refuses non-fixture input.
 
 This regeneration gate still does not establish RT calibration or legal sufficiency. C11 requires independent RT calibration artifacts, and G8 requires an independent engine or controlled real intervention. Metadata `QUALIFIED` never supplies either result by itself.
 

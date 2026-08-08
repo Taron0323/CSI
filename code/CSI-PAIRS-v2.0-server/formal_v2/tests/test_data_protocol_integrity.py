@@ -114,6 +114,50 @@ class DatasetIdentityAndNoiseTests(unittest.TestCase):
         with self.assertRaisesRegex(FormalDatasetError, "phase-invariant targets are not implemented"):
             FormalDataset.load(malformed)
 
+    def test_phase_reference_fields_are_complex_world_independent_and_sourced(self) -> None:
+        dataset = FormalDataset.load(self.path)
+        expected_shape = (dataset.scene_count, dataset.position_count)
+        self.assertEqual(dataset.phase_reference_values.shape, expected_shape)
+        self.assertEqual(dataset.phase_reference_values.dtype, np.dtype(np.complex128))
+        self.assertTrue(np.all(np.abs(dataset.phase_reference_values) > 0.0))
+        self.assertEqual(dataset.phase_reference_source_sha256.shape, expected_shape)
+        self.assertTrue(
+            all(len(str(value)) == 64 for value in dataset.phase_reference_source_sha256.flat)
+        )
+
+    def test_phase_reference_fields_reject_a_per_world_axis(self) -> None:
+        for field in ("phase_reference_values", "phase_reference_source_sha256"):
+            with self.subTest(field=field):
+                arrays = _archive_arrays(self.path)
+                arrays[field] = np.repeat(
+                    arrays[field][:, None, :],
+                    arrays["world_bits"].shape[0],
+                    axis=1,
+                )
+                malformed = self.root / f"per-world-{field}.npz"
+                np.savez_compressed(malformed, **arrays)
+                with self.assertRaisesRegex(
+                    FormalDatasetError,
+                    rf"{field} must have world-independent shape",
+                ):
+                    FormalDataset.load(malformed)
+
+    def test_phase_reference_values_reject_zero_or_noncomplex_storage(self) -> None:
+        arrays = _archive_arrays(self.path)
+        arrays["phase_reference_values"] = arrays["phase_reference_values"].copy()
+        arrays["phase_reference_values"][0, 0] = 0.0j
+        malformed = self.root / "zero-phase-reference.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "finite nonzero complex references"):
+            FormalDataset.load(malformed)
+
+        arrays = _archive_arrays(self.path)
+        arrays["phase_reference_values"] = arrays["phase_reference_values"].real
+        malformed = self.root / "real-only-phase-reference.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "complex numeric dtype"):
+            FormalDataset.load(malformed)
+
     def test_formal_patch_grid_must_support_exact_seventy_five_percent_masks(self) -> None:
         arrays = _archive_arrays(self.path)
         metadata = json.loads(str(arrays["metadata_json"].item()))

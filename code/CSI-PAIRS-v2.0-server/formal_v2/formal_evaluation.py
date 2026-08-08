@@ -1084,6 +1084,16 @@ def _compatibility_effect_rows(seed, arm, evaluated, probabilities):
     return rows
 
 
+def _unified_response_route_is_active(routed, key) -> bool:
+    """Select unified query probes with the query-level Response estimand."""
+    return routed.response_route[key] == 2
+
+
+def _native_response_route_is_active(routed, key) -> bool:
+    """Select native full-channel transitions with the Alignment estimand."""
+    return routed.alignment_route[key] == 2
+
+
 def _response_probe_dataset(model, dataset, teacher, config, normalization, scenes, active_only):
     from .formal_qualification import _select_wrong_action
 
@@ -1159,7 +1169,7 @@ def _response_probe_dataset(model, dataset, teacher, config, normalization, scen
                 )[None, ...]
                 for query in range(teacher.patch_spec.patch_count):
                     key = (scene, edge.source_world, edge.target_world, position, query)
-                    if active_only and routed.response_route[key] != 2:
+                    if active_only and not _unified_response_route_is_active(routed, key):
                         continue
                     query_onehot = np.zeros(teacher.patch_spec.patch_count)
                     query_onehot[query] = 1.0
@@ -1480,7 +1490,7 @@ def _native_mask_cover_metrics(model, dataset, teacher, config, normalization, s
         zero_action_tensor = torch.zeros_like(action_tensor)
         for position in _eligible_evaluation_positions(dataset, scene):
             akey = (scene, edge.source_world, edge.target_world, position)
-            if routed.alignment_route[akey] != 2:
+            if not _native_response_route_is_active(routed, akey):
                 continue
             swap_action, swap_status, _ = _select_wrong_action(
                 dataset,

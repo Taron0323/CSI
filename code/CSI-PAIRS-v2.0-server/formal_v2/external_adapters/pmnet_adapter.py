@@ -12,7 +12,12 @@ from torch.utils.data import DataLoader, Dataset
 
 from formal_v2.formal_config import validate_formal_config
 from formal_v2.formal_dataset import FormalDataset
-from formal_v2.formal_evidence import require_manifested_formal_qualification
+from formal_v2.formal_evidence import (
+    configure_reproducible_runtime,
+    require_manifested_formal_qualification,
+    runtime_provenance,
+    validate_runtime_provenance,
+)
 from formal_v2.formal_io import read_strict_json, sha256_file, write_csv, write_json
 from formal_v2.formal_routing import fit_route_normalization, route_dataset
 from formal_v2.formal_teacher import load_teacher_bundle
@@ -30,8 +35,8 @@ from formal_v2.external_adapters.wigatr_protocol import (
 MODEL_NAME = "PMNet"
 ADAPTER_ID = "pmnet-official-csi-pairs-v1"
 PMNET_SOURCE_REVISION = "a0e0c5926de721074beeb23f630f2d313f6508dd"
-PMNET_CONFIG_SCHEMA = "csi-pairs-pmnet-official-adapter-v1"
-EXECUTION_SCHEMA = "csi-pairs-v6-external-execution-v2"
+PMNET_CONFIG_SCHEMA = "csi-pairs-pmnet-official-adapter-v2"
+EXECUTION_SCHEMA = "csi-pairs-v6-external-execution-v4"
 
 
 def main(argv=None) -> int:
@@ -66,9 +71,15 @@ def run_adapter(args) -> dict:
     config = load_pmnet_config(args.config)
     dataset = FormalDataset.load(args.dataset)
     validate_fixed_radio_contract(dataset)
+    if not dataset.is_fixture:
+        _require_formal_resources(config)
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for relative in ("six_condition_results.csv", "execution_manifest.json"):
+    for relative in (
+        "six_condition_results.csv",
+        "runtime_provenance.json",
+        "execution_manifest.json",
+    ):
         if (output / relative).exists():
             raise FileExistsError(f"refusing to overwrite PMNet output: {relative}")
 
@@ -83,6 +94,10 @@ def run_adapter(args) -> dict:
         allow_nonscientific_fixture=True,
     )
 
+    configure_reproducible_runtime()
+    runtime = validate_runtime_provenance(runtime_provenance())
+    runtime_path = output / "runtime_provenance.json"
+    write_json(runtime_path, runtime)
     _seed_runtime(int(config["training"]["seed"]))
     adapter_config_path = output / "adapter_config.json"
     shutil.copyfile(Path(args.config).resolve(), adapter_config_path)
@@ -126,24 +141,55 @@ def run_adapter(args) -> dict:
     )
     result_path = output / "six_condition_results.csv"
     write_csv(result_path, result_rows)
-    execution = {
+    execution = _build_execution_manifest(
+        dataset,
+        adapter_config_path,
+        output / "training_record.json",
+        checkpoint,
+        result_path,
+        args.command_sha256,
+        runtime_path,
+    )
+    write_json(output / "execution_manifest.json", execution)
+    return execution
+
+
+def _build_execution_manifest(
+    dataset,
+    adapter_config_path,
+    training_record_path,
+    checkpoint_path,
+    result_path,
+    command_sha256,
+    runtime_path,
+):
+    output = Path(result_path).resolve().parent
+    paths = {
+        "adapter_config": Path(adapter_config_path).resolve(),
+        "training_record": Path(training_record_path).resolve(),
+        "checkpoint": Path(checkpoint_path).resolve(),
+        "runtime_provenance": Path(runtime_path).resolve(),
+    }
+    if any(output not in path.parents for path in paths.values()):
+        raise RuntimeError("PMNet execution artifact escapes its output directory")
+    return {
         "schema_version": EXECUTION_SCHEMA,
         "adapter_id": ADAPTER_ID,
         "model_name": MODEL_NAME,
         "implementation_status": "official-code-adaptation",
         "source_revision": PMNET_SOURCE_REVISION,
         "dataset_sha256": sha256_file(dataset.source_path),
-        "adapter_config_path": adapter_config_path.name,
-        "adapter_config_sha256": sha256_file(adapter_config_path),
-        "training_record_path": "training_record.json",
-        "training_record_sha256": sha256_file(output / "training_record.json"),
-        "checkpoint_path": str(checkpoint.relative_to(output)),
-        "checkpoint_sha256": sha256_file(checkpoint),
-        "command_sha256": args.command_sha256,
+        "adapter_config_path": str(paths["adapter_config"].relative_to(output)),
+        "adapter_config_sha256": sha256_file(paths["adapter_config"]),
+        "training_record_path": str(paths["training_record"].relative_to(output)),
+        "training_record_sha256": sha256_file(paths["training_record"]),
+        "checkpoint_path": str(paths["checkpoint"].relative_to(output)),
+        "checkpoint_sha256": sha256_file(paths["checkpoint"]),
+        "command_sha256": command_sha256,
         "results_sha256": sha256_file(result_path),
+        "runtime_provenance_path": str(paths["runtime_provenance"].relative_to(output)),
+        "runtime_provenance_sha256": sha256_file(paths["runtime_provenance"]),
     }
-    write_json(output / "execution_manifest.json", execution)
-    return execution
 
 
 def load_pmnet_config(path: str | Path) -> dict:
@@ -155,6 +201,7 @@ def load_pmnet_config(path: str | Path) -> dict:
         "source_roles",
         "model",
         "training",
+        "resources",
         "inverse",
         "power",
     }
@@ -196,21 +243,40 @@ def load_pmnet_config(path: str | Path) -> dict:
         "seed",
         "epochs",
         "batch_size",
+        "microbatch_size",
         "learning_rate",
         "lr_decay",
         "lr_decay_every_epochs",
     }:
         raise ValueError("PMNet training config fields must be exact")
-    for key in ("seed", "epochs", "batch_size", "lr_decay_every_epochs"):
+    for key in (
+        "seed",
+        "epochs",
+        "batch_size",
+        "microbatch_size",
+        "lr_decay_every_epochs",
+    ):
         _positive_integer(training[key], f"training.{key}")
     for key in ("learning_rate", "lr_decay"):
         _positive_number(training[key], f"training.{key}")
     if training["epochs"] != 30 or training["batch_size"] != 16:
         raise ValueError("PMNet formal dose must retain the official 30-epoch batch-16 schedule")
+    if training["batch_size"] % training["microbatch_size"]:
+        raise ValueError("PMNet microbatch size must divide the effective batch size")
     if training["learning_rate"] != 1e-4:
         raise ValueError("PMNet formal dose must retain the official Adam learning rate")
     if training["lr_decay"] != 0.5 or training["lr_decay_every_epochs"] != 10:
         raise ValueError("PMNet formal dose must retain the official StepLR schedule")
+
+    resources = config["resources"]
+    if not isinstance(resources, dict) or set(resources) != {
+        "minimum_cuda_memory_bytes"
+    }:
+        raise ValueError("PMNet resource fields must be exact")
+    _positive_integer(
+        resources["minimum_cuda_memory_bytes"],
+        "resources.minimum_cuda_memory_bytes",
+    )
 
     inverse = config["inverse"]
     if not isinstance(inverse, dict) or set(inverse) != {"occupancy_threshold"}:
@@ -377,15 +443,15 @@ def _fit_source_only_model(
     generator = torch.Generator().manual_seed(int(training["seed"]))
     train_loader = DataLoader(
         train_dataset,
-        batch_size=int(training["batch_size"]),
+        batch_size=int(training["microbatch_size"]),
         shuffle=True,
         num_workers=0,
         generator=generator,
-        drop_last=len(train_dataset) % int(training["batch_size"]) == 1,
+        drop_last=False,
     )
     selection_loader = DataLoader(
         selection_dataset,
-        batch_size=int(training["batch_size"]),
+        batch_size=int(training["microbatch_size"]),
         shuffle=False,
         num_workers=0,
     )
@@ -405,17 +471,31 @@ def _fit_source_only_model(
         model.train()
         squared_error = 0.0
         observed = 0
-        for model_input, target, mask in train_loader:
-            model_input = model_input.to(device)
-            target = target.to(device)
-            mask = mask.to(device)
-            prediction = model(model_input)
-            loss = _masked_mse(prediction, target, mask)
+        pending = []
+        pending_samples = 0
+        for index, batch in enumerate(train_loader):
+            pending.append(batch)
+            pending_samples += int(batch[0].shape[0])
+            complete = pending_samples == int(training["batch_size"])
+            final = index + 1 == len(train_loader)
+            if not complete and not final:
+                continue
+            if pending_samples == 1 and len(train_dataset) > 1:
+                break
             optimizer.zero_grad(set_to_none=True)
-            loss.backward()
+            total_observed = sum(int(batch_mask.sum()) for _, _, batch_mask in pending)
+            for model_input, target, mask in pending:
+                model_input = model_input.to(device)
+                target = target.to(device)
+                mask = mask.to(device)
+                prediction = model(model_input)
+                batch_squared_error = torch.sum((prediction[mask] - target[mask]) ** 2)
+                (batch_squared_error / total_observed).backward()
+                squared_error += float(batch_squared_error.detach().cpu())
+                observed += int(mask.sum())
             optimizer.step()
-            squared_error += float(torch.sum((prediction[mask] - target[mask]) ** 2).detach().cpu())
-            observed += int(mask.sum())
+            pending = []
+            pending_samples = 0
         scheduler.step()
         last_training = squared_error / observed
         selection_loss = _radiomap_mse(model, selection_loader, device)
@@ -456,6 +536,7 @@ def _fit_source_only_model(
         "device": str(device),
         "epochs": int(training["epochs"]),
         "batch_size": int(training["batch_size"]),
+        "microbatch_size": int(training["microbatch_size"]),
         "optimizer": "Adam",
         "scheduler": "StepLR",
         "last_training_power_mse": last_training,
@@ -602,6 +683,18 @@ def _seed_runtime(seed: int):
     torch.manual_seed(int(seed))
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(int(seed))
+
+
+def _require_formal_resources(config):
+    if not torch.cuda.is_available():
+        raise RuntimeError("formal PMNet execution requires an NVIDIA CUDA device")
+    minimum = int(config["resources"]["minimum_cuda_memory_bytes"])
+    available = int(torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory)
+    if available < minimum:
+        raise RuntimeError(
+            "formal PMNet CUDA memory is below the frozen minimum: "
+            f"available={available}, required={minimum}"
+        )
 
 
 def _verify_vendor_tree(vendor: Path):

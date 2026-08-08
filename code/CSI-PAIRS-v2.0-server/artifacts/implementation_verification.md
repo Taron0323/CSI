@@ -83,7 +83,7 @@ fixture, smoke, unit-test or expected values.
 | `SOFTWARE_READY` | `PASS` | No open reproduced code-level P0/P1 remains; clean-clone replay and hosted Linux CPU CI pass at `853a369447618a11c3384342ab38f8f53734dcb0`. |
 | `V6_PROTOCOL_FIDELITY` | `PASS` | A freezes the shared complex reference and R1 preserves the two registered Response estimands. |
 | `PAPER_PROTOCOL_READY` | `PASS` | Code, configuration, data contract, tests and paper already agree with A + R1. |
-| `FORMAL_INPUT_READY` | `BLOCKED` | Formal data, RT/reference evidence, a second C1 model, licenses and authorized CUDA compute are absent. |
+| `FORMAL_INPUT_READY` | `BLOCKED` | Formal data, RT/reference evidence, executed Wi-GATr/PMNet checkpoints, remaining licenses and authorized CUDA compute are absent. |
 | `LAUNCH_READY` | `BLOCKED` | Software readiness alone cannot authorize formal execution. |
 | `ANONYMOUS_RELEASE_READY` | `PASS` | Mechanical anonymous packaging passes; no scientific evidence is implied. |
 | `SCIENTIFIC_EVIDENCE` | `NOT_ASSESSED` | No authenticated non-fixture result exists and no formal training was run. |

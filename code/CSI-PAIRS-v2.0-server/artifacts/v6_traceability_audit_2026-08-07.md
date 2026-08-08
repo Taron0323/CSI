@@ -260,7 +260,7 @@ The code must not substitute fixtures or self-reported JSON for the following:
 - an independently authenticated regeneration command and RT calibration fit/validation inputs;
 - enough independent source banks, target banks in two cities, and external-validation banks;
 - non-fixture executions of the shipped shuffled-pair, retention, scene-ID and five resource controls;
-- a second C1-eligible faithful external map model and its formal checkpoint/results;
+- formal non-fixture checkpoints and six-condition results for both shipped C1-eligible models, Wi-GATr and PMNet;
 - licensed Sionna/second-engine scene assets and completed G8 paired rerender rows;
 - NVIDIA CUDA and an approved compute budget for formal Wi-GATr and full training.
 

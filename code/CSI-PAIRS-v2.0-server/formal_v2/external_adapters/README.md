@@ -105,7 +105,10 @@ The adapter retains the official `[3,3,27,3]` encoder blocks, ASPP rates `[6,12,
 is expanded from building/Tx images to occupancy, height, material one-hot planes, and the fixed BS
 transmitter raster. It predicts a total received-power radiomap and computes MSE only at registered
 receiver cells. Power normalization is fitted on `source_encoder_train`; checkpoint selection uses
-only `source_method_selection`.
+only `source_method_selection`. The effective batch remains 16 while gradients are accumulated from
+single-sample microbatches to bound peak memory. Non-fixture execution fails before writing evidence
+unless CUDA exposes at least 8 GiB; the PMNet subprocess enables deterministic Torch/cuDNN settings,
+disables TF32, and binds its independently rechecked main-runtime provenance into the manifest.
 
 For each frozen six-condition map, PMNet predicts a radiomap without a receiver coordinate. The
 localizer returns the free grid cell whose predicted power is closest to the observed total power;

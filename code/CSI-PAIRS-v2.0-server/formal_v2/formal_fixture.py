@@ -75,6 +75,8 @@ def write_nonscientific_fixture(
         [[f"phase-reference:{scene}:{position}" for position in range(positions)] for scene in range(scene_count)],
         dtype="U64",
     )
+    phase_reference_values = np.empty((scene_count, positions), dtype=np.complex128)
+    phase_reference_source_sha256 = np.empty((scene_count, positions), dtype="U64")
     radio_config = np.tile(
         np.asarray([[3.5e9, float(antennas), float(subcarriers), 30e3]], dtype=np.float64),
         (scene_count, 1),
@@ -152,6 +154,20 @@ def write_nonscientific_fixture(
         )
         for position_index in range(positions):
             position_ids[scene, position_index] = f"{city_ids[scene]}:{bank_ids[scene]}:p{position_index:04d}"
+            source_record = (
+                "fixture-phase-reference-source-v1\0"
+                f"{seed}\0{scene}\0{position_index}\0"
+            ).encode("ascii") + np.asarray(
+                coordinates[scene, position_index], dtype="<f8"
+            ).tobytes()
+            source_digest = hashlib.sha256(source_record).digest()
+            phase_reference_source_sha256[scene, position_index] = (
+                source_digest.hex()
+            )
+            phase_fraction = int.from_bytes(source_digest[:8], "big") / float(1 << 64)
+            phase_reference_values[scene, position_index] = np.exp(
+                2j * np.pi * phase_fraction
+            )
         if roles[scene] == "target":
             support_count = positions // 2
             position_roles[scene, :support_count] = "support_pool"
@@ -175,7 +191,12 @@ def write_nonscientific_fixture(
                     distance = float(np.linalg.norm(coordinate - centers_xy[primitive]))
                     amplitude = max(0.0, 1.0 - distance / 3.0)
                     value = value + float(enabled) * amplitude * primitive_channel[primitive]
-                clean[scene, world, position_index] = value
+                complex_value = value[: channels // 2] + 1j * value[channels // 2 :]
+                reference = phase_reference_values[scene, position_index]
+                gauge_fixed = complex_value * np.conjugate(reference) / abs(reference)
+                clean[scene, world, position_index] = np.concatenate(
+                    (gauge_fixed.real, gauge_fixed.imag)
+                )
                 path_ids[scene, world, position_index] = np.asarray([0, 1, 2])
                 path_power[scene, world, position_index] = np.asarray(
                     [1.0, 0.5 + 0.25 * float(world_bits[0]), 0.25 + 0.2 * float(world_bits[1])]
@@ -277,6 +298,8 @@ def write_nonscientific_fixture(
                 bs_pose=bs_pose,
                 repeat_seeds=repeat_seeds,
                 phase_reference_ids=phase_reference_ids,
+                phase_reference_values=phase_reference_values,
+                phase_reference_source_sha256=phase_reference_source_sha256,
                 base_map_cluster_ids=base_map_cluster_ids,
                 canonical_map_sha256=canonical_map_sha256,
                 noop_maps=noop_maps,
