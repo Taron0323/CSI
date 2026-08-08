@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import inspect
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -17,7 +19,9 @@ import torch
 
 from formal_v2.formal_claims import (
     CLAIM_DEPENDENCIES,
+    _claim_state,
     _semantic_status,
+    _validate_critical_chain_binding,
     _validate_external_manifest_binding,
     _validate_stage_bound_input,
     assemble_claim_evidence,
@@ -32,17 +36,14 @@ from formal_v2.formal_cli import (
     _acquire_output_lock,
     _reserve_command_output,
     _reserve_full_run_output,
+    _result_exit_code,
     _sionna_export_lock_root,
     build_parser,
     main as formal_cli_main,
 )
 from formal_v2.formal_controls import CONTROL_IDS, _validate_manifest as validate_control_manifest
 from formal_v2.formal_config import load_formal_config, validate_formal_config
-from formal_v2.formal_data_verification import (
-    BLOCKING_ROLES,
-    require_data_verification,
-    require_verified_roles,
-)
+from formal_v2.formal_data_verification import require_data_verification, require_verified_roles
 from formal_v2.formal_dataset import FormalDataset, FormalDatasetError, SOURCE_ROLES
 from formal_v2.formal_evidence import (
     CLAIM_IDS,
@@ -52,14 +53,21 @@ from formal_v2.formal_evidence import (
     evidence_context,
     require_formal_qualification,
     require_stage_manifested_gate,
+    runtime_provenance,
 )
-from formal_v2.formal_factorial import city_support_candidates, eligible_query_indices
+from formal_v2.formal_factorial import (
+    _target_cluster_coverage,
+    city_support_candidates,
+    eligible_query_indices,
+)
 from formal_v2.formal_evaluation import _eligible_evaluation_positions, _paired_score_differences
 from formal_v2.formal_external_validity import (
+    _authenticate_sionna_runtime,
     _cluster_direction_interval,
     _validate_manifest as validate_external_validity_manifest,
 )
 from formal_v2.formal_external import (
+    _c1_model_assessment,
     _validate_manifest as validate_external_manifest,
     _validate_execution_manifest as validate_external_execution_manifest,
     _validate_six_condition_rows,
@@ -81,6 +89,7 @@ from formal_v2.external_adapters.wigatr_adapter import (
 from formal_v2.external_adapters.sionna_external_validity import (
     _numpy_cfr as sionna_numpy_cfr,
     _point3 as sionna_point3,
+    _quaternion_to_euler as sionna_quaternion_to_euler,
     load_scene_manifest,
 )
 from formal_v2.external_adapters.wigatr_protocol import (
@@ -117,10 +126,13 @@ from formal_v2.formal_representation_baselines import (
     _warm_start_contra,
     load_representation_config,
 )
-from formal_v2.formal_resources import validate_resource_registry
+from formal_v2.formal_resources import validate_resource_registry_structure
 from formal_v2.formal_qualification import qualification_blocking_scenes
 from formal_v2.formal_literature import _validate_manifest as validate_literature_manifest
 from formal_v2.formal_rt_calibration import (
+    _join_and_assess as assess_rt_calibration,
+    _read_partition_contract as read_rt_partition_contract,
+    _validate_partition_independence as validate_rt_partition_independence,
     _validate_manifest as validate_rt_calibration_manifest,
     run_rt_calibration_gate,
 )
@@ -131,7 +143,11 @@ from formal_v2.formal_risk import (
     frozen_map_proposals,
     randomized_candidate_labels,
 )
-from formal_v2.formal_routing import route_code
+from formal_v2.formal_routing import (
+    PRIMARY_ROUTE_CONTRACT,
+    route_code,
+    teacher_sensitivity_code,
+)
 from formal_v2.formal_scene_id import (
     _model_assessment as scene_id_model_assessment,
     _validate_manifest as validate_scene_id_manifest,
@@ -143,6 +159,7 @@ from formal_v2.formal_statistics import (
     exact_factorial_utilities,
     hierarchical_factorial_interval,
     holm_adjust,
+    paired_sign_flip_test,
 )
 from formal_v2.formal_teacher import CSIMaskedTeacher
 
@@ -152,14 +169,57 @@ SMOKE_CONFIG = ROOT / "formal_v2" / "configs" / "formal_v2_smoke.json"
 
 
 class ConfigTests(unittest.TestCase):
+    def test_full_run_shell_requires_an_explicit_two_phase_mode(self):
+        script = ROOT / "formal_v2" / "scripts" / "run_formal_v2.sh"
+        completed = subprocess.run(
+            ["/bin/bash", str(script)],
+            cwd=ROOT,
+            env={},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 5)
+        self.assertIn("CSI_PAIRS_FULL_RUN_PHASE=prepare", completed.stderr)
+        self.assertNotIn("CSI_PAIRS_FORMAL_OUTPUT", completed.stderr)
+
     def test_config_is_v6_and_has_complete_sections(self):
         config = load_formal_config(SMOKE_CONFIG)
-        self.assertEqual(config["schema_version"], "csi-pairs-formal-config-v2.2-v6")
+        self.assertEqual(config["schema_version"], "csi-pairs-formal-config-v2.3-v6")
         self.assertEqual(len(config["seeds"]), 3)
         self.assertEqual(config["factorial"]["arms"], ["endpoint", "alignment", "response", "full"])
         self.assertEqual(set(("teacher", "evaluation", "risk", "path")).difference(config), set())
         self.assertIn("external_validity", config)
         self.assertIn("literature", config)
+        self.assertEqual(
+            config["data"][
+                "minimum_independent_base_map_clusters_per_target_city"
+            ],
+            2,
+        )
+
+    def test_formal_g5_cluster_minimum_is_frozen_in_config(self):
+        config = load_formal_config(
+            ROOT / "formal_v2" / "configs" / "formal_v2.json"
+        )
+        self.assertEqual(
+            config["data"][
+                "minimum_independent_base_map_clusters_per_target_city"
+            ],
+            8,
+        )
+        rows = [
+            {
+                "city_id": city,
+                "base_map_cluster_id": f"declared-{city}-{index}",
+                "canonical_base_map_digest": f"canonical-{city}-{index}",
+            }
+            for city in ("target-a", "target-b")
+            for index in range(2)
+        ]
+        smoke = load_formal_config(SMOKE_CONFIG)
+        self.assertTrue(_target_cluster_coverage(smoke, rows)["passed"])
+        self.assertFalse(_target_cluster_coverage(config, rows)["passed"])
 
     def test_rejects_two_seeds(self):
         config = load_formal_config(SMOKE_CONFIG)
@@ -356,7 +416,7 @@ class ConfigTests(unittest.TestCase):
                 started.set()
                 if not release.wait(timeout=5):
                     raise RuntimeError("test verifier release timed out")
-                return {"status": "PASS"}
+                return {"status": "PASS", "passed": True}
 
             resource_args = [
                 "verify-waibu-resources",
@@ -532,6 +592,52 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(sum(result is None for result in results), 1)
             FormalDataset.load(target)
 
+    def test_dry_run_wrapper_accepts_only_authenticated_fixture_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "dry-run"
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "CSI_PAIRS_PYTHON": sys.executable,
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                }
+            )
+            completed = subprocess.run(
+                [
+                    "bash",
+                    str(ROOT / "formal_v2" / "scripts" / "run_formal_v2_dry_run.sh"),
+                    str(output),
+                ],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                # The wrapper performs the complete fixture qualification chain.
+                timeout=300,
+                check=False,
+            )
+            self.assertEqual(
+                completed.returncode,
+                0,
+                msg=f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+            )
+            summary = json.loads(completed.stdout.splitlines()[-1])
+            self.assertEqual(
+                summary,
+                {
+                    "dry_run_status": "EXPECTED_FAIL_CLOSED",
+                    "scientific_use": "FORBIDDEN",
+                    "status": "PASS",
+                },
+            )
+            gate = json.loads(
+                (output / "qualification" / "gate.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(gate["status"], "DRY_RUN_FAIL_NOT_EVIDENCE")
+            self.assertFalse(gate["passed"])
+            self.assertTrue(gate["fixture"])
+            self.assertEqual(gate["scientific_use"], "FORBIDDEN")
+
 
 class StrictJsonTests(unittest.TestCase):
     def test_duplicate_key_rejected(self):
@@ -600,6 +706,30 @@ class DatasetTests(unittest.TestCase):
         remaining = eligible_query_indices(self.dataset, scene, support_ids)
         self.assertNotIn(query, remaining.tolist())
 
+    def test_support_sibling_coordinates_are_removed_even_if_id_is_relabelled(self):
+        target_scenes = self.dataset.indices_for_role("target")
+        first = int(target_scenes[0])
+        second = int(
+            next(
+                scene
+                for scene in target_scenes
+                if scene != first
+                and self.dataset.city_ids[scene] == self.dataset.city_ids[first]
+            )
+        )
+        support = int(
+            np.flatnonzero(self.dataset.position_roles[first] == "support_pool")[0]
+        )
+        query = int(np.flatnonzero(self.dataset.position_roles[second] == "query")[0])
+        support_id = str(self.dataset.position_ids[first, support])
+        self.dataset.positions[second, query] = self.dataset.positions[first, support]
+        self.assertNotEqual(
+            str(self.dataset.position_ids[second, query]),
+            support_id,
+        )
+        remaining = eligible_query_indices(self.dataset, second, {support_id})
+        self.assertNotIn(query, remaining.tolist())
+
     def test_target_metric_iterator_excludes_support_pool(self):
         for scene_value in self.dataset.indices_for_role("target"):
             scene = int(scene_value)
@@ -609,6 +739,91 @@ class DatasetTests(unittest.TestCase):
                 np.flatnonzero(self.dataset.position_roles[scene] == "support_pool").tolist()
             )
             self.assertTrue(set(selected.tolist()).isdisjoint(support))
+
+    def test_target_position_identity_cannot_cross_support_and_query_banks(self):
+        arrays = _archive_arrays(self.fixture)
+        target_scenes = np.flatnonzero(arrays["scene_roles"] == "target")
+        first = int(target_scenes[0])
+        same_city = target_scenes[
+            arrays["city_ids"][target_scenes] == arrays["city_ids"][first]
+        ]
+        first, second = map(int, same_city[:2])
+        position_id = str(arrays["position_ids"][first, 0])
+        position = arrays["position_ids"].shape[1] - 1
+        arrays["position_ids"] = arrays["position_ids"].astype("<U64")
+        arrays["position_ids"][second, position] = position_id
+        arrays["positions"] = arrays["positions"].copy()
+        arrays["positions"][second, position] = arrays["positions"][first, 0]
+        arrays["position_roles"] = arrays["position_roles"].astype("<U32")
+        current = str(arrays["position_roles"][first, 0])
+        arrays["position_roles"][second, position] = (
+            "query" if current == "support_pool" else "support_pool"
+        )
+        malformed = self.root / "cross-bank-support-query-leak.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "cross support_pool/query"):
+            FormalDataset.load(malformed)
+
+    def test_target_physical_position_cannot_be_relabelled_across_banks(self):
+        arrays = _archive_arrays(self.fixture)
+        target_scenes = np.flatnonzero(arrays["scene_roles"] == "target")
+        first = int(target_scenes[0])
+        second = int(
+            next(
+                scene
+                for scene in target_scenes
+                if scene != first and arrays["city_ids"][scene] == arrays["city_ids"][first]
+            )
+        )
+        support = int(np.flatnonzero(arrays["position_roles"][first] == "support_pool")[0])
+        query = int(np.flatnonzero(arrays["position_roles"][second] == "query")[0])
+        self.assertNotEqual(
+            str(arrays["position_ids"][first, support]),
+            str(arrays["position_ids"][second, query]),
+        )
+        arrays["positions"] = arrays["positions"].copy()
+        arrays["positions"][second, query] = arrays["positions"][first, support]
+        malformed = self.root / "same-coordinate-different-id.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(
+            FormalDatasetError,
+            "same city-level BS-centered coordinate.*one position_id",
+        ):
+            FormalDataset.load(malformed)
+
+    def test_target_support_capacity_uses_unique_physical_positions(self):
+        smoke = load_formal_config(SMOKE_CONFIG)
+        required = max(smoke["localization"]["label_budgets"])
+        self.dataset.validate_target_support_capacity(required)
+        formal = load_formal_config(ROOT / "formal_v2" / "configs" / "formal_v2.json")
+        formal_required = max(formal["localization"]["label_budgets"])
+        self.assertEqual(formal_required, 128)
+        with self.assertRaisesRegex(FormalDatasetError, "fewer than configured max k"):
+            self.dataset.validate_target_support_capacity(formal_required)
+
+    def test_target_city_cluster_minimum_uses_canonical_foundations(self):
+        self.dataset.validate(
+            minimum_independent_base_map_clusters_per_target_city=2
+        )
+        with self.assertRaisesRegex(FormalDatasetError, "canonical base-map clusters"):
+            self.dataset.validate(
+                minimum_independent_base_map_clusters_per_target_city=3
+            )
+
+    def test_every_source_role_itself_must_cover_two_source_cities(self):
+        for role in SOURCE_ROLES:
+            with self.subTest(role=role):
+                arrays = _archive_arrays(self.fixture)
+                role_scenes = np.flatnonzero(arrays["scene_roles"] == role)
+                self.assertGreaterEqual(role_scenes.size, 2)
+                arrays["city_ids"] = arrays["city_ids"].astype("<U64")
+                arrays["city_ids"][role_scenes] = arrays["city_ids"][
+                    role_scenes[0]
+                ]
+                malformed = self.root / f"single-city-{role}.npz"
+                np.savez_compressed(malformed, **arrays)
+                with self.assertRaisesRegex(FormalDatasetError, role):
+                    FormalDataset.load(malformed)
 
     def test_embedded_metadata_duplicate_is_rejected(self):
         arrays = _archive_arrays(self.fixture)
@@ -653,7 +868,7 @@ class DatasetTests(unittest.TestCase):
     def test_base_map_cluster_cannot_cross_roles(self):
         arrays = _archive_arrays(self.fixture)
         arrays["base_map_cluster_ids"] = arrays["base_map_cluster_ids"].copy()
-        arrays["base_map_cluster_ids"][1] = arrays["base_map_cluster_ids"][0]
+        arrays["base_map_cluster_ids"][2] = arrays["base_map_cluster_ids"][0]
         malformed = self.root / "cluster_leak.npz"
         np.savez_compressed(malformed, **arrays)
         with self.assertRaisesRegex(FormalDatasetError, "cross scene roles"):
@@ -807,9 +1022,16 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(torch.equal(first, second))
 
     def test_route_thresholds_are_direction_independent(self):
-        forward = route_code(0.2, 0.3, 0.05, 0.1, 0.05, 0.1)
-        reverse = route_code(abs(-0.2), abs(-0.3), 0.05, 0.1, 0.05, 0.1)
+        forward = route_code(0.2, 0.05, 0.1)
+        reverse = route_code(abs(-0.2), 0.05, 0.1)
         self.assertEqual(forward, reverse)
+
+    def test_primary_route_is_physical_only_and_teacher_is_a_separate_stratum(self):
+        self.assertEqual(route_code(0.2, 0.05, 0.1), 2)
+        self.assertEqual(route_code(0.01, 0.05, 0.1), 0)
+        self.assertEqual(route_code(0.075, 0.05, 0.1), 1)
+        self.assertEqual(teacher_sensitivity_code(0.2, 0.05, 0.1), 2)
+        self.assertEqual(teacher_sensitivity_code(0.01, 0.05, 0.1), 0)
 
     def test_paired_score_difference_requires_one_match_and_one_alternative(self):
         difference = _paired_score_differences(
@@ -854,6 +1076,44 @@ class StatisticsTests(unittest.TestCase):
         self.assertTrue(all(0 <= value <= 1 for value in adjusted))
         self.assertGreaterEqual(adjusted[0], 0.01)
 
+    def test_exact_sign_flip_does_not_use_monte_carlo_plus_one_correction(self):
+        result = paired_sign_flip_test(
+            np.asarray(["cluster-a", "cluster-b"]),
+            np.asarray([1.0, 2.0]),
+            np.zeros(2),
+            seed=7,
+        )
+        self.assertEqual(result["method"], "exact")
+        self.assertEqual(result["draws"], 4)
+        self.assertEqual(result["p_value_two_sided"], 0.5)
+
+    def test_monte_carlo_sign_flip_uses_plus_one_correction(self):
+        result = paired_sign_flip_test(
+            np.asarray([f"cluster-{index}" for index in range(17)]),
+            np.ones(17),
+            np.zeros(17),
+            seed=0,
+            maximum_draws=3,
+        )
+        self.assertEqual(result["method"], "monte_carlo")
+        self.assertEqual(result["draws"], 3)
+        self.assertEqual(result["finite_sample_correction"], "plus_one_monte_carlo")
+        self.assertEqual(result["p_value_two_sided"], 0.25)
+
+    def test_scientific_gate_exit_code_is_fail_closed(self):
+        self.assertEqual(_result_exit_code({"status": "PASS", "passed": True}), 0)
+        self.assertEqual(_result_exit_code({"status": "FAIL", "passed": False}), 1)
+        self.assertEqual(_result_exit_code({"status": "BLOCKED", "passed": False}), 1)
+        self.assertEqual(
+            _result_exit_code(
+                {
+                    "status": "COMPLETE",
+                    "gate_vector": {"G0": "PASS", "G1": "FAIL"},
+                }
+            ),
+            1,
+        )
+
     def test_splitting_identical_bank_rows_inside_one_cluster_does_not_reweight_j(self):
         rows = _factorial_rows()
         original = exact_factorial_utilities(rows, [0, 8])
@@ -883,12 +1143,110 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(CLAIM_IDS, tuple(f"C{i}" for i in range(1, 14)))
         self.assertEqual(set(CLAIM_DEPENDENCIES), set(CLAIM_IDS))
         self.assertEqual(set(complete_gate_vector()), set(GATE_IDS))
+        self.assertEqual(
+            CLAIM_DEPENDENCIES["C8"],
+            ("G1_G2", "G3", "G4", "G5"),
+        )
+
+    def test_c8_stages_bind_one_qualification_factorial_evaluation_chain(self):
+        for name in ("qualification", "factorial", "evaluation", "controls"):
+            (self.root / name).mkdir()
+        qualification = self.root / "qualification" / "gate.json"
+        factorial = self.root / "factorial" / "gate.json"
+        evaluation = self.root / "evaluation" / "gate.json"
+        controls = self.root / "controls" / "gate.json"
+        qualification.write_bytes(b"qualification")
+        factorial.write_bytes(b"factorial")
+        evaluation.write_bytes(b"evaluation")
+        controls.write_bytes(b"controls")
+        g5 = {"qualification_gate_sha256": sha256_file(qualification)}
+        g3 = {
+            **g5,
+            "factorial_gate_sha256": sha256_file(factorial),
+        }
+        g4 = {
+            "factorial_gate_sha256": sha256_file(factorial),
+            "evaluation_gate_sha256": sha256_file(evaluation),
+        }
+        _validate_critical_chain_binding(factorial, g5, "G5")
+        _validate_critical_chain_binding(evaluation, g3, "G3")
+        _validate_critical_chain_binding(controls, g4, "G4")
+        factorial.write_bytes(b"different-factorial-run")
+        with self.assertRaisesRegex(RuntimeError, "G3 factorial binding"):
+            _validate_critical_chain_binding(evaluation, g3, "G3")
+        with self.assertRaisesRegex(RuntimeError, "G4 factorial binding"):
+            _validate_critical_chain_binding(controls, g4, "G4")
+
+    def test_resource_verification_failure_returns_nonzero(self):
+        output = self.root / "resource-failure"
+        with patch(
+            "formal_v2.formal_resources.verify_waibu_resources",
+            return_value={"status": "FAIL", "passed": False},
+        ):
+            return_code = formal_cli_main(
+                [
+                    "verify-waibu-resources",
+                    "--registry",
+                    str(self.root / "registry.json"),
+                    "--waibu-root",
+                    str(self.root / "waibu"),
+                    "--output",
+                    str(output),
+                ]
+            )
+        self.assertEqual(return_code, 1)
+
+    def test_prepare_stops_before_data_verification_when_resources_fail(self):
+        output = self.root / "all-resource-failure"
+        argv = [
+            "prepare-full-run",
+            "--config",
+            str(SMOKE_CONFIG),
+            "--dataset",
+            str(self.path),
+            "--output",
+            str(output),
+            "--allow-nonscientific-fixture",
+            "--compute-plan",
+            str(self.root / "compute.json"),
+            "--verifier-manifest",
+            str(self.root / "verifier.json"),
+            "--adapter-manifest",
+            str(self.root / "adapters.json"),
+            "--external-validity-manifest",
+            str(self.root / "external-validity.json"),
+            "--literature-resource-manifest",
+            str(self.root / "literature.json"),
+            "--rt-calibration-manifest",
+            str(self.root / "rt-calibration.json"),
+        ]
+        with (
+            patch(
+                "formal_v2.formal_run_approval.preflight_full_run",
+                return_value={"status": "PASS"},
+            ),
+            patch(
+                "formal_v2.formal_resources.verify_waibu_resources",
+                return_value={"status": "FAIL", "passed": False},
+            ) as resource_verifier,
+            patch(
+                "formal_v2.formal_data_verification.run_data_verification"
+            ) as data_verifier,
+        ):
+            self.assertEqual(formal_cli_main(argv), 2)
+        resource_verifier.assert_called_once()
+        data_verifier.assert_not_called()
 
     def test_claim_semantics_recheck_g0_c2_c11_and_g8_evidence(self):
         g0 = {
             "status": "PASS",
             "passed": True,
             "input_manifest_sha256": "a" * 64,
+            "databases": ["Crossref", "OpenAlex", "Semantic Scholar"],
+            "query_count": 1,
+            "search_receipt_count": 3,
+            "search_receipts_verified": True,
+            "c13_requires_human_review": True,
             "decision": {
                 "no_direct_overlap": True,
                 "rt_path_ready": True,
@@ -927,13 +1285,28 @@ class EvidenceAndPathTests(unittest.TestCase):
         rt = {
             "status": "PASS",
             "passed": True,
-            "fit_validation_are_independent": True,
+            "fit_validation_independence": {
+                "verified": True,
+                "rule": "raw_partition_unit_id_and_scene_id_disjoint",
+                "unit_id_overlap": [],
+                "scene_id_overlap": [],
+            },
             "protocol_sha256": "a" * 64,
             "input_manifest_sha256": "b" * 64,
             "adapter_source_sha256": "c" * 64,
             "fit_dataset_sha256": "d" * 64,
-            "validation_dataset_sha256": "e" * 64,
+            "validation_inputs_sha256": "e" * 64,
+            "validation_reference_sha256": "1" * 64,
             "fitted_parameters_sha256": "f" * 64,
+            "simulated_statistics_path": "simulated_statistics.csv",
+            "simulated_statistics_sha256": "2" * 64,
+            "validated_statistics_path": "validated_statistics.csv",
+            "validated_statistics_sha256": "3" * 64,
+            "fit_unit_count": 2,
+            "fit_scene_count": 2,
+            "validation_unit_count": 2,
+            "validation_scene_count": 2,
+            "aggregation": "mean_absolute_error_per_unit",
             "statistics": {
                 name: {"passed": True}
                 for name in ("path_loss", "delay_spread", "angular_spread", "visible_path_count")
@@ -952,11 +1325,24 @@ class EvidenceAndPathTests(unittest.TestCase):
             "adapter_source_sha256": "a" * 64,
             "rt_scene_manifest_path": "rt_scene_manifest.json",
             "rt_scene_manifest_sha256": "b" * 64,
+            "external_csi_path": "external_csi.npz",
+            "external_csi_sha256": "c" * 64,
+            "external_csi_contract": "outer-recomputed-direction-and-effect-from-raw-csi-v1",
+            "external_scene_count": 2,
+            "external_runtime_provenance_path": "runtime_provenance.json",
+            "external_runtime_provenance_sha256": "d" * 64,
+            "external_runtime_environment_sha256": "e" * 64,
+            "external_runtime_provenance": {"environment_sha256": "e" * 64},
             "null_equivalence": {"passed": True, "base_map_cluster_count": 3},
         }
         self.assertEqual(_semantic_status("G8", g8), "PASS")
         g8["active_direction_agreement_ci95_low"] = 0.7
         self.assertEqual(_semantic_status("G8", g8), "FAIL")
+
+    def test_c13_cannot_be_automatically_promoted_by_a_manifest(self):
+        self.assertEqual(_claim_state("C13", ["PASS"], False), "REVIEW_REQUIRED")
+        self.assertEqual(_claim_state("C13", ["PASS"], True), "SOFTWARE_ONLY")
+        self.assertEqual(_claim_state("C12", ["PASS"], False), "SUPPORTED")
 
     def test_not_assessed_from_later_stage_cannot_erase_upstream_gate(self):
         (self.root / "qualification").mkdir()
@@ -975,6 +1361,7 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "upstream_gates": complete_gate_vector({"G1": "PASS", "G2": "PASS"}),
                 "teacher_checkpoint": str(checkpoint),
                 "teacher_checkpoint_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+                "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
             },
         )
         write_json(
@@ -1011,6 +1398,71 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(len(evidence["dataset_sha256"]), 64)
         self.assertEqual(len(evidence["config_sha256"]), 64)
 
+    def test_direct_evidence_entrypoint_configures_deterministic_torch(self):
+        torch.use_deterministic_algorithms(False)
+        torch.backends.cudnn.deterministic = False
+        evidence = evidence_context(self.config, self.dataset, "FORBIDDEN")
+
+        self.assertTrue(evidence["runtime_provenance"]["torch"]["deterministic_algorithms"])
+        self.assertTrue(evidence["runtime_provenance"]["torch"]["cudnn_deterministic"])
+        self.assertTrue(evidence["runtime_provenance"]["python_dont_write_bytecode"])
+
+    def test_evidence_context_rejects_unlocked_main_runtime(self):
+        original = runtime_provenance()
+        mutations = []
+
+        wrong_python = json.loads(json.dumps(original))
+        wrong_python["python_version"] = "3.11.9"
+        mutations.append((wrong_python, "CPython 3.12"))
+
+        wrong_version = json.loads(json.dumps(original))
+        wrong_version["installed_distributions"]["torch"]["version"] = "2.0.0"
+        mutations.append((wrong_version, "torch must be exactly"))
+
+        missing_record = json.loads(json.dumps(original))
+        missing_record["installed_distributions"]["numpy"]["record_sha256"] = None
+        mutations.append((missing_record, "numpy has no RECORD provenance"))
+
+        wrong_wheel = json.loads(json.dumps(original))
+        wrong_wheel["installed_distributions"]["numpy"]["wheel_sha256"] = "0" * 64
+        mutations.append((wrong_wheel, "numpy wheel hash is not authenticated"))
+
+        nondeterministic = json.loads(json.dumps(original))
+        nondeterministic["torch"]["deterministic_algorithms"] = False
+        mutations.append((nondeterministic, "deterministic torch state"))
+
+        reduced_precision = json.loads(json.dumps(original))
+        reduced_precision["torch"]["float32_matmul_precision"] = "high"
+        mutations.append((reduced_precision, "deterministic torch state"))
+
+        unsupported_platform = json.loads(json.dumps(original))
+        unsupported_platform["platform_system"] = "Windows"
+        unsupported_platform["platform_machine"] = "AMD64"
+        mutations.append((unsupported_platform, "supports only macOS 14\\+ arm64"))
+
+        obsolete_platform = json.loads(json.dumps(original))
+        if original["platform_system"] == "Darwin":
+            obsolete_platform["platform_mac_version"] = "13.6"
+            mutations.append((obsolete_platform, "requires macOS 14.0 or newer"))
+            malformed_platform = json.loads(json.dumps(original))
+            malformed_platform["platform_mac_version"] = "14.beta"
+            mutations.append((malformed_platform, "no valid macOS version"))
+        else:
+            obsolete_platform["platform_libc_version"] = "2.27"
+            mutations.append((obsolete_platform, "requires glibc 2.28 or newer"))
+            malformed_platform = json.loads(json.dumps(original))
+            malformed_platform["platform_libc_version"] = "2.28-custom"
+            mutations.append((malformed_platform, "no valid glibc version"))
+
+        for runtime, message in mutations:
+            with self.subTest(message=message):
+                with patch(
+                    "formal_v2.formal_evidence.runtime_provenance",
+                    return_value=runtime,
+                ):
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        evidence_context(self.config, self.dataset, "FORBIDDEN")
+
     def test_candidate_or_forbidden_nonfixture_cannot_start_factorial(self):
         arrays = _archive_arrays(self.path)
         arrays["maps"] = arrays["maps"].copy()
@@ -1046,6 +1498,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "upstream_gates": complete_gate_vector({"G1": "PASS", "G2": "PASS"}),
             "teacher_checkpoint": "/not/read/by-this-check",
             "teacher_checkpoint_sha256": "0" * 64,
+            "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
         }
         with self.assertRaisesRegex(RuntimeError, "FORMAL_EXPERIMENT_ALLOWED"):
             require_formal_qualification(gate, self.config, candidate, allow_nonscientific_fixture=False)
@@ -1151,6 +1604,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "upstream_gates": complete_gate_vector({"G1": "PASS", "G2": "PASS"}),
             "teacher_checkpoint": str(checkpoint),
             "teacher_checkpoint_sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+            "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
         }
         require_formal_qualification(
             gate, self.config, self.dataset, allow_nonscientific_fixture=True
@@ -1172,6 +1626,7 @@ class EvidenceAndPathTests(unittest.TestCase):
             "upstream_gates": complete_gate_vector({"G1": "FAIL", "G2": "FAIL"}),
             "teacher_checkpoint": str(checkpoint),
             "teacher_checkpoint_sha256": sha256_file(checkpoint),
+            "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
         }
         require_formal_qualification(
             gate, self.config, self.dataset, allow_nonscientific_fixture=True
@@ -1212,10 +1667,42 @@ class EvidenceAndPathTests(unittest.TestCase):
                 schema_version="test-gate-v1",
             )
         write_json(stage / "gate.json", mutated)
-        with self.assertRaisesRegex(RuntimeError, "mismatched"):
+        with self.assertRaisesRegex(RuntimeError, "changed after manifesting"):
             require_stage_manifested_gate(
                 stage / "gate.json",
                 mutated,
+                self.config,
+                self.dataset,
+                schema_version="test-gate-v1",
+            )
+
+    def test_manifested_gate_authenticates_complete_stage_inventory(self):
+        stage = self.root / "complete-stage"
+        stage.mkdir()
+        context = evidence_context(self.config, self.dataset, "FORBIDDEN")
+        gate = {"schema_version": "test-gate-v1", "passed": True, **context}
+        write_json(stage / "gate.json", gate)
+        (stage / "evidence.csv").write_text("value\n1\n", encoding="utf-8")
+        write_json(
+            stage / "manifest.json",
+            {
+                "schema_version": "csi-pairs-formal-stage-manifest-v2.1-v6",
+                **context,
+                "files": artifact_manifest(stage, evidence=context),
+            },
+        )
+        require_stage_manifested_gate(
+            stage / "gate.json",
+            gate,
+            self.config,
+            self.dataset,
+            schema_version="test-gate-v1",
+        )
+        (stage / "unmanifested.csv").write_text("value\n2\n", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "inventory is incomplete"):
+            require_stage_manifested_gate(
+                stage / "gate.json",
+                gate,
                 self.config,
                 self.dataset,
                 schema_version="test-gate-v1",
@@ -1248,8 +1735,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "schema mismatch"):
             validate_control_manifest(controls)
-        validate_scene_id_manifest(
-            {
+        scene_manifest = {
                 "schema_version": "csi-pairs-v6-scene-id-adapters-v3",
                 "adapters": [
                     {
@@ -1266,10 +1752,20 @@ class EvidenceAndPathTests(unittest.TestCase):
                     }
                 ],
             }
+        validate_scene_id_manifest(scene_manifest)
+        unsafe_scene_manifest = json.loads(json.dumps(scene_manifest))
+        unsafe_scene_manifest["adapters"][0]["adapter_id"] = "../../../qualification"
+        with self.assertRaisesRegex(ValueError, "safe path component"):
+            validate_scene_id_manifest(unsafe_scene_manifest)
+        duplicate_scene_manifest = json.loads(json.dumps(scene_manifest))
+        duplicate_scene_manifest["adapters"].append(
+            dict(duplicate_scene_manifest["adapters"][0])
         )
+        with self.assertRaisesRegex(ValueError, "unique"):
+            validate_scene_id_manifest(duplicate_scene_manifest)
         validate_external_validity_manifest(
             {
-                "schema_version": "csi-pairs-v6-external-validity-adapter-v2",
+                "schema_version": "csi-pairs-v6-external-validity-adapter-v3",
                 "evidence_type": "independent_rt_engine",
                 "source_revision": "revision",
                 "license_id": "license",
@@ -1419,13 +1915,15 @@ class EvidenceAndPathTests(unittest.TestCase):
 
     def test_rt_calibration_manifest_requires_bound_input_and_source_paths(self):
         manifest = {
-            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v2",
+            "schema_version": "csi-pairs-v6-rt-calibration-adapter-v4",
             "protocol_path": "protocol.json",
             "protocol_sha256": "a" * 64,
             "fit_dataset_path": "fit.bin",
             "fit_dataset_sha256": "b" * 64,
-            "validation_dataset_path": "validation.bin",
-            "validation_dataset_sha256": "c" * 64,
+            "validation_inputs_path": "validation-inputs.bin",
+            "validation_inputs_sha256": "c" * 64,
+            "validation_reference_path": "validation-reference.csv",
+            "validation_reference_sha256": "e" * 64,
             "adapter_source_path": "adapter.py",
             "adapter_source_sha256": "d" * 64,
             "command": [
@@ -1433,8 +1931,8 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "{adapter_source}",
                 "--fit",
                 "{fit_dataset}",
-                "--validation",
-                "{validation_dataset}",
+                "--validation-inputs",
+                "{validation_inputs}",
                 "--protocol",
                 "{protocol}",
                 "--output",
@@ -1451,15 +1949,49 @@ class EvidenceAndPathTests(unittest.TestCase):
             validate_rt_calibration_manifest(manifest)
 
     def test_rt_calibration_stage_executes_and_binds_fitted_artifacts_end_to_end(self):
-        fit = self.root / "rt-fit.bin"
-        validation = self.root / "rt-validation.bin"
-        fit.write_bytes(b"independent fit")
-        validation.write_bytes(b"independent validation")
+        fit = self.root / "rt-fit.json"
+        validation_inputs = self.root / "rt-validation-inputs.json"
+        validation_reference = self.root / "rt-validation-reference.csv"
+        write_json(
+            fit,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+                "partition": "fit",
+                "units": [
+                    {"unit_id": "fit-a", "scene_id": "fit-scene-a", "payload": {"observation": 1}},
+                    {"unit_id": "fit-b", "scene_id": "fit-scene-b", "payload": {"observation": 2}},
+                ],
+            },
+        )
+        write_json(
+            validation_inputs,
+            {
+                "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+                "partition": "validation",
+                "units": [
+                    {"unit_id": "unit-a", "scene_id": "validation-scene-a", "payload": {"observation": 3}},
+                    {"unit_id": "unit-b", "scene_id": "validation-scene-b", "payload": {"observation": 4}},
+                ],
+            },
+        )
+        write_csv(
+            validation_reference,
+            [
+                {
+                    "unit_id": unit_id,
+                    "path_loss": 1.0 + index,
+                    "delay_spread": 2.0 + index,
+                    "angular_spread": 3.0 + index,
+                    "visible_path_count": 4 + index,
+                }
+                for index, unit_id in enumerate(("unit-a", "unit-b"))
+            ],
+        )
         protocol = self.root / "rt-protocol.json"
         write_json(
             protocol,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-protocol-v1",
+                "schema_version": "csi-pairs-v6-rt-calibration-protocol-v4",
                 "frozen_utc": "2026-08-06T00:00:00Z",
                 "absolute_tolerances": {
                     "path_loss": 0.2,
@@ -1468,31 +2000,35 @@ class EvidenceAndPathTests(unittest.TestCase):
                     "visible_path_count": 0.2,
                 },
                 "exclusion_rules": [],
+                "minimum_validation_units": 2,
+                "aggregation": "mean_absolute_error_per_unit",
             },
         )
         adapter = self.root / "rt_adapter.py"
         adapter.write_text(
             "import argparse, hashlib, json\n"
             "from pathlib import Path\n"
-            "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation'); p.add_argument('--protocol'); a=p.parse_args()\n"
+            "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation-inputs'); p.add_argument('--protocol'); a=p.parse_args()\n"
             "out=Path(a.output); fitted=out/'fitted.json'; fitted.write_text('{\"gain\":1.0}', encoding='utf-8')\n"
             "sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
-            "stats={k:{'reference':1.0,'simulated':1.05} for k in ('path_loss','delay_spread','angular_spread','visible_path_count')}\n"
-            "payload={'schema_version':'csi-pairs-v6-rt-calibration-statistics-v2','fit_dataset_sha256':sha(a.fit),'validation_dataset_sha256':sha(a.validation),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'statistics':stats}\n"
-            "(out/'statistics.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
+            "sim=out/'simulated_statistics.csv'; sim.write_text('unit_id,path_loss,delay_spread,angular_spread,visible_path_count\\nunit-a,1.05,2.05,3.05,4\\nunit-b,2.05,3.05,4.05,5\\n',encoding='utf-8')\n"
+            "payload={'schema_version':'csi-pairs-v6-rt-calibration-adapter-result-v4','fit_dataset_sha256':sha(a.fit),'validation_inputs_sha256':sha(a.validation_inputs),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'simulated_statistics_path':sim.name,'simulated_statistics_sha256':sha(sim)}\n"
+            "(out/'adapter_result.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
             encoding="utf-8",
         )
         manifest = self.root / "rt-manifest.json"
         write_json(
             manifest,
             {
-                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v2",
+                "schema_version": "csi-pairs-v6-rt-calibration-adapter-v4",
                 "protocol_path": str(protocol),
                 "protocol_sha256": sha256_file(protocol),
                 "fit_dataset_path": str(fit),
                 "fit_dataset_sha256": sha256_file(fit),
-                "validation_dataset_path": str(validation),
-                "validation_dataset_sha256": sha256_file(validation),
+                "validation_inputs_path": str(validation_inputs),
+                "validation_inputs_sha256": sha256_file(validation_inputs),
+                "validation_reference_path": str(validation_reference),
+                "validation_reference_sha256": sha256_file(validation_reference),
                 "adapter_source_path": str(adapter),
                 "adapter_source_sha256": sha256_file(adapter),
                 "command": [
@@ -1502,8 +2038,8 @@ class EvidenceAndPathTests(unittest.TestCase):
                     "{output}",
                     "--fit",
                     "{fit_dataset}",
-                    "--validation",
-                    "{validation_dataset}",
+                    "--validation-inputs",
+                    "{validation_inputs}",
                     "--protocol",
                     "{protocol}",
                 ],
@@ -1513,14 +2049,19 @@ class EvidenceAndPathTests(unittest.TestCase):
         gate = run_rt_calibration_gate(self.config, self.dataset, manifest, output)
         self.assertTrue(gate["passed"])
         self.assertEqual(len(gate["statistics"]), 4)
+        self.assertEqual(gate["validation_unit_count"], 2)
+        self.assertTrue(gate["fit_validation_independence"]["verified"])
+        self.assertAlmostEqual(
+            gate["statistics"]["path_loss"]["mean_absolute_error_per_unit"], 0.05
+        )
         _validate_stage_bound_input(
             output / "qualification/rt_calibration/gate.json",
             gate,
             self.config,
             "rt_calibration",
         )
-        fit.write_bytes(b"tampered fit")
-        with self.assertRaisesRegex(RuntimeError, "fit dataset"):
+        validation_reference.write_text("changed", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "validation reference"):
             _validate_stage_bound_input(
                 output / "qualification/rt_calibration/gate.json",
                 gate,
@@ -1528,22 +2069,107 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "rt_calibration",
             )
 
+    def test_rt_calibration_rejects_unit_error_cancellation(self):
+        statistics = (
+            "path_loss",
+            "delay_spread",
+            "angular_spread",
+            "visible_path_count",
+        )
+        reference = {
+            "unit-a": {"unit_id": "unit-a", **{name: 0.0 for name in statistics}},
+            "unit-b": {"unit_id": "unit-b", **{name: 100.0 for name in statistics}},
+        }
+        simulated = {
+            "unit-a": {"unit_id": "unit-a", **{name: 100.0 for name in statistics}},
+            "unit-b": {"unit_id": "unit-b", **{name: 0.0 for name in statistics}},
+        }
+        validated, assessments = assess_rt_calibration(
+            reference,
+            simulated,
+            {name: 0.01 for name in statistics},
+        )
+        self.assertTrue(all(row["absolute_error_path_loss"] == 100.0 for row in validated))
+        self.assertEqual(assessments["path_loss"]["reference_mean"], 50.0)
+        self.assertEqual(assessments["path_loss"]["simulated_mean"], 50.0)
+        self.assertEqual(assessments["path_loss"]["mean_absolute_error_per_unit"], 100.0)
+        self.assertFalse(assessments["path_loss"]["passed"])
+
+    def test_rt_calibration_rejects_fit_validation_scene_or_unit_overlap(self):
+        fit_path = self.root / "raw-fit.json"
+        validation_path = self.root / "raw-validation.json"
+        write_json(fit_path, {
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+            "partition": "fit",
+            "units": [{"unit_id": "fit-a", "scene_id": "shared-scene", "payload": {"raw": 1}}],
+        })
+        write_json(validation_path, {
+            "schema_version": "csi-pairs-v6-rt-calibration-partition-v1",
+            "partition": "validation",
+            "units": [{"unit_id": "validation-a", "scene_id": "shared-scene", "payload": {"raw": 2}}],
+        })
+        # A dishonest sidecar is irrelevant: the outer runner derives identity from raw inputs.
+        write_json(self.root / "lying-sidecar.json", {
+            "fit": [{"unit_id": "fake-fit", "scene_id": "fake-fit-scene"}],
+            "validation": [{"unit_id": "fake-validation", "scene_id": "fake-validation-scene"}],
+        })
+        fit = read_rt_partition_contract(fit_path, "fit")
+        validation = read_rt_partition_contract(validation_path, "validation")
+        with self.assertRaisesRegex(RuntimeError, "scene_overlap"):
+            validate_rt_partition_independence(fit, validation, {"validation-a"})
+        validation = {
+            "fit-a": {"unit_id": "fit-a", "scene_id": "validation-scene", "payload": {"raw": 2}},
+        }
+        with self.assertRaisesRegex(RuntimeError, "unit_overlap"):
+            validate_rt_partition_independence(fit, validation, {"fit-a"})
+
     def test_literature_gate_rejects_unbound_or_contradictory_novelty_records(self):
         content = self.root / "paper.pdf"
-        content.write_bytes(b"paper")
+        content.write_bytes(b"%PDF-1.4\n% test paper\n")
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        query = "map-conditioned CSI"
+        receipt_specs = {
+            "Crossref": (
+                "https://api.crossref.org/works?query=map-conditioned%20CSI",
+                {"message": {"items": [{"DOI": "10.1/test"}]}},
+            ),
+            "OpenAlex": (
+                "https://api.openalex.org/works?search=map-conditioned%20CSI",
+                {"results": [{"id": "https://openalex.org/W1"}]},
+            ),
+            "Semantic Scholar": (
+                "https://api.semanticscholar.org/graph/v1/paper/search?query=map-conditioned%20CSI",
+                {"data": [{"paperId": "paper-1"}]},
+            ),
+        }
+        receipts = []
+        for index, (database, (url, payload)) in enumerate(receipt_specs.items()):
+            receipt_path = self.root / f"receipt-{index}.json"
+            write_json(receipt_path, payload)
+            receipts.append(
+                {
+                    "database": database,
+                    "query": query,
+                    "searched_utc": now,
+                    "retrieval_url": url,
+                    "result_count": 1,
+                    "receipt_path": str(receipt_path),
+                    "receipt_sha256": sha256_file(receipt_path),
+                }
+            )
         manifest = {
-            "schema_version": "csi-pairs-v6-literature-resource-manifest-v2",
+            "schema_version": "csi-pairs-v6-literature-resource-manifest-v3",
             "search_completed_utc": now,
             "databases": list(self.config["literature"]["required_databases"]),
-            "queries": ["map-conditioned CSI"],
+            "queries": [query],
+            "search_receipts": receipts,
             "records": [
                 {
                     "citation_key": "paper",
                     "title": "Paper",
-                    "doi_or_url": "https://example.invalid/paper",
+                    "doi_or_url": "https://example.org/paper",
                     "verified_utc": now,
                     "content_path": str(content),
                     "content_sha256": sha256_file(content),
@@ -1568,6 +2194,13 @@ class EvidenceAndPathTests(unittest.TestCase):
             },
         }
         validate_literature_manifest(self.config, manifest, self.root)
+        original_url = manifest["search_receipts"][0]["retrieval_url"]
+        manifest["search_receipts"][0]["retrieval_url"] = (
+            "https://api.crossref.org/works?query=unrelated"
+        )
+        with self.assertRaisesRegex(ValueError, "bind the frozen query"):
+            validate_literature_manifest(self.config, manifest, self.root)
+        manifest["search_receipts"][0]["retrieval_url"] = original_url
         manifest["decision"]["no_direct_overlap"] = False
         with self.assertRaisesRegex(ValueError, "contradicts"):
             validate_literature_manifest(self.config, manifest, self.root)
@@ -1592,6 +2225,7 @@ class EvidenceAndPathTests(unittest.TestCase):
     def test_cli_exposes_all_fail_closed_stages(self):
         help_text = build_parser().format_help()
         for command in (
+            "prepare-full-run",
             "run-evaluation",
             "run-risk",
             "run-path",
@@ -1607,6 +2241,31 @@ class EvidenceAndPathTests(unittest.TestCase):
             "assemble-claims",
         ):
             self.assertIn(command, help_text)
+        parser = build_parser()
+        full_argv = [
+            "all",
+            "--config",
+            "config.json",
+            "--output",
+            "output",
+            "--verifier-manifest",
+            "verifier.json",
+            "--adapter-manifest",
+            "adapters.json",
+            "--external-validity-manifest",
+            "external-validity.json",
+            "--literature-resource-manifest",
+            "literature.json",
+            "--rt-calibration-manifest",
+            "rt-calibration.json",
+        ]
+        with patch("builtins.print") as denied_message:
+            self.assertEqual(formal_cli_main(full_argv), 2)
+        self.assertIn("--approval-manifest", denied_message.call_args.args[0])
+        full_args = parser.parse_args(
+            [*full_argv, "--approve-full-experiment"]
+        )
+        self.assertTrue(full_args.approve_full_experiment)
 
     def test_cli_ships_first_party_claim_and_scene_id_defaults(self):
         parser = build_parser()
@@ -1884,6 +2543,86 @@ class WiGATrAdapterTests(unittest.TestCase):
                 adapter, output, result_path, self.dataset
             )
 
+    def test_wigatr_execution_manifest_binds_independently_probed_runtime(self):
+        output = self.root / "wigatr-runtime-adapter"
+        output.mkdir()
+        config_path = output / "adapter_config.json"
+        training_path = output / "training_record.json"
+        checkpoint_path = output / "checkpoint.pt"
+        result_path = output / "six_condition_results.csv"
+        runtime_path = output / "runtime_provenance.json"
+        write_json(config_path, {"schema_version": "adapter-config"})
+        write_json(
+            training_path,
+            {
+                "train_role": "source_encoder_train",
+                "selection_role": "source_method_selection",
+                "target_roles_read": [],
+            },
+        )
+        checkpoint_path.write_bytes(b"checkpoint")
+        write_csv(result_path, [{"result": 1}])
+        runtime = {"environment_sha256": "a" * 64}
+        write_json(runtime_path, runtime)
+        command = [
+            "{project_root}/formal_v2/external_adapters/.venv-wigatr/bin/python",
+            "adapter.py",
+        ]
+        adapter = {
+            "adapter_id": "wigatr",
+            "model_name": "Wi-GATr",
+            "implementation_status": "official-code-adaptation",
+            "source_revision": "revision",
+            "command": command,
+            "adapter_config_sha256": sha256_file(config_path),
+        }
+        execution = {
+            "schema_version": "csi-pairs-v6-external-execution-v3",
+            "adapter_id": "wigatr",
+            "model_name": "Wi-GATr",
+            "implementation_status": "official-code-adaptation",
+            "source_revision": "revision",
+            "dataset_sha256": sha256_file(self.path),
+            "adapter_config_path": config_path.name,
+            "adapter_config_sha256": sha256_file(config_path),
+            "training_record_path": training_path.name,
+            "training_record_sha256": sha256_file(training_path),
+            "checkpoint_path": checkpoint_path.name,
+            "checkpoint_sha256": sha256_file(checkpoint_path),
+            "command_sha256": hashlib.sha256(
+                json.dumps(command, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+            "results_sha256": sha256_file(result_path),
+            "runtime_provenance_path": runtime_path.name,
+            "runtime_provenance_sha256": sha256_file(runtime_path),
+            "runtime_environment_sha256": runtime["environment_sha256"],
+        }
+        write_json(output / "execution_manifest.json", execution)
+        with (
+            patch(
+                "formal_v2.formal_external_runtime.validate_external_runtime",
+                return_value=runtime,
+            ),
+            patch(
+                "formal_v2.formal_external_runtime.probe_external_runtime",
+                return_value=runtime,
+            ),
+        ):
+            validate_external_execution_manifest(
+                adapter, output, result_path, self.dataset
+            )
+            substituted = {"environment_sha256": "b" * 64}
+            write_json(runtime_path, substituted)
+            execution["runtime_provenance_sha256"] = sha256_file(runtime_path)
+            execution["runtime_environment_sha256"] = substituted[
+                "environment_sha256"
+            ]
+            write_json(output / "execution_manifest.json", execution)
+            with self.assertRaisesRegex(RuntimeError, "independently probed"):
+                validate_external_execution_manifest(
+                    adapter, output, result_path, self.dataset
+                )
+
     def test_inverse_localizer_api_has_no_true_position_argument(self):
         parameters = inspect.signature(inverse_localize_power).parameters
         self.assertNotIn("true_position", parameters)
@@ -1949,16 +2688,26 @@ class WaibuIntegrationTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_every_waibu_resource_is_hash_authenticated(self):
+    def test_every_waibu_resource_has_frozen_authentication_metadata(self):
         registry = parse_strict_json(
             (ROOT / "formal_v2/configs/waibu_resources_v1.json").read_text()
         )
-        rows = validate_resource_registry(registry, ROOT / "waibu")
+        rows = validate_resource_registry_structure(registry)
         self.assertEqual(len(rows), 10)
-        self.assertTrue(all(row["status"] == "PASS" for row in rows))
-        registry["resources"][0]["sha256"] = "0" * 64
-        changed = validate_resource_registry(registry, ROOT / "waibu")
-        self.assertEqual(changed[0]["status"], "FAIL")
+        self.assertTrue(all(len(row["sha256"]) == 64 for row in rows))
+        self.assertEqual(
+            {
+                row["file"]
+                for row in rows
+                if not row["redistribution_allowed"]
+            },
+            {
+                "2502.11965v2.pdf",
+                "2505.09160v2.pdf",
+                "2601.03789v1.pdf",
+                "2604.07086v1.pdf",
+            },
+        )
 
     def test_representation_registry_preserves_paper_labels_and_roles(self):
         config = load_representation_config(
@@ -2195,6 +2944,7 @@ class WaibuIntegrationTests(unittest.TestCase):
             "c1_eligible_model_count": 1,
             "c1_eligible_models": ["Wi-GATr"],
             "c1_required_eligible_model_count": 2,
+            "c1_city_gate_contract": "all-evaluation-cities-must-pass-v1",
             "model_assessments": [
                 {
                     "model_name": "Wi-GATr",
@@ -2205,6 +2955,21 @@ class WaibuIntegrationTests(unittest.TestCase):
                     "base_map_cluster_count": 2,
                     "null_overclassification_rate_ci95_high": 0.01,
                     "null_overclassification_rate_max": 0.05,
+                    "aggregation": "pooled-report-plus-simultaneous-per-city-gate",
+                    "evaluation_city_count": 1,
+                    "evaluation_cities": ["target-a"],
+                    "all_cities_passed": True,
+                    "city_assessments": {
+                        "target-a": {
+                            "city_id": "target-a",
+                            "passed": True,
+                            "active_effect_passed": True,
+                            "null_safety_passed": True,
+                            "base_map_cluster_count": 2,
+                            "null_overclassification_rate_ci95_high": 0.01,
+                            "null_overclassification_rate_max": 0.05,
+                        }
+                    },
                 }
             ],
             "condition_input_contract": "outer-recomputed-map-and-action-sha256-v1",
@@ -2226,11 +2991,91 @@ class WaibuIntegrationTests(unittest.TestCase):
                 "base_map_cluster_count": 2,
                 "null_overclassification_rate_ci95_high": 0.01,
                 "null_overclassification_rate_max": 0.05,
+                "aggregation": "pooled-report-plus-simultaneous-per-city-gate",
+                "evaluation_city_count": 1,
+                "evaluation_cities": ["target-a"],
+                "all_cities_passed": True,
+                "city_assessments": {
+                    "target-a": {
+                        "city_id": "target-a",
+                        "passed": True,
+                        "active_effect_passed": True,
+                        "null_safety_passed": True,
+                        "base_map_cluster_count": 2,
+                        "null_overclassification_rate_ci95_high": 0.01,
+                        "null_overclassification_rate_max": 0.05,
+                    }
+                },
             }
         )
         base["status"] = "PASS"
         base["passed"] = True
         self.assertEqual(_semantic_status("external_baselines", base), "PASS")
+        changed = json.loads(json.dumps(base))
+        changed["model_assessments"][1]["city_assessments"]["target-a"][
+            "passed"
+        ] = False
+        self.assertEqual(_semantic_status("external_baselines", changed), "FAIL")
+
+    def test_c1_model_must_pass_in_every_evaluation_city(self):
+        city_ids = np.asarray(["source-a"] * 20 + ["target-a"] * 4)
+        dataset = SimpleNamespace(
+            base_map_cluster_ids=np.asarray(
+                [f"cluster-{index:02d}" for index in range(city_ids.size)]
+            ),
+            bank_ids=np.asarray(
+                [f"bank-{index:02d}" for index in range(city_ids.size)]
+            ),
+            city_ids=city_ids,
+        )
+        contracts = {
+            f"unit-{index:02d}": SimpleNamespace(scene=index)
+            for index in range(city_ids.size)
+        }
+        rows = []
+        conditions = (
+            "correct",
+            "paired_active_alternative",
+            "paired_null_alternative",
+            "wrong_city",
+            "geometry_destroyed",
+            "empty",
+        )
+        for index in range(city_ids.size):
+            values = {
+                "correct": 0.0,
+                "paired_active_alternative": 1.0 if index < 20 else -0.1,
+                "paired_null_alternative": 0.0,
+                "wrong_city": 1.0,
+                "geometry_destroyed": 1.0,
+                "empty": 1.0,
+            }
+            rows.extend(
+                {
+                    "unit_id": f"unit-{index:02d}",
+                    "condition": condition,
+                    "localization_error_m": values[condition],
+                }
+                for condition in conditions
+            )
+        config = {
+            "evaluation": {
+                "bootstrap_resamples": 1000,
+                "c1_active_error_minimum_m": 0.1,
+                "c1_null_error_equivalence_margin_m": 0.01,
+                "null_overclassification_rate_max": 0.05,
+            }
+        }
+        result = _c1_model_assessment(
+            config,
+            {"adapter_id": "adapter", "model_name": "model", "c1_eligible": True},
+            rows,
+            dataset,
+            expected_unit_contract=contracts,
+        )
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["city_assessments"]["source-a"]["passed"])
+        self.assertFalse(result["city_assessments"]["target-a"]["passed"])
 
     def test_c1_claim_reauthenticates_the_adapter_manifest_copy(self):
         stage = Path(self.temporary.name) / "external_baselines"
@@ -2290,6 +3135,29 @@ class WaibuIntegrationTests(unittest.TestCase):
         )
         validate_external_validity_manifest(manifest)
         self.assertEqual(manifest["command"][1], "{adapter_source}")
+
+    def test_sionna_gate_rejects_runtime_record_not_matching_outer_probe(self):
+        output = Path(self.temporary.name) / "sionna-runtime-output"
+        output.mkdir()
+        runtime_path = output / "runtime_provenance.json"
+        runtime = {"environment_sha256": "a" * 64}
+        write_json(runtime_path, runtime)
+        command = ["/runtime/venv/bin/python", "adapter.py"]
+        with patch(
+            "formal_v2.formal_external_runtime.validate_external_runtime",
+            return_value=runtime,
+        ):
+            path, authenticated = _authenticate_sionna_runtime(
+                command, output, runtime
+            )
+            self.assertEqual(path, runtime_path)
+            self.assertEqual(authenticated, runtime)
+            with self.assertRaisesRegex(RuntimeError, "independently probed"):
+                _authenticate_sionna_runtime(
+                    command,
+                    output,
+                    {"environment_sha256": "b" * 64},
+                )
 
     def test_sionna_scene_export_covers_and_authenticates_external_worlds(self):
         arrays = _archive_arrays(self.path)
@@ -2352,6 +3220,15 @@ class WaibuIntegrationTests(unittest.TestCase):
         self.assertTrue(all(type(value) is float for value in point))
         with self.assertRaisesRegex(ValueError, "three finite"):
             sionna_point3((1.0, 2.0, np.inf))
+
+    def test_sionna_uses_scalar_first_wxyz_bs_pose_quaternions(self):
+        identity = sionna_quaternion_to_euler([1.0, 0.0, 0.0, 0.0])
+        self.assertTrue(np.allclose(identity, [0.0, 0.0, 0.0], atol=1e-12))
+        half_angle = np.pi / 4.0
+        yaw_90 = sionna_quaternion_to_euler(
+            [np.cos(half_angle), 0.0, 0.0, np.sin(half_angle)]
+        )
+        self.assertTrue(np.allclose(yaw_90, [np.pi / 2.0, 0.0, 0.0], atol=1e-12))
 
     def test_sionna_cfr_uses_numpy_without_a_torch_runtime_dependency(self):
         class Paths:

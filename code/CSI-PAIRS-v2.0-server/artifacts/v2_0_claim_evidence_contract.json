@@ -1,9 +1,14 @@
 {
-  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.4",
+  "schema_version": "csi-pairs-v6-claim-evidence-contract-v2.5",
   "artifact_label": "csi-pairs-formal-v2.1-v6",
   "status": "CODE_READY_FOR_FORMAL_INPUT",
   "current_scientific_status": "NO_GO_UNTIL_ALL_REQUIRED_NON_FIXTURE_GATES_PASS",
-  "audited_code_sha": "83d0cd9e7bb20d25994308e33e4e76bbdadb0ff8",
+  "audited_code_sha": "2c0969a7b67086de83471f40f7e65d328bf1ded4",
+  "launch_status": "BLOCKED",
+  "author_decision_blockers": [
+    "SC-GAUGE-001: choose one shared RT reference or one source-derived per-pair gauge without changing the estimand silently",
+    "SC-ROUTE-002: reconcile native full-channel r^A Response with the query-level r^{R,q} unified probe"
+  ],
   "inherited_frozen_evidence": {
     "status": "POST_AUDIT_NO_GO",
     "scientific_use": "FORBIDDEN",
@@ -26,7 +31,18 @@
     "first-party independently trained shuffled-pair and source-only retention controls",
     "built-in source-only SigMap scene-ID runner with checkpoint and training-provenance binding",
     "five first-party resource controls with complete seed checkpoints, loss traces, profiler events, and replay",
-    "common localization head excluded symmetrically while concat bottleneck parameters and FLOPs remain counted"
+    "common localization head excluded symmetrically while concat bottleneck parameters and FLOPs remain counted",
+    "two-phase nonce/hash-bound human approval with complete late-input and compute preflight",
+    "global target support/query isolation, per-role source-city coverage, and dynamic per-city cluster qualification",
+    "CPython 3.12 main-runtime enforcement with reviewed per-platform wheel hashes, a bound pip install receipt, exact versions, and installed RECORD/file authentication",
+    "deterministic Torch, CUBLAS and TF32 settings are configured and reauthenticated by every evidence entrypoint",
+    "every normative V6 clause resolves through an explicit semantic evidence family and exact clause SHA without a section fallback",
+    "complete stage inventory authentication and same-run G3/G4/G5 dependency binding for C8",
+    "nonredistributable resource exclusion, deterministic server and anonymous bundles, identity scanning, and CPU CI",
+    "anonymous supplement excludes internal requirement-matrix tooling and proves its exported public test suite runs to completion",
+    "bundle dry-run verification authenticates the exact expected fixture failure while returning success only for the outer software check",
+    "anonymous identity scanning retains real project identities while excluding generic GitHub merge-committer tokens that otherwise make pull-request CI false-positive",
+    "hosted Linux CPU integration waits allow 300 seconds for the complete extracted public suite and fixture qualification chain without skipping tests or weakening assertions"
   ],
   "implementation_inventory": {
     "shuffled_pair": "SHIPPED_EXECUTABLE_NON_FIXTURE_RESULT_REQUIRED",
@@ -67,10 +83,10 @@
     {"claim_id":"C5","status":"BLOCKED","requires":["target-free mask cover","latent and physical metrics","copy/no-action/action-swap","teacher/readout"]},
     {"claim_id":"C6","status":"BLOCKED","requires":["source-map removal/swap","unified compatibility and response probes","downstream F-only audit"]},
     {"claim_id":"C7","status":"BLOCKED","requires":["all seven G4 subgates"]},
-    {"claim_id":"C8","status":"BLOCKED","requires":["two target cities","strict k=0 and city-level k=8","minimum practical improvement"]},
+    {"claim_id":"C8","status":"BLOCKED","requires":["authenticated G3, G4 and G5 PASS artifacts from the same run","two target cities","strict k=0 and city-level k=8","minimum practical improvement"]},
     {"claim_id":"C9","status":"BLOCKED","requires":["frozen map-only proposals","k=0 common support","calibration and risk-coverage gates"]},
     {"claim_id":"C10","status":"BLOCKED","requires":["A_path matching","balanced strata","zero-path equivalence","A_path_loc preregistration"]},
-    {"claim_id":"C11","status":"BLOCKED","requires":["independent RT calibration","four validation statistics"]},
+    {"claim_id":"C11","status":"BLOCKED","requires":["structured raw fit/validation partitions with inline payloads and disjoint unit/scene identities","four validation statistics evaluated by mean per-unit absolute error"]},
     {"claim_id":"C12","status":"BLOCKED","requires":["second RT engine or controlled real intervention"]},
     {"claim_id":"C13","status":"BLOCKED","requires":["current prior-work search with auditable evidence"]}
   ],
@@ -91,7 +107,7 @@
     "C5": ["G1_G2", "G3"],
     "C6": ["G1_G2", "G3", "retention"],
     "C7": ["G1_G2", "G3", "G4", "G5"],
-    "C8": ["G1_G2", "G5"],
+    "C8": ["G1_G2", "G3", "G4", "G5"],
     "C9": ["G1_G2", "G3", "G6"],
     "C10": ["G1_G2", "G3", "G7"],
     "C11": ["rt_calibration"],

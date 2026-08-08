@@ -1,12 +1,16 @@
 # CSI-PAIRS 论文启动包 V2.1（V6 协议修订）
 
-> 兼容性说明：文件名保留 `v2.0` 是为了不破坏冻结审计路径；本文、运行时 schema 和打包根均为 V2.1。
+> 打包边界：`build_server_bundle.sh` 生成内部实验交付包，不能作为匿名 supplementary
+> 提交。匿名投稿包必须使用 `formal_v2/scripts/build_anonymous_supplement.sh`；它会排除内部
+> Git provenance，以及没有下游再分发许可的第三方文件。
 
-> 日期：2026-08-06（Asia/Shanghai）
+> 兼容性说明：文件名保留 `v2.0` 是为了不破坏冻结审计路径；数据/产物 schema 和打包根保留 V2.1，正式配置与运行门为 V2.3 V6。
+
+> 日期：2026-08-08（Asia/Shanghai）
 > 版本性质：正式实验执行版，不是新增科学结果
 > 当前状态：`CODE_READY_FOR_FORMAL_INPUT`
 > 当前科学结论：`SCIENTIFIC_EVIDENCE=NOT_ASSESSED`；归档 fixture 仍为 `scientific_use=FORBIDDEN`
-> 工程基线：合作者 GitHub `origin/main@3e0eacf39244a957243018388a869d30e859a96d`；旧本地实现不作为代码来源
+> 工程基线：合作者 GitHub `origin/main@eef3040c13264829cda1f4398009f691b52038ae`；审计代码提交 `4074e98fe3c1d1ddccee79672f312b9111185992`；旧本地实现不作为代码来源
 > 科学设计约束：冻结 Idea V6；归档 No-X/null/shortcut 失败仅作历史追溯
 
 ## 0. 一页结论
@@ -17,11 +21,14 @@ V2.1 按冻结 V6 实现数据再生成门、资格门、patch F/P、严格四�
 
 1. 新增 qualified RT/实测数据入口，强制引擎版本、配置哈希、许可、材质、坐标、相位规范、clean target 和重复测量。
 2. 每个 bank 随机化 natural anchor 与 bit-to-primitive mapping；No-X 仍读取真实 source map、radio、patch mask/query 和 typed signed edit，不再用零图代理。
-3. 正式训练前先验收 repeat noise、physical/teacher 双空间 route、teacher reconstruction、oracle-x、No-X、action-swap、null safety 与 variant-ID。
+3. 正式训练前先验收 repeat noise、physical-only primary route、独立 teacher sensitivity strata、teacher reconstruction、oracle-x、No-X、action-swap、null safety 与 variant-ID；teacher 不参与 raw-CSI primary inclusion。
 4. Endpoint/Alignment/Response/Full 使用同一 PyTorch 架构、初始化、batch、mask、步数和完整前向合同；四臂参数量和前向分支一致。
 5. 定位只读取共享 state；目标 support/query 按唯一 receiver position 隔离，最高独立统计单位为 base-map-cluster，并对 seed、draw、cluster 做配对汇总。
 
-V2.1 的 dry run 只能证明软件执行。fixture 在元数据、gate 和报告中永久标记 `FORBIDDEN`，其任何数字都不得进入论文。
+V2.1 的 dry run 只能证明软件执行。fixture qualification 必须以退出码 `1` 和认证状态
+`DRY_RUN_FAIL_NOT_EVIDENCE`、`passed=false`、`scientific_use=FORBIDDEN` 结束；外层 verifier
+仅在完整复核这一预期 fail-closed 状态后返回 `0`。这不是 qualification PASS。fixture 在
+元数据、gate 和报告中永久标记 `FORBIDDEN`，其任何数字都不得进入论文。
 
 ## 1. 本版交付物
 
@@ -58,7 +65,7 @@ V2.1 的 dry run 只能证明软件执行。fixture 在元数据、gate 和报�
 | Gate | 输入 | 通过标准 | 失败退出 |
 |---|---|---|---|
 | G0 文献与资源 | 投稿前检索和资源记录 | 可核查、未过期、许可完整 | 删除首创性表述 |
-| G1 RT/repeat/route | clean CSI 与独立 repeats | 每个 bank repeat threshold 通过，双空间 active/null 数量达标 | 修 RT、gauge 或资产；不能放宽 held-out 阈值 |
+| G1 RT/repeat/route | clean CSI 与独立 repeats | 每个 bank 的 physical primary active/null 覆盖达标，teacher sensitivity 作为独立 audit stratum 通过一致性门 | 修 RT、gauge 或资产；不能用 teacher 改写 primary inclusion，也不能放宽 held-out 阈值 |
 | G2 teacher 与 No-X | source-train teacher、method-selection | teacher/readout、No-X、null、shortcut 全通过 | 停止四臂 |
 | G3 单分支 | 冻结 probe 与 target-free response | Alignment/Response 分别成立且 null 安全 | 删除失败分支结论 |
 | G4 联合价值 | 四臂及五个资源/concat 控制 | 七个子门全部 PASS | 不写 synergy；NOT_ASSESSED 不是 PASS |
@@ -144,57 +151,55 @@ python3 -m unittest discover -s formal_v2/tests -v
   --output /unused/path/data-inspection
 ```
 
-### 7.4 独立再生成后运行正式资格门
-
-```bash
-/unused/path/csi-pairs-v2-env/bin/python -m formal_v2.formal_cli verify-data \
-  --config formal_v2/configs/formal_v2.json \
-  --dataset /path/to/csi_pairs_formal_v2_1_v6.npz \
-  --verifier-manifest /path/to/independent_rt_verifier.json \
-  --output /unused/path/formal-run
-
-/unused/path/csi-pairs-v2-env/bin/python -m formal_v2.formal_cli qualify \
-  --config formal_v2/configs/formal_v2.json \
-  --dataset /path/to/csi_pairs_formal_v2_1_v6.npz \
-  --data-verification-gate /unused/path/formal-run/data_verification/gate.json \
-  --output /unused/path/formal-run
-```
-
-先人工签字检查 `qualification/gate.json`。只有非 fixture `passed=true` 才运行全链：
+### 7.4 独立再生成后准备正式运行
 
 ```bash
 CSI_PAIRS_PYTHON=/unused/path/csi-pairs-v2-env/bin/python \
 CSI_PAIRS_FORMAL_DATASET=/path/to/csi_pairs_formal_v2_1_v6.npz \
-CSI_PAIRS_FORMAL_OUTPUT=/unused/path/formal-run-all \
+CSI_PAIRS_FORMAL_OUTPUT=/unused/path/formal-run \
+CSI_PAIRS_COMPUTE_PLAN=/path/to/authorized-compute-plan.json \
 CSI_PAIRS_VERIFIER_MANIFEST=/path/to/independent_rt_verifier.json \
 CSI_PAIRS_EXTERNAL_ADAPTER_MANIFEST=/path/to/external_adapters.json \
 CSI_PAIRS_EXTERNAL_VALIDITY_MANIFEST=/path/to/external_validity.json \
 CSI_PAIRS_LITERATURE_RESOURCE_MANIFEST=/path/to/literature.json \
 CSI_PAIRS_RT_CALIBRATION_MANIFEST=/path/to/rt_calibration.json \
+CSI_PAIRS_FULL_RUN_PHASE=prepare \
   formal_v2/scripts/run_formal_v2.sh
 ```
 
-资源、scene-ID、shuffled-pair 与 retention 默认使用仓库内 V3 实现；只有替换为经过复核且哈希认证的适配器时才设置相应环境变量。每次正式 run 使用新的输出目录；脚本拒绝覆盖 stage 目录。
+`prepare` 在任何正式后期训练前认证资源、运行时、许可、预算、G0、独立 RT、数据再生成与 G1/G2，然后写入 `approval/request.json` 并停止。人工复核该 request 及早期 gate 后，在 run root 外签发一次性 approval：
 
-## 8. 论文 V2 图表占位符应该写什么
+```bash
+/unused/path/csi-pairs-v2-env/bin/python -m formal_v2.formal_cli create-run-approval \
+  --request /unused/path/formal-run/approval/request.json \
+  --output /path/to/formal-run-human-approval.json \
+  --approver REVIEWED_HUMAN_IDENTIFIER \
+  --expires-utc 2027-01-01T00:00:00Z \
+  --attest-reviewed
+```
 
-`paper_v2/main.tex` 已加入四个可见的 `DRAFT PLACEHOLDER / NOT A RESULT`：
+使用完全相同的输入环境，把 `CSI_PAIRS_FULL_RUN_PHASE` 改为 `run`，并设置 `CSI_PAIRS_HUMAN_APPROVAL_MANIFEST=/path/to/formal-run-human-approval.json`。runner 只恢复同一份已认证的 prepare root；旧 run、布尔 approval、输入/运行时/gate/预算变化、跨 run 重放和已消费 approval 均被拒绝。完整 compute-plan 字段和所有默认 manifest 见根 `README.md` 第 5 节。每次正式 run 使用新的输出目录；脚本拒绝覆盖 stage 目录。
 
-| 图/表 | 应填内容 | 允许替换的条件 |
+## 8. 论文 V2 图表与结果槽位
+
+`paper_v2/main.tex` 当前包含三个不使用实验数字的协议图，以及两个明确标记为 `PLANNED` 的结果 schema：
+
+| 图/表 | 当前内容 | 允许填入结果的条件 |
 |---|---|---|
-| Figure 1 paired audit | 至少两个外部模型的六条件；active/null 分开；paired bank CI | C1 数据与模型合同完成 |
-| Figure 2 architecture | CSI/map -> shared F；endpoint/A/R；teacher audit；oracle-x 独立；下游丢弃辅助头 | 方法代码冻结后可画，不需要结果 |
-| Figure 3 split/gate flow | source 四角色、target support/query、external；G0-G8 失败出口与删除 claim | 数据协议冻结后可画 |
-| Figure 4 formal panel | A wrong-map；B No-X 三基线；C null；D 两城四臂；E interaction CI | 对应 gate 的非 fixture CSV 生成并复核 |
-| Table 3 | Endpoint/A/R/Full 的 active CGS、null gap、Response NMSE、FLOPs | G3/G4 通过或如实报告失败 |
-| Table 4 | 两城 k=0/8/32/128 median/P90；risk 仅 frozen k=0 | G5；risk 另需 calibration gate |
+| Figure 1 | 六条件 paired-intervention audit protocol | 图本身是协议；C1 结论仍需两个 C1-eligible 模型的正式 rows |
+| Figure 2 | CSI/map、shared F/P、target-only loss 路径与 retained module allowlist | 方法/信息预算图，不是效果证据 |
+| Figure 3 | 七个 source roles、target support/query 隔离和 G0-G8 fail-closed 顺序 | 协议图，不是 gate 通过证据 |
+| Table 3 | Endpoint/A/R/Full 的 active CGS、null gap、Response NMSE、FLOPs schema | 对应 G3/G4 正式 rows 生成并复核后逐格填写 |
+| Table 4 | 两城 k=0/8/32/128 median/P90 与 frozen k=0 risk schema | G5 与独立 risk gate 的正式 rows 生成并复核后逐格填写 |
+
+正式结果 panel 在出现经过认证的非 fixture rows 前不实例化。任何 fixture、smoke、单测或 schema PASS 都不能替换 `PLANNED` 单元格。
 
 每个最终 caption 必须写：输入/对照、独立 scene banks 数、训练 seeds、label draws、误差区间、单位和冻结门槛。表中的 `NOT RUN` 不能用 fixture 数字替换。
 
 ## 9. 论文状态和写作动作
 
 - V2 论文是独立目录 `paper_v2/`；`paper/main.tex` 与 V1.26 PDF 未改动。
-- 当前摘要仍写 No-Go，不得把 `READY_FOR_DATA` 改成 method ready/effective。
+- 当前稿件是 pre-experiment protocol freeze；摘要不包含完成式实验结论，不得把软件 ready 改写成 method effective。
 - G2 失败：论文转向数据/readout qualification，不再写 Response 方法。
 - oracle 通过而 No-X 失败：删除 deterministic Response headline，转概率 response 或 paired compatibility。
 - G4 interaction 失败但 Full 胜两单支：最多写 complementary，不写 synergy。
@@ -212,4 +217,4 @@ CSI_PAIRS_RT_CALIBRATION_MANIFEST=/path/to/rt_calibration.json \
 5. 至少两个不同且满足 C1 资格规则的外部 map-conditioned models；当前仓库只有 Wi-GATr 合格；
 6. 正式 GPU 预算与训练时长。
 
-因此 V2.1 的准确裁决是：**工程上可开始正式输入预检与资格实验；在外部输入未齐且没有非 fixture 结果时，科学证据为 `NOT_ASSESSED`，不能启动论文主结果写作。**
+因此 V2.1 的准确裁决是：**允许执行 fixture smoke 与正式输入的只读 preflight；`SC-GAUGE-001`、`SC-ROUTE-002`、外部输入、许可、CUDA 和预算未关闭前，`PAPER_PROTOCOL_GO=NO-GO`、`FORMAL_GO=NO-GO`、`SCIENTIFIC_EVIDENCE=NOT_ASSESSED`，不能启动正式训练或论文主结果写作。**

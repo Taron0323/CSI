@@ -738,7 +738,7 @@ def _validate_evaluation_shortcut_binding(config, dataset, output_root, evidence
         gate,
         config,
         dataset,
-        schema_version="csi-pairs-v6-evaluation-gate-v2",
+        schema_version="csi-pairs-v6-evaluation-gate-v3",
     )
     audit = gate.get("alignment_shortcut_audit")
     required_baselines = set(SHUFFLED_SYSTEMS[2:])

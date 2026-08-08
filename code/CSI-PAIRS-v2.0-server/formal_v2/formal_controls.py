@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from .formal_evidence import (
+    FACTORIAL_SCHEMA,
     bind_rows,
     complete_gate_vector,
     evidence_context,
@@ -61,6 +62,24 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
     manifest = read_strict_json(manifest_path)
     _validate_manifest(manifest, manifest_path.parent)
     root = Path(output_root)
+    factorial_gate_path = root / "factorial" / "gate.json"
+    factorial_gate = read_strict_json(factorial_gate_path)
+    require_stage_manifested_gate(
+        factorial_gate_path,
+        factorial_gate,
+        config,
+        dataset,
+        schema_version=FACTORIAL_SCHEMA,
+    )
+    evaluation_gate_path = root / "evaluation" / "gate.json"
+    evaluation_gate = read_strict_json(evaluation_gate_path)
+    require_stage_manifested_gate(
+        evaluation_gate_path,
+        evaluation_gate,
+        config,
+        dataset,
+        schema_version="csi-pairs-v6-evaluation-gate-v3",
+    )
     output_dir = root / "controls"
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_copy = output_dir / "resource_control_manifest.json"
@@ -225,14 +244,6 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
             if name in G4_CONCAT_CONTROL_IDS
         )
     )
-    evaluation_gate = read_strict_json(root / "evaluation" / "gate.json")
-    require_stage_manifested_gate(
-        root / "evaluation" / "gate.json",
-        evaluation_gate,
-        config,
-        dataset,
-        schema_version="csi-pairs-v6-evaluation-gate-v2",
-    )
     subgates = dict(evaluation_gate["g4_subgates"])
     subgates["6_equal_flop_single_branch_superiority"] = "PASS" if gate6 else "FAIL"
     subgates["7_parameter_and_flop_matched_concat_superiority"] = "PASS" if gate7 else "FAIL"
@@ -265,6 +276,8 @@ def run_resource_controls(config, dataset, manifest_path, output_root):
         "seed_complete_resource_evidence": bool(
             manifest["schema_version"] == "csi-pairs-v6-resource-controls-v3"
         ),
+        "factorial_gate_sha256": sha256_file(factorial_gate_path),
+        "evaluation_gate_sha256": sha256_file(evaluation_gate_path),
         "input_manifest_path": manifest_copy.name,
         "input_manifest_sha256": sha256_file(manifest_copy),
     }
@@ -444,7 +457,7 @@ def _read_localization(path, evidence):
         row["budget"] = int(row["budget"])
         row["draw"] = int(row["draw"])
         row["utility_neg_log_median"] = float(row["utility_neg_log_median"])
-        for key in ("artifact_label", "dataset_sha256", "config_sha256", "fixture", "scientific_use"):
+        for key in evidence:
             row.pop(key, None)
     return rows
 

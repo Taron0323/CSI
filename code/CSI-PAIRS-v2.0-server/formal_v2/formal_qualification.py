@@ -12,7 +12,13 @@ from .formal_evidence import QUALIFICATION_SCHEMA, bind_rows, complete_gate_vect
 from .formal_features import protocol_response_features, variant_features
 from .formal_io import artifact_manifest, sha256_file, write_csv, write_json
 from .formal_protocol import PatchSpec, delay_angle_power, patchify_csi, typed_signed_edit, zero_typed_edit
-from .formal_routing import RouteNormalization, fit_route_normalization, route_coverage, route_dataset
+from .formal_routing import (
+    PRIMARY_ROUTE_CONTRACT,
+    RouteNormalization,
+    fit_route_normalization,
+    route_coverage,
+    route_dataset,
+)
 from .formal_teacher import (
     TeacherBundle,
     masked_reconstruction_nmse,
@@ -57,6 +63,9 @@ def run_formal_qualification(
         minimum_target_cities=int(data_config["minimum_target_cities"]),
         minimum_source_cities=int(data_config["minimum_source_cities"]),
         minimum_banks_per_target_city=int(data_config["minimum_banks_per_target_city"]),
+        minimum_independent_base_map_clusters_per_target_city=int(
+            data_config["minimum_independent_base_map_clusters_per_target_city"]
+        ),
         minimum_banks_per_source_role=int(data_config["minimum_banks_per_source_role"]),
     )
     provisional_evidence = evidence_context(config, dataset, "FORBIDDEN")
@@ -211,6 +220,7 @@ def run_formal_qualification(
         "upstream_gates": gate_vector,
         "teacher_checkpoint": str(teacher_checkpoint.resolve()),
         "teacher_checkpoint_sha256": sha256_file(teacher_checkpoint),
+        "primary_route_contract": PRIMARY_ROUTE_CONTRACT,
         "external_validity": {
             "available": bool(dataset.metadata["external_reference"]["available"]),
             "status": "NOT_ASSESSED",
@@ -230,7 +240,7 @@ def run_formal_qualification(
             "normalization_source_role": "source_encoder_train",
             "threshold_rule": "each configured null threshold must cover its same-unit per-bank repeat-pair quantile",
         },
-        "decision_rule": "Source-encoder-train banks determine route normalization and per-bank train-route coverage; source-method-selection banks determine repeat noise, same-unit route noise floors, branch, teacher, and response qualification. Target, external, probe, calibration, and final-unseen banks are unread.",
+        "decision_rule": "Source-encoder-train banks determine route normalization and per-bank train-route coverage. Alignment primary inclusion uses full-channel physical distance only; Response primary inclusion uses query-patch physical distance only. Teacher sensitivity is an independent audit stratum and auxiliary G2 qualification condition, never a primary inclusion rule. Source-method-selection banks determine repeat noise, same-unit noise floors, branch, teacher, and response qualification. Target, external, probe, calibration, and final-unseen banks are unread.",
         "config": public_formal_config(config),
     }
     write_json(output_dir / "gate.json", gate)

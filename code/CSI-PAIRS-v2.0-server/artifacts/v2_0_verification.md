@@ -1,5 +1,8 @@
 # CSI-PAIRS V2.1 code verification record
 
+> Historical verification snapshot for an earlier commit. Test counts and bundle hashes below are
+> not evidence for the current tree; use the current PR validation record.
+
 Date: 2026-08-07 (Asia/Shanghai)
 
 Engineering status: `CODE_READY_FOR_FORMAL_INPUT`
@@ -7,6 +10,45 @@ Engineering status: `CODE_READY_FOR_FORMAL_INPUT`
 Scientific status: `NO_GO_EVIDENCE_NOT_RUN`
 
 This record supersedes the previous V2.0 dry-run report. Archived V1/V1.26 fixture outputs and numbers are traceability material only; they do not prove that the current `formal_v2` implementation executes correctly and cannot support a V6 claim.
+
+## 2026-08-08 current PR addendum
+
+The current repair starts from `BASE_SHA`
+`eef3040c13264829cda1f4398009f691b52038ae`; code and regression tests are fixed at
+`AUDITED_CODE_SHA` `2c0969a7b67086de83471f40f7e65d328bf1ded4`. The source-tree suite passes
+`271/271` tests under CPython 3.12.10. Compilation, Ruff `E9,F`, `pip check`, strict V2.3
+formal/smoke configuration loading, 25 CLI help paths, shell syntax, and vendored hashes pass.
+
+The anonymous-release regression now builds a fresh archive, excludes the private requirement-matrix
+generator and its internal audit tests, extracts the archive, and executes every exported public test.
+This closes the discovered failure in which the exported suite retained an audit test whose internal
+claim contract was intentionally absent. The release remains separated from the provenance-bearing
+internal server delivery.
+
+Remote-head replay found two additional delivery defects and closed both before this audited SHA.
+First, the bundle verifier inherited the fixture qualification's expected exit `1`; it now returns
+success only after authenticating the complete `DRY_RUN_FAIL_NOT_EVIDENCE`, `passed=false`,
+`fixture=true`, `scientific_use=FORBIDDEN` state. Second, pull-request merge refs use the generic
+`GitHub <noreply@github.com>` committer; the anonymity scan now excludes only those two
+non-identifying automation tokens while retaining real author/committer identities, repository
+owners, project commit SHAs, and personal-path detection.
+
+A subsequent GitHub Actions replay completed the code assertions but two nested integration
+subprocesses exceeded their former 120-second limits on the hosted Linux CPU. Those bounded waits
+are now 300 seconds without skipping tests or changing assertions. Both targeted regressions and
+the then-current 258-test source suite passed locally. The current 271-test suite passes at the
+audited SHA after adding the hashed-runtime and atomic-trace regressions.
+
+The reproducible paper build has SHA-256
+`35117a4a30261f7d9c04cdeedcf4edb0634722354509dc9b92da2f3d5acf2f3e`, contains 10 PDF
+pages with references beginning on page 9 and appendices after references, and passes the ICLR
+preflight with zero findings. All pages were visually inspected; no clipping, overlap, author/title
+metadata, unembedded font, undefined citation/reference, duplicate label, or overfull box was found.
+
+These are implementation and protocol checks, not experimental results. `PAPER_PROTOCOL_GO=NO-GO`,
+`FORMAL_INPUT_READY=BLOCKED`, `LAUNCH_READY=BLOCKED`, `FORMAL_GO=NO-GO`, and
+`SCIENTIFIC_EVIDENCE=NOT_ASSESSED` remain binding for the author-decision and external-input blockers
+listed in `artifacts/formal_experiment_blockers.md`.
 
 ## 2026-08-07 readiness repair
 

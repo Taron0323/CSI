@@ -1,5 +1,43 @@
 # CSI-PAIRS V6 bidirectional traceability audit
 
+> Historical audit snapshot. Counts, hashes, and package verdicts below describe the earlier audited
+> commit and must not be presented as verification of the current tree. The current readiness repair
+> adds runtime reauthentication, raw-evidence C11/G8 contracts, API search receipts, conservative
+> redistribution metadata, and separate internal/anonymous bundle builders.
+
+## 2026-08-08 current PR addendum
+
+- Current `BASE_SHA`: `eef3040c13264829cda1f4398009f691b52038ae`.
+- Current `AUDITED_CODE_SHA`: `2c0969a7b67086de83471f40f7e65d328bf1ded4`.
+- Current source-tree verification: `271/271` tests, Python compilation, Ruff `E9,F`, dependency
+  health, strict V2.3 configs, 25 CLI help paths, shell syntax, and vendored hashes pass.
+- The regenerated atomic matrix contains 2,124 rows from the workspace's unique V6 authority:
+  829 `EXACT`, 1,268 `PARTIAL/PROXY`, 19 `MISSING`, and 8 `CONFLICT`. Markdown table data cells are
+  normative without keyword inference; source CI rebuilds the matrix and compares every tracked row.
+- The formal CPython 3.12 lock admits only reviewed macOS arm64 and Linux x86_64 wheels. Runtime
+  evidence binds the pip installation receipt, wheel hashes, installed RECORD/file contents,
+  interpreter and platform floors, source tree, CUDA inventory, and deterministic Torch settings.
+- The anonymous exporter now omits internal requirement-matrix code and audit tests together. A
+  source-tree regression builds and extracts the archive and runs the complete exported public suite.
+- Remote replay additionally closes the bundle verifier's expected fixture-exit propagation and the
+  GitHub pull-request merge committer's non-identifying anonymity-scan false positive. Real project
+  identities, repository provenance, project SHAs, and personal paths remain fail-closed.
+- A later GitHub Actions replay exposed two legitimate nested integration commands exceeding their
+  former 120-second subprocess bounds on the hosted Linux CPU. Their assertions and coverage are
+  unchanged; both bounded waits are now 300 seconds, while local targeted and complete-suite
+  executions pass.
+- The current paper PDF passes reproducible-build, ICLR preflight, metadata/font, LaTeX-log, and
+  10-page visual inspection checks. It remains a pre-experiment protocol draft and contains no
+  substituted fixture results.
+
+Current layered verdicts are `PACKAGE_INTEGRITY=PASS` for the verified source and package mechanisms,
+`SOFTWARE_READY=PASS` on the recorded CPython 3.12 CPU environment,
+`V6_PROTOCOL_FIDELITY=BLOCKED` by `SC-GAUGE-001` and `SC-ROUTE-002`,
+`PAPER_PROTOCOL_READY=BLOCKED`, `FORMAL_INPUT_READY=BLOCKED`,
+`LAUNCH_READY=BLOCKED`, `ANONYMOUS_RELEASE_READY=PASS` for mechanical packaging only, and
+`SCIENTIFIC_EVIDENCE=NOT_ASSESSED`. The historical counts and verdict tables below remain attached to
+their 2026-08-07 snapshot and must not replace this addendum.
+
 Date: 2026-08-07 (Asia/Shanghai)
 
 `BASE_SHA`: `3e0eacf39244a957243018388a869d30e859a96d` (`origin/main` when work began).
@@ -114,7 +152,7 @@ reusing the earlier correlation contract.
 | C8 | Two target cities at strict k=0 and city-level k=8 | localization/statistics | `EXACT` | `BLOCKED` |
 | C9 | All four risk-gate families | risk/claims | `EXACT` | `BLOCKED` |
 | C10 | Path mechanism and zero-path equivalence | path/claims | `EXACT` | `BLOCKED` |
-| C11 | Independent RT calibration with all registered validation statistics | `formal_rt_calibration.py` | `PARTIAL/PROXY` external fit/validation execution | `BLOCKED` |
+| C11 | Independent RT calibration with structured raw fit/validation partitions, inline payloads, disjoint unit/scene identities, and mean per-unit absolute error | `formal_rt_calibration.py` | `PARTIAL/PROXY` external fit/validation execution | `BLOCKED` |
 | C12 | Independent RT engine or controlled real intervention | `formal_external_validity.py` | `PARTIAL/PROXY` external evidence | `BLOCKED` |
 | C13 | Current, auditable literature search and overlap decision | `formal_literature.py` | `PARTIAL/PROXY` external literature input | `BLOCKED` |
 

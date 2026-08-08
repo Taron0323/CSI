@@ -50,11 +50,19 @@ def paired_sign_flip_test(
         null_values = np.abs(np.mean(signs * differences[None, :], axis=1))
         method = "monte_carlo"
     exceed = int(np.sum(null_values >= observed - 1e-15))
+    p_value = (
+        float(exceed / null_values.size)
+        if method == "exact"
+        else float((exceed + 1) / (null_values.size + 1))
+    )
     return {
         "cluster_count": int(clusters.size),
         "method": method,
         "draws": int(null_values.size),
-        "p_value_two_sided": float((exceed + 1) / (null_values.size + 1)),
+        "finite_sample_correction": "none_exact_enumeration"
+        if method == "exact"
+        else "plus_one_monte_carlo",
+        "p_value_two_sided": p_value,
     }
 
 

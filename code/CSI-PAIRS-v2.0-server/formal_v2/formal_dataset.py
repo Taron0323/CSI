@@ -24,6 +24,7 @@ SOURCE_ROLES = (
 )
 SCENE_ROLES = SOURCE_ROLES + ("target", "external_validation")
 POSITION_ROLES = ("standard", "support_pool", "query")
+PHYSICAL_POSITION_ATOL_M = 1e-9
 REQUIRED_ARRAYS = {
     "csi_repeat",
     "csi_clean",
@@ -63,6 +64,18 @@ REQUIRED_ARRAYS = {
 
 class FormalDatasetError(ValueError):
     pass
+
+
+def same_physical_position(left: np.ndarray, right: np.ndarray) -> bool:
+    """Compare frozen BS-centered receiver coordinates at the contract tolerance."""
+    return bool(
+        np.allclose(
+            np.asarray(left, dtype=np.float64),
+            np.asarray(right, dtype=np.float64),
+            rtol=0.0,
+            atol=PHYSICAL_POSITION_ATOL_M,
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -208,6 +221,49 @@ class FormalDataset:
             for scene in self.indices_for_role(role)
         }
 
+    def unique_target_support_positions(self, city: str) -> list[tuple[int, int]]:
+        """Return one row for each stable physical support position in a target city."""
+        selected: list[tuple[int, int]] = []
+        identifiers: set[str] = set()
+        coordinates: list[np.ndarray] = []
+        for scene_value in self.indices_for_role("target"):
+            scene = int(scene_value)
+            if str(self.city_ids[scene]) != str(city):
+                continue
+            for position_value in np.flatnonzero(
+                self.position_roles[scene] == "support_pool"
+            ):
+                position = int(position_value)
+                identifier = str(self.position_ids[scene, position])
+                coordinate = self.positions[scene, position]
+                if identifier in identifiers or any(
+                    same_physical_position(coordinate, existing)
+                    for existing in coordinates
+                ):
+                    continue
+                identifiers.add(identifier)
+                coordinates.append(coordinate)
+                selected.append((scene, position))
+        return selected
+
+    def validate_target_support_capacity(self, minimum_unique_positions: int) -> None:
+        if isinstance(minimum_unique_positions, bool) or not isinstance(
+            minimum_unique_positions, int
+        ):
+            raise FormalDatasetError("minimum target support capacity must be an integer")
+        if minimum_unique_positions < 0:
+            raise FormalDatasetError("minimum target support capacity must be nonnegative")
+        target_cities = sorted(
+            set(str(value) for value in self.city_ids[self.scene_roles == "target"])
+        )
+        for city in target_cities:
+            available = len(self.unique_target_support_positions(city))
+            if available < minimum_unique_positions:
+                raise FormalDatasetError(
+                    f"target city {city!r} has {available} unique support_pool positions, "
+                    f"fewer than configured max k={minimum_unique_positions}"
+                )
+
     @cached_property
     def canonical_base_map_digests(self) -> np.ndarray:
         """Content identities for the unedited (all-zero bit state) foundations."""
@@ -281,7 +337,9 @@ class FormalDataset:
         minimum_target_cities: int = 2,
         minimum_source_cities: int = 2,
         minimum_banks_per_target_city: int = 2,
+        minimum_independent_base_map_clusters_per_target_city: int = 2,
         minimum_banks_per_source_role: int = 1,
+        minimum_unique_support_positions_per_target_city: int = 1,
     ) -> None:
         if require_clean_csi is not True:
             raise FormalDatasetError("V6 does not permit disabling clean CSI targets")
@@ -311,10 +369,12 @@ class FormalDataset:
         if self.radio_config.ndim != 2 or self.radio_config.shape[0] != scenes or self.radio_config.shape[1] < 1:
             raise FormalDatasetError("radio_config must have shape [scene, radio_feature]")
         if self.bs_pose.shape != (scenes, 7):
-            raise FormalDatasetError("bs_pose must have shape [scene, 7] as xyz plus unit quaternion")
+            raise FormalDatasetError(
+                "bs_pose must have shape [scene, 7] as xyz plus scalar-first wxyz unit quaternion"
+            )
         quaternion_norm = np.linalg.norm(self.bs_pose[:, 3:], axis=1)
         if not np.allclose(quaternion_norm, 1.0, atol=1e-6, rtol=0.0):
-            raise FormalDatasetError("bs_pose quaternion must have unit norm")
+            raise FormalDatasetError("bs_pose scalar-first wxyz quaternion must have unit norm")
         if self.repeat_seeds.shape != (scenes, worlds, positions, repeats):
             raise FormalDatasetError("repeat_seeds must have shape [scene, world, position, repeat]")
         if np.any(self.repeat_seeds < 0):
@@ -400,10 +460,13 @@ class FormalDataset:
             if len(set(self.position_ids[scene].tolist())) != positions:
                 raise FormalDatasetError("position_ids must be unique within each scene bank")
         city_position_coordinates = {}
+        city_position_roles = {}
+        city_coordinate_rows: dict[str, list[tuple[np.ndarray, str, str]]] = {}
         for scene in range(scenes):
             city = str(self.city_ids[scene])
             for position in range(positions):
-                key = (city, str(self.position_ids[scene, position]))
+                position_id = str(self.position_ids[scene, position])
+                key = (city, position_id)
                 coordinate = self.positions[scene, position]
                 if key in city_position_coordinates and not np.allclose(
                     city_position_coordinates[key], coordinate, rtol=0.0, atol=1e-9
@@ -412,6 +475,28 @@ class FormalDataset:
                         "a city-level position_id maps to inconsistent BS-centered coordinates"
                     )
                 city_position_coordinates[key] = coordinate
+                role = str(self.position_roles[scene, position])
+                if key in city_position_roles and city_position_roles[key] != role:
+                    raise FormalDatasetError(
+                        "a city-level position_id may not cross support_pool/query roles"
+                    )
+                city_position_roles[key] = role
+                for existing_coordinate, existing_id, existing_role in city_coordinate_rows.setdefault(
+                    city, []
+                ):
+                    if not same_physical_position(existing_coordinate, coordinate):
+                        continue
+                    if existing_id != position_id:
+                        raise FormalDatasetError(
+                            "the same city-level BS-centered coordinate must map to one position_id"
+                        )
+                    if existing_role != role:
+                        raise FormalDatasetError(
+                            "the same city-level physical position may not cross support_pool/query roles"
+                        )
+                    break
+                else:
+                    city_coordinate_rows[city].append((coordinate, position_id, role))
         for name, identifiers in (
             ("scene_ids", self.scene_ids),
             ("bank_ids", self.bank_ids),
@@ -440,19 +525,42 @@ class FormalDataset:
         source_cities = set(self.city_ids[np.isin(self.scene_roles, SOURCE_ROLES)].tolist())
         if len(source_cities) < minimum_source_cities:
             raise FormalDatasetError("too few independent source cities")
+        for role in SOURCE_ROLES:
+            role_cities = set(self.city_ids[self.scene_roles == role].tolist())
+            if len(role_cities) < minimum_source_cities:
+                raise FormalDatasetError(
+                    f"{role} covers too few independent source cities"
+                )
         if source_cities.intersection(target_cities):
             raise FormalDatasetError("source and target city identifiers must be disjoint")
+        self.validate_target_support_capacity(
+            minimum_unique_support_positions_per_target_city
+        )
         for city in target_cities:
-            count = len(
+            bank_count = len(
                 {
-                    self.independent_unit_id(scene)
+                    str(self.bank_ids[scene])
                     for scene in range(scenes)
                     if self.scene_roles[scene] == "target" and self.city_ids[scene] == city
                 }
             )
-            if count < minimum_banks_per_target_city:
+            if bank_count < minimum_banks_per_target_city:
                 raise FormalDatasetError(
-                    f"target city {city!r} has too few independent base-map clusters"
+                    f"target city {city!r} has too few distinct banks"
+                )
+            canonical_cluster_count = len(
+                {
+                    self.canonical_base_map_digest(scene)
+                    for scene in range(scenes)
+                    if self.scene_roles[scene] == "target" and self.city_ids[scene] == city
+                }
+            )
+            if (
+                canonical_cluster_count
+                < minimum_independent_base_map_clusters_per_target_city
+            ):
+                raise FormalDatasetError(
+                    f"target city {city!r} has too few independent canonical base-map clusters"
                 )
         for cluster in set(self.base_map_cluster_ids.tolist()):
             mask = self.base_map_cluster_ids == cluster

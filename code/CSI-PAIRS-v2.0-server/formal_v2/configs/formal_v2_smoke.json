@@ -1,5 +1,5 @@
 {
-  "schema_version": "csi-pairs-formal-config-v2.2-v6",
+  "schema_version": "csi-pairs-formal-config-v2.3-v6",
   "artifact_label": "csi-pairs-v6-software-fixture",
   "seeds": [17, 23, 31],
   "data": {
@@ -9,6 +9,7 @@
     "minimum_target_cities": 2,
     "minimum_source_cities": 2,
     "minimum_banks_per_target_city": 2,
+    "minimum_independent_base_map_clusters_per_target_city": 2,
     "minimum_banks_per_source_role": 1
   },
   "qualification": {

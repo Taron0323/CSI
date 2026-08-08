@@ -12,9 +12,9 @@ from .formal_dataset import DATASET_SCHEMA_VERSION, SOURCE_ROLES, _array_sha256
 def write_nonscientific_fixture(
     path: str | Path,
     seed: int = 20270805,
-    scene_count: int = 11,
+    scene_count: int | None = None,
     positions: int = 16,
-    source_banks_per_role: int = 1,
+    source_banks_per_role: int = 2,
 ) -> Path:
     """Create a V6-shaped deterministic code fixture with permanently forbidden use."""
     target = Path(path)
@@ -25,6 +25,8 @@ def write_nonscientific_fixture(
     if source_banks_per_role < 1:
         raise ValueError("source_banks_per_role must be a positive integer")
     minimum_scenes = len(SOURCE_ROLES) * source_banks_per_role + 4
+    if scene_count is None:
+        scene_count = minimum_scenes
     if scene_count < minimum_scenes:
         raise ValueError(
             "fixture needs the requested banks for all seven source roles and "
@@ -140,6 +142,7 @@ def write_nonscientific_fixture(
             [[1, 4], [1, 6], [2, 4], [2, 6], [4, 1], [6, 1], [4, 4], [6, 6]],
             dtype=np.float64,
         )
+        fixed += 0.01 * scene
         remaining = rng.uniform(0.5, map_size - 0.5, size=(positions - fixed.shape[0], 2))
         coordinates[scene] = np.vstack((fixed, remaining))[:positions]
         for position_index in range(positions):

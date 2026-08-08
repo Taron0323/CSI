@@ -5,10 +5,14 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
 from formal_v2.formal_evaluation import (
+    _alignment_shortcut_rows,
+    _evaluation_gate,
+    _g3_primary_scope_intervals,
     _gray_cells_complete,
     _native_probe_correlation_macro,
     _response_effect_rows,
@@ -52,6 +56,233 @@ from formal_v2.formal_risk import (
 
 
 class RiskPathEvaluationIntegrityTests(unittest.TestCase):
+    def test_g3_scope_intervals_cannot_hide_target_regression(self):
+        cgs_rows = []
+        response_rows = []
+        for scope, alignment_value, response_value in (
+            ("source_final_unseen_bank", 0.9, 0.1),
+            ("target:target-a", 0.4, 0.9),
+        ):
+            for index in range(6):
+                common = {
+                    "seed": 1,
+                    "base_map_cluster_id": f"{scope}-cluster-{index}",
+                    "canonical_base_map_digest": f"{scope}-cluster-{index}",
+                    "bank_id": f"{scope}-bank-{index}",
+                    "canonical_bank_digest": f"{scope}-bank-{index}",
+                    "evaluation_scope": scope,
+                }
+                cgs_rows.extend(
+                    (
+                        {**common, "arm": "endpoint", "cgs_auroc": 0.5},
+                        {**common, "arm": "alignment", "cgs_auroc": alignment_value},
+                    )
+                )
+                response_rows.extend(
+                    (
+                        {
+                            **common,
+                            "arm": "endpoint",
+                            "native_target_free_full_channel_nmse": 0.5,
+                        },
+                        {
+                            **common,
+                            "arm": "response",
+                            "native_target_free_full_channel_nmse": response_value,
+                        },
+                    )
+                )
+        intervals = _g3_primary_scope_intervals(
+            cgs_rows,
+            response_rows,
+            ["source_final_unseen_bank", "target:target-a"],
+            100,
+        )
+        self.assertGreater(
+            intervals["source_final_unseen_bank"]["alignment_superiority"][
+                "paired_mean_difference"
+            ],
+            0,
+        )
+        self.assertLess(
+            intervals["target:target-a"]["alignment_superiority"][
+                "paired_mean_difference"
+            ],
+            0,
+        )
+        self.assertLess(
+            intervals["target:target-a"]["response_superiority"][
+                "paired_mean_difference"
+            ],
+            0,
+        )
+
+    def test_g3_gate_cannot_pool_away_target_response_control_failure(self):
+        strong = {
+            "assessed": True,
+            "cluster_count": 4,
+            "paired_mean_difference": 0.4,
+            "ci95_low": 0.2,
+            "ci95_high": 0.6,
+            "confidence_level": 0.95,
+            "p_value_two_sided": 1e-12,
+        }
+        failed = {
+            **strong,
+            "paired_mean_difference": -0.1,
+            "ci95_low": -0.2,
+            "ci95_high": 0.0,
+        }
+        scoped = {
+            scope: {
+                "alignment_superiority": dict(strong),
+                "response_superiority": dict(strong),
+                "response_vs_copy": dict(
+                    failed if scope == "target:target-a" else strong
+                ),
+                "response_vs_no_action": dict(strong),
+                "response_vs_action_swap": dict(strong),
+                "response_direction": dict(strong),
+            }
+            for scope in ("source_final_unseen_bank", "target:target-a")
+        }
+        dataset = SimpleNamespace(
+            city_ids=np.asarray(["source-a", "target-a"]),
+            scene_roles=np.asarray(["source_final_unseen_bank", "target"]),
+            bank_ids=np.asarray(["source-bank", "target-bank"]),
+            is_fixture=False,
+            indices_for_role=lambda role: np.asarray(
+                [0] if role == "source_final_unseen_bank" else [1]
+            ),
+        )
+        config = {
+            "seeds": [1],
+            "factorial": {
+                "arms": ["endpoint", "alignment", "response", "full"]
+            },
+            "qualification": {
+                "minimum_geometry_matched_wrong_action_fraction": 0.5
+            },
+            "evaluation": {
+                "bootstrap_resamples": 100,
+                "familywise_alpha": 0.05,
+                "minimum_alignment_superiority": 0.01,
+                "minimum_response_superiority": 0.01,
+                "minimum_native_probe_correlation": 0.0,
+                "null_score_equivalence_margin": 0.01,
+                "response_null_violation_rate_max": 0.05,
+                "response_null_equivalence_margin": 0.01,
+                "minimum_cgs_noninferiority": -0.01,
+                "minimum_response_noninferiority": -0.01,
+            },
+        }
+        response_row = {
+            "arm": "response",
+            "native_null_violation_rate": 0.0,
+            "native_latent_null_violation_rate": 0.0,
+            "native_null_delta_rms_mean": 0.0,
+            "native_latent_null_delta_rms_mean": 0.0,
+            "native_action_swap_exact_count": 1,
+            "native_action_swap_exact_fraction": 1.0,
+            "probe_action_swap_exact_count": 1,
+            "probe_action_swap_exact_fraction": 1.0,
+            "probe_oracle_x_active_patch_nmse": 0.0,
+            "native_delta_relative_magnitude_error": 0.0,
+            "native_sgcs": 1.0,
+            "native_transition_skill": 1.0,
+            "native_path_loss_change_mae": 0.0,
+            "native_delay_spread_change_mae": 0.0,
+            "native_angular_spread_change_mae": 0.0,
+            "native_path_loss_direction_accuracy": 1.0,
+            "native_delay_spread_direction_accuracy": 1.0,
+            "native_angular_spread_direction_accuracy": 1.0,
+        }
+        response_rows = [response_row, {**response_row, "arm": "full"}]
+        contracts = {
+            "scene_id_only": "stable_hashed_bank_token_no_label_feature",
+            "edit_status_xor": "separate_world_bits_and_natural_flags_no_xor",
+            "variant_id_matcher": "separate_stable_hashed_variant_tokens_no_match_or_unk_override",
+        }
+        shortcut_rows = []
+        for arm, bank in itertools.product(config["factorial"]["arms"], dataset.bank_ids):
+            for baseline in (
+                "constant",
+                "csi_only",
+                "map_only",
+                "scene_id_only",
+                "edit_status_xor",
+                "variant_id_matcher",
+            ):
+                row = {
+                    "seed": 1,
+                    "arm": arm,
+                    "canonical_bank_digest": bank,
+                    "baseline": baseline,
+                    "unseen_bank_auroc": 0.5,
+                }
+                if baseline in contracts:
+                    row["identity_token_contract"] = contracts[baseline]
+                shortcut_rows.append(row)
+        null_safety = {
+            arm: {"passed": True} for arm in config["factorial"]["arms"]
+        }
+        with (
+            patch(
+                "formal_v2.formal_evaluation._null_safety_by_arm",
+                return_value=null_safety,
+            ),
+            patch(
+                "formal_v2.formal_evaluation._paired_arm_comparison",
+                return_value=dict(strong),
+            ),
+            patch(
+                "formal_v2.formal_evaluation._within_arm_advantage_interval",
+                return_value=dict(strong),
+            ),
+            patch(
+                "formal_v2.formal_evaluation._within_arm_level_interval",
+                return_value=dict(strong),
+            ),
+            patch(
+                "formal_v2.formal_evaluation._g3_primary_scope_intervals",
+                return_value=scoped,
+            ),
+            patch(
+                "formal_v2.formal_evaluation._effect_bins_complete",
+                return_value=True,
+            ),
+            patch(
+                "formal_v2.formal_evaluation._gray_cells_complete",
+                return_value=True,
+            ),
+            patch(
+                "formal_v2.formal_evaluation._native_probe_correlation_macro",
+                return_value=1.0,
+            ),
+            patch(
+                "formal_v2.formal_evaluation._canonical_bank_digest",
+                side_effect=lambda data, scene: str(data.bank_ids[scene]),
+            ),
+        ):
+            gate = _evaluation_gate(
+                config,
+                dataset,
+                [],
+                [],
+                [],
+                response_rows,
+                shortcut_rows,
+                {"g4_subgates": {"complete": "PASS"}, "gate_vector": {"G5": "PASS"}},
+                {},
+                qualification_gate_sha256="a" * 64,
+                factorial_gate_sha256="b" * 64,
+            )
+        self.assertFalse(gate["passed"])
+        self.assertEqual(
+            gate["g3_subgates"]["9_unpooled_source_and_target_primary_metrics"],
+            "FAIL",
+        )
+
     def test_gray_completeness_requires_every_unique_canonical_cell(self):
         expected = {
             (seed, arm, bank)
@@ -133,6 +364,52 @@ class RiskPathEvaluationIntegrityTests(unittest.TestCase):
         self.assertFalse(np.array_equal(first[2], alternative[2]))
         self.assertFalse(np.array_equal(first[0], unseen_bank[0]))
         self.assertFalse(np.all(unseen_bank[2] == 1.0))
+
+    def test_shortcut_rows_preserve_their_exact_evaluation_scope(self):
+        labels = np.asarray([0, 1, 0, 1], dtype=np.int64)
+        features = np.arange(4, dtype=np.float64)[:, None]
+        fields = (
+            "constant_shortcut_features",
+            "csi_only_shortcut_features",
+            "map_only_shortcut_features",
+            "scene_id_only_shortcut_features",
+            "edit_status_xor_shortcut_features",
+            "variant_id_match_shortcut_features",
+        )
+        source = {"labels": labels, **{field: features for field in fields}}
+        evaluated = {
+            "labels": labels,
+            "base_map_cluster_ids": np.asarray(["cluster"] * 4),
+            "canonical_base_map_digests": np.asarray(["a" * 64] * 4),
+            "canonical_bank_digests": np.asarray(["b" * 64] * 4),
+            "city_ids": np.asarray(["city-b"] * 4),
+            **{field: features for field in fields},
+        }
+        with (
+            patch(
+                "formal_v2.formal_evaluation.fit_select_compatibility_probe",
+                return_value=(object(), {"selected_family": "linear"}),
+            ),
+            patch(
+                "formal_v2.formal_evaluation.predict_binary_probe",
+                side_effect=lambda _probe, values: np.asarray(values)[:, 0],
+            ),
+        ):
+            rows = _alignment_shortcut_rows(
+                1,
+                "full",
+                "bank-b",
+                "target:city-b",
+                source,
+                source,
+                evaluated,
+                np.ones(4, dtype=np.bool_),
+                {},
+            )
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(
+            {row["evaluation_scope"] for row in rows}, {"target:city-b"}
+        )
 
     def test_risk_coverage_is_invariant_to_tied_score_row_order(self):
         errors = np.asarray([9.0, 1.0, 7.0, 2.0, 5.0, 3.0, 8.0, 4.0])
@@ -859,7 +1136,9 @@ class RiskPathEvaluationIntegrityTests(unittest.TestCase):
             patch_mean=np.zeros((spec.patch_count, spec.patch_dim)),
             patch_scale=np.ones((spec.patch_count, spec.patch_dim)),
         )
-        result = _transition_metrics(target, source, target, normalization, spec)
+        result = _transition_metrics(
+            target, source, source, target, normalization, spec
+        )
         self.assertAlmostEqual(result["native_sgcs"], 1.0)
         self.assertAlmostEqual(result["native_transition_skill"], 1.0)
         for name in ("path_loss", "delay_spread", "angular_spread"):
@@ -886,9 +1165,36 @@ class RiskPathEvaluationIntegrityTests(unittest.TestCase):
             patch_mean=np.zeros((spec.patch_count, spec.patch_dim)),
             patch_scale=np.ones((spec.patch_count, spec.patch_dim)),
         )
-        result = _transition_metrics(source, source, target, normalization, spec)
+        result = _transition_metrics(
+            source, source, source, target, normalization, spec
+        )
         self.assertAlmostEqual(result["native_sgcs"], 0.0)
         self.assertAlmostEqual(result["native_transition_skill"], 0.0)
+
+    def test_transition_delta_uses_model_zero_action_not_source_truth(self):
+        spec = PatchSpec(
+            antennas=2,
+            subcarriers=2,
+            patch_complex_size=2,
+            patch_antenna_size=1,
+            patch_subcarrier_size=2,
+        )
+        source = patchify_csi(np.zeros((1, 8), dtype=np.float64), spec)
+        target = patchify_csi(np.ones((1, 8), dtype=np.float64), spec)
+        zero_action = patchify_csi(
+            np.full((1, 8), 10.0, dtype=np.float64), spec
+        )
+        action = patchify_csi(
+            np.full((1, 8), 11.0, dtype=np.float64), spec
+        )
+        normalization = SimpleNamespace(
+            patch_mean=np.zeros((spec.patch_count, spec.patch_dim)),
+            patch_scale=np.ones((spec.patch_count, spec.patch_dim)),
+        )
+        result = _transition_metrics(
+            action, zero_action, source, target, normalization, spec
+        )
+        self.assertAlmostEqual(result["native_transition_skill"], 1.0)
 
     def test_nonexact_action_swap_is_excluded_from_response_effect(self):
         evaluated = {

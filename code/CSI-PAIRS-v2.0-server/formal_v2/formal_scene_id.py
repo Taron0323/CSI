@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -219,6 +220,7 @@ def _validate_manifest(manifest):
         raise ValueError("scene-ID manifest schema mismatch")
     if not isinstance(manifest["adapters"], list) or not manifest["adapters"]:
         raise ValueError("scene-ID audit requires at least one map-conditioned model adapter")
+    seen = set()
     for adapter in manifest["adapters"]:
         if set(adapter) != {
             "adapter_id", "model_name", "implementation_revision", "adapter_source_path",
@@ -228,6 +230,17 @@ def _validate_manifest(manifest):
             raise ValueError("scene-ID adapter fields must be exact")
         if not isinstance(adapter["command"], list) or not adapter["command"]:
             raise ValueError("scene-ID adapter command must be a nonempty argv list")
+        adapter_id = adapter["adapter_id"]
+        if (
+            not isinstance(adapter_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", adapter_id)
+            is None
+            or adapter_id in {".", ".."}
+        ):
+            raise ValueError("scene-ID adapter_id must be a safe path component")
+        if adapter_id in seen:
+            raise ValueError("scene-ID adapter IDs must be unique")
+        seen.add(adapter_id)
         if adapter["implementation_revision"] != adapter["adapter_source_sha256"]:
             raise ValueError(
                 "scene-ID implementation revision must equal the authenticated source hash"

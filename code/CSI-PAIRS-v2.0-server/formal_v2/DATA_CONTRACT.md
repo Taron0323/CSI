@@ -15,11 +15,11 @@ Use one compressed NumPy archive with `allow_pickle=False`. `metadata_json` and 
 | `maps`, `noop_maps` | `[scene,world,map_channel,row,column]` | Canonical world and independent empty-edit rerender |
 | `map_channel_names` | `[map_channel]` | Must include `occupancy`, `height`, `material` |
 | `canonical_map_sha256`, `noop_map_sha256` | `[scene,world]` | Digest of every stored canonical rendering |
-| `positions` | `[scene,position,2]` | BS-centered right-handed meter coordinates |
-| `position_ids` | `[scene,position]` | Stable receiver-position identity used for city-level k |
+| `positions` | `[scene,position,2]` | BS-centered right-handed meter coordinates; within a city, the same physical coordinate must map to exactly one stable ID and role |
+| `position_ids` | `[scene,position]` | Stable receiver-position identity used for city-level k; IDs and physical coordinates are one-to-one within each city |
 | `free_space` | `[scene,world,position]` | Boolean common-free-space proof; every stored entry true |
 | `radio_config` | `[scene,radio_feature]` | Carrier/array/antenna configuration supplied to F |
-| `bs_pose` | `[scene,7]` | xyz plus unit quaternion in the frozen local frame |
+| `bs_pose` | `[scene,7]` | xyz plus scalar-first unit quaternion `(qw,qx,qy,qz)` in the frozen local frame (`wxyz` order) |
 | `repeat_seeds` | `[scene,world,position,repeat]` | Unique observation-noise seeds across sibling worlds |
 | `phase_reference_ids` | `[scene,position]` | Shared sibling-world phase/gauge reference identity |
 | `base_map_cluster_ids` | `[scene]` | Repeated foundations share split/city/statistical cluster |
@@ -48,13 +48,20 @@ The exact source ledger is:
 
 `target` and `external_validation` are separate evaluation roles. Source and target city IDs must be disjoint. Formal configuration requires at least two source cities, two target cities, multiple independent banks per target city, and the configured bank minimum in every source role. A base-map cluster may not cross a role or city.
 
+Every target city must contain at least `max(localization.label_budgets)` unique
+`support_pool` physical positions. The runner checks this capacity before creating formal run
+artifacts. Support/query exclusion compares both the stable ID and the BS-centered coordinate.
+
 ## Metadata
 
 `metadata_json` has exact keys `schema_version`, `dataset_id`, `dataset_version`, `scientific_use`, `fixture`, `engine`, `representation`, `assets`, `generation`, and `external_reference`.
 
 - Schema: `csi-pairs-formal-dataset-v2.1-v6`.
 - `engine` includes exact `name`, `version`, `source_revision`, `license_id`, `config_sha256`, and `deterministic` fields.
-- `representation.phase_gauge_rule` is exactly `shared_complex_reference` or `phase_invariant_delay_angle_power`.
+- The current raw-complex P0 implementation requires
+  `representation.phase_gauge_rule=shared_complex_reference`. The frozen V6
+  `phase_invariant_delay_angle_power` fallback is not implemented and is rejected
+  before training rather than silently changing the physical target.
 - P0 sets `alignment_physical_representation=complex_csi_plus_delay_angle_power`; its source-train normalization is frozen and Response remains patch-local in the physical dead-zone units.
 - `coordinate_system` is exactly `bs_centered_right_handed_meters`; map and position units are `m`.
 - Antenna count, subcarrier count, `patch_antenna_size`, `patch_subcarrier_size`, and complex patch area must define an exact 2D tiling of the real-then-imag CSI grid.
@@ -75,12 +82,15 @@ This regeneration gate still does not establish RT calibration or legal sufficie
 
 ## Evidence propagation
 
-Every JSON, CSV row, checkpoint index, and manifest carries `dataset_sha256`, `config_sha256`, `fixture`, and `scientific_use`. Qualification requires an authenticated regeneration gate. Downstream stages require matching hashes, the exact frozen teacher checkpoint hash, an authenticated V6 qualification gate, and per-role regeneration PASS. Risk archives additionally bind the executed checkpoint index and evaluation manifest. A non-fixture archive marked `CANDIDATE` cannot start factorial training; it must earn `FORMAL_EXPERIMENT_ALLOWED` from G1/G2.
+Every JSON, CSV row, checkpoint index, and manifest carries `dataset_sha256`, `config_sha256`, `fixture`, and `scientific_use`. JSON gates and manifests also bind the source-tree digest, requirements-lock digest, and structured runtime provenance. Qualification requires an authenticated regeneration gate produced by the same code and runtime. Downstream stages require matching hashes, the exact frozen teacher checkpoint hash, an authenticated V6 qualification gate, and per-role regeneration PASS. Risk archives additionally bind the executed checkpoint index and evaluation manifest. A non-fixture archive marked `CANDIDATE` cannot start factorial training; it must earn `FORMAL_EXPERIMENT_ALLOWED` from G1/G2.
 
 G1 does not infer route noise tolerances from overall repeat NMSE. For each
 `source_method_selection` bank, all unordered pairs of independent repeats at the same
 scene/world/position are transformed with the source-encoder-train route normalization. The 0.95
 quantile by default is computed separately for full-channel physical, full-channel teacher latent,
-patch-local physical, and patch-local teacher latent RMS. Each configured route null threshold must
-cover its corresponding value or G1 fails. The rows and exact thresholds are bound in
-`qualification/route_noise_floor.csv`.
+patch-local physical, and patch-local teacher latent RMS. The physical values govern the Alignment
+and Response primary routes. Teacher latent values govern only independent sensitivity strata and
+the auxiliary G2 teacher-alignment audit. Each configured null threshold must cover its corresponding
+native-noise value or G1 fails. The rows and exact thresholds are bound in
+`qualification/route_noise_floor.csv`; changing teacher latent values cannot change raw-CSI primary
+sample inclusion.

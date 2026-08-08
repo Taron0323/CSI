@@ -8,7 +8,7 @@ from .formal_io import read_strict_json
 from .formal_protocol import FROZEN_RANDOM_MASK_FRACTION
 
 
-SCHEMA_VERSION = "csi-pairs-formal-config-v2.2-v6"
+SCHEMA_VERSION = "csi-pairs-formal-config-v2.3-v6"
 ARMS = ("endpoint", "alignment", "response", "full")
 TOP_LEVEL_KEYS = {
     "schema_version",
@@ -33,6 +33,7 @@ DATA_KEYS = {
     "minimum_target_cities",
     "minimum_source_cities",
     "minimum_banks_per_target_city",
+    "minimum_independent_base_map_clusters_per_target_city",
     "minimum_banks_per_source_role",
 }
 QUALIFICATION_KEYS = {
@@ -229,6 +230,11 @@ def validate_formal_config(config: object) -> None:
     _positive_int(
         data["minimum_banks_per_target_city"],
         "data.minimum_banks_per_target_city",
+        minimum=2,
+    )
+    _positive_int(
+        data["minimum_independent_base_map_clusters_per_target_city"],
+        "data.minimum_independent_base_map_clusters_per_target_city",
         minimum=2,
     )
     _positive_int(

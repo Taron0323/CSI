@@ -11,6 +11,10 @@ import numpy as np
 from formal_v2.formal_config import validate_formal_config
 from formal_v2.formal_dataset import FormalDataset
 from formal_v2.formal_evidence import require_manifested_formal_qualification
+from formal_v2.formal_external_runtime import (
+    collect_external_runtime,
+    validate_external_runtime,
+)
 from formal_v2.formal_io import read_strict_json, sha256_file, write_csv, write_json
 from formal_v2.formal_routing import fit_route_normalization, route_dataset
 from formal_v2.formal_teacher import load_teacher_bundle
@@ -32,7 +36,7 @@ from formal_v2.external_adapters.wigatr_protocol import (
 
 MODEL_NAME = "Wi-GATr"
 ADAPTER_ID = "wigatr-official-csi-pairs-v1"
-EXECUTION_SCHEMA = "csi-pairs-v6-external-execution-v2"
+EXECUTION_SCHEMA = "csi-pairs-v6-external-execution-v3"
 
 
 def main(argv=None) -> int:
@@ -71,7 +75,11 @@ def run_adapter(args) -> dict:
     validate_fixed_radio_contract(dataset)
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    for relative in ("six_condition_results.csv", "execution_manifest.json"):
+    for relative in (
+        "six_condition_results.csv",
+        "runtime_provenance.json",
+        "execution_manifest.json",
+    ):
         if (output / relative).exists():
             raise FileExistsError(f"refusing to overwrite Wi-GATr output: {relative}")
 
@@ -88,6 +96,17 @@ def run_adapter(args) -> dict:
 
     runtime = _load_official_runtime()
     _require_official_cuda(runtime)
+    runtime_provenance = collect_external_runtime(
+        "wigatr", Path(__file__).resolve().parents[2]
+    )
+    validate_external_runtime(
+        runtime_provenance,
+        profile="wigatr",
+        executable=sys.executable,
+        require_execution_ready=True,
+    )
+    runtime_path = output / "runtime_provenance.json"
+    write_json(runtime_path, runtime_provenance)
     _seed_runtime(runtime, int(config["training"]["seed"]))
     adapter_config_path = output / "adapter_config.json"
     shutil.copyfile(Path(args.config).resolve(), adapter_config_path)
@@ -148,6 +167,9 @@ def run_adapter(args) -> dict:
         "checkpoint_sha256": sha256_file(checkpoint),
         "command_sha256": args.command_sha256,
         "results_sha256": sha256_file(result_path),
+        "runtime_provenance_path": runtime_path.name,
+        "runtime_provenance_sha256": sha256_file(runtime_path),
+        "runtime_environment_sha256": runtime_provenance["environment_sha256"],
     }
     write_json(output / "execution_manifest.json", execution)
     return execution

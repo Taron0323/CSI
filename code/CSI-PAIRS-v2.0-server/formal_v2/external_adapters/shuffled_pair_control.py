@@ -14,7 +14,7 @@ from formal_v2.formal_claim_controls import (
 )
 from formal_v2.formal_dataset import FormalDataset
 from formal_v2.formal_evaluation import _compatibility_dataset, _response_probe_dataset
-from formal_v2.formal_evidence import evidence_context
+from formal_v2.formal_evidence import configure_reproducible_runtime, evidence_context
 from formal_v2.formal_factorial import (
     _build_corpus,
     _model_spec,
@@ -70,12 +70,15 @@ def main(argv=None) -> int:
 def run_shuffled_pair_control(
     dataset_path, run_root, output_root, context_path, *, control_seed
 ) -> Path:
+    configure_reproducible_runtime()
     root = Path(run_root).resolve()
     output = Path(output_root).resolve()
     context = read_strict_json(context_path)
     if set(context) != {
         "schema_version", "config", "artifact_label", "dataset_sha256",
         "config_sha256", "fixture", "scientific_use",
+        "source_tree_sha256", "requirements_lock_sha256",
+        "runtime_provenance_sha256", "runtime_provenance",
     } or context["schema_version"] != "csi-pairs-v6-claim-control-context-v1":
         raise RuntimeError("shuffled control context fields are not exact")
     config = context["config"]
@@ -90,6 +93,11 @@ def run_shuffled_pair_control(
         minimum_banks_per_target_city=int(
             config["data"]["minimum_banks_per_target_city"]
         ),
+        minimum_independent_base_map_clusters_per_target_city=int(
+            config["data"][
+                "minimum_independent_base_map_clusters_per_target_city"
+            ]
+        ),
         minimum_banks_per_source_role=int(
             config["data"]["minimum_banks_per_source_role"]
         ),
@@ -97,7 +105,11 @@ def run_shuffled_pair_control(
     evidence = evidence_context(
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
-    for key in ("artifact_label", "dataset_sha256", "config_sha256", "fixture"):
+    for key in (
+        "artifact_label", "dataset_sha256", "config_sha256", "fixture",
+        "source_tree_sha256", "requirements_lock_sha256",
+        "runtime_provenance_sha256", "runtime_provenance",
+    ):
         if context[key] != evidence[key]:
             raise RuntimeError(f"shuffled control context {key} mismatch")
 

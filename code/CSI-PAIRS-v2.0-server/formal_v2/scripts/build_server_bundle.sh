@@ -19,6 +19,8 @@ STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/csi-pairs-v2-server.XXXXXX")"
 BUNDLE_ROOT="${STAGING_ROOT}/CSI-PAIRS-v2.1-server"
 trap 'rm -rf "${STAGING_ROOT}"' EXIT
 
+echo "building internal research delivery; do not submit this bundle as anonymous supplementary" >&2
+
 mkdir -p "${BUNDLE_ROOT}/artifacts" "${BUNDLE_ROOT}/output/pdf" "${BUNDLE_ROOT}/paper/official_style"
 (
   cd "${PROJECT_ROOT}"
@@ -30,14 +32,26 @@ mkdir -p "${BUNDLE_ROOT}/artifacts" "${BUNDLE_ROOT}/output/pdf" "${BUNDLE_ROOT}/
   cd "${BUNDLE_ROOT}"
   tar -xf -
 )
-cp -R "${PROJECT_ROOT}/waibu" "${BUNDLE_ROOT}/"
+(
+  cd "${PROJECT_ROOT}"
+  PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.formal_resources stage-redistributable \
+    --registry "${PROJECT_ROOT}/formal_v2/configs/waibu_resources_v1.json" \
+    --source-root "${PROJECT_ROOT}/waibu" \
+    --destination-root "${BUNDLE_ROOT}/waibu"
+)
 cp -R "${PROJECT_ROOT}/paper_v2" "${BUNDLE_ROOT}/"
 cp -R "${PROJECT_ROOT}/paper/official_style/iclr2027" "${BUNDLE_ROOT}/paper/official_style/"
 cp -p "${PROJECT_ROOT}/CSI-PAIRS-startup-package-v2.0.md" \
   "${BUNDLE_ROOT}/CSI-PAIRS-startup-package-v2.0.md"
 cp -p "${PROJECT_ROOT}/README.md" "${BUNDLE_ROOT}/README.md"
+cp -p "${PROJECT_ROOT}/artifacts/code_to_paper_reverse_matrix.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/formal_experiment_blockers.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/paper_to_code_traceability.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/source_conflict_register.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v2_0_claim_evidence_contract.json" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v2_0_verification.md" "${BUNDLE_ROOT}/artifacts/"
+cp -p "${PROJECT_ROOT}/artifacts/v6_atomic_requirement_matrix_2026-08-08.csv" \
+  "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/iclr2027_official_policy_recheck_2026-08-05.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/waibu_integration_audit_2026-08-06.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v6_traceability_audit_2026-08-07.md" "${BUNDLE_ROOT}/artifacts/"
@@ -54,8 +68,13 @@ find . -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r pa
   shasum -a 256 "${path}"
 done > SHA256SUMS
 
+find "${BUNDLE_ROOT}" -type d -exec chmod 0755 {} +
+find "${BUNDLE_ROOT}" -type f -exec chmod 0644 {} +
+find "${BUNDLE_ROOT}" -type f -name '*.sh' -exec chmod 0755 {} +
+find "${BUNDLE_ROOT}" -exec touch -t 198001010000.00 {} +
+
 cd "${STAGING_ROOT}"
-find CSI-PAIRS-v2.1-server -type f -print | LC_ALL=C sort | zip -X -q "${OUTPUT_ZIP}" -@
+TZ=UTC find CSI-PAIRS-v2.1-server -type f -print | LC_ALL=C sort | TZ=UTC zip -X -q "${OUTPUT_ZIP}" -@
 cd "${OUTPUT_PARENT}"
 shasum -a 256 "$(basename "${OUTPUT_ZIP}")" > "${OUTPUT_ZIP}.sha256"
 

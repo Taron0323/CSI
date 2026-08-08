@@ -3,16 +3,24 @@
 Status: formal code `CODE_READY_FOR_FORMAL_INPUT`; scientific evidence `NOT_ASSESSED` until
 required non-fixture gates pass. Archived V1 fixture failures remain non-scientific history.
 
-This bundle is self-contained for the V2.1 runtime. It does not require the frozen V1 `experiments/` tree. It includes the formal code, tests, configs, data contract, paper source, official LaTeX style files, draft PDF, claim contract, verification report, supplied external papers, and authenticated official source archives. It intentionally contains no formal dataset, external model checkpoint, licensed scene asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain `v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated bundle root are V2.1.
+This internal research-delivery bundle is self-contained for the V2.1 code runtime. It is not an
+anonymous ICLR supplementary artifact because it includes delivery provenance. Third-party files
+without a downstream redistribution grant are never bundled; each user fetches them directly from
+the immutable source URL before formal preflight. Use `formal_v2/scripts/build_anonymous_supplement.sh`
+for the separate identity-scanned package that excludes all of `waibu/` and delivery audits. The
+internal bundle intentionally contains no formal dataset, external model checkpoint, licensed scene
+asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain
+`v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated
+bundle root are V2.1.
 
 The collaborator's GitHub tree is the sole implementation baseline. Historical local ICLR2027
 code is not imported, copied, or required by this bundle.
 
 ## 1. Server requirements
 
-- Linux with Python 3.12 and `venv` support;
+- glibc 2.28+ Linux x86_64 or macOS 14+ arm64 with Python 3.12 and `venv` support;
 - enough disk space for PyTorch and your formal data;
-- CUDA is optional for the non-scientific dry run and recommended for formal training;
+- CUDA is optional for the non-scientific dry run; formal training remains Linux CUDA only;
 - `sha256sum` for bundle verification.
 
 ## 2. Verify and install
@@ -24,7 +32,22 @@ sha256sum --check SHA256SUMS
 formal_v2/scripts/setup_formal_v2.sh "$PWD/.venv"
 ```
 
-The setup script refuses to overwrite an existing environment directory.
+The setup script refuses to overwrite an existing environment directory or run on an unsupported
+platform. The checked-in lock contains only reviewed wheel hashes for macOS arm64 and Linux x86_64,
+including PyTorch's complete Linux CUDA/Triton dependency closure. Installation uses pip hash mode
+and binary-only mode, so an unlisted transitive dependency, source archive, or changed wheel fails.
+On macOS, the script uses the system `/etc/ssl/cert.pem` when present; set
+`CSI_PAIRS_PIP_CERT` to a different regular CA bundle when required. TLS verification is never
+disabled.
+Every evidence-producing command then revalidates the main runtime before writing evidence:
+CPython must be 3.12, every package named in `formal_v2/requirements-lock.txt` must have the exact
+pinned version, the read-only pip installation report must bind every selected wheel SHA-256 to the
+active platform allowlist, and every hashed installed file must still match its distribution
+`RECORD` entry. Only generated `__pycache__` rows and `RECORD` itself may be unhashed.
+The runtime record also binds the interpreter, supported OS/libc floor, source tree, lock/report
+digests, CUDA inventory, CUBLAS workspace, TF32 controls, and deterministic PyTorch state. A
+self-consistent same-version environment installed from an unreviewed wheel is rejected rather
+than merely recorded.
 
 ## 3. Run code-only verification
 
@@ -41,6 +64,13 @@ Expected software outcome:
 - no teacher, qualification, four-arm, localization, RT, or external-model experiment is run;
 - no scientific gate changes state.
 
+`formal_v2/scripts/verify_server_bundle.sh` also runs a non-scientific fixture dry run. Its inner
+qualification must exit `1` with authenticated status `DRY_RUN_FAIL_NOT_EVIDENCE`, `passed=false`,
+`fixture=true`, and `scientific_use=FORBIDDEN`. The wrapper returns `0` only after reauthenticating
+that exact expected fail-closed gate and the complete root manifest. A successful wrapper therefore
+means that software verification preserved the scientific prohibition; it is not a qualification
+PASS or experimental evidence.
+
 Stage-0 samples an independent, without-replacement 75% patch mask for every example at every
 optimization step. Formal patch grids must contain a multiple of four patches so the mask
 cardinality is exact. The checkpoint records this sampler contract and old fixed-bank Stage-0
@@ -48,7 +78,20 @@ checkpoints are rejected.
 
 ## 3.1 External papers, baselines, and Sionna facilities
 
-Authenticate all ten supplied resources before any external experiment:
+The registry freezes ten third-party inputs, including four papers whose recorded licenses do not
+grant this project downstream redistribution. The repository and both delivery formats omit those
+four bytes. Fetch every missing input directly from its recorded source, then authenticate the full
+ten-file local set before any formal preflight or external experiment:
+
+```bash
+"$PWD/.venv/bin/python" -m formal_v2.fetch_waibu_resources \
+  --registry "$PWD/formal_v2/configs/waibu_resources_v1.json" \
+  --waibu-root "$PWD/waibu"
+```
+
+Downloaded files are local inputs and are ignored by Git. Do not commit or redistribute them. The
+fetcher refuses to overwrite existing bytes and accepts a download only when its SHA-256 matches the
+registry. Source URL, license URL, and redistribution status remain separate from byte authentication:
 
 ```bash
 "$PWD/.venv/bin/python" -m formal_v2.formal_cli verify-waibu-resources \
@@ -67,8 +110,12 @@ environment:
 formal_v2/external_adapters/setup_wigatr.sh
 ```
 
-The setup authenticates and imports the frozen environment. Formal Wi-GATr execution requires an
-NVIDIA CUDA device because its frozen xFormers attention has no compatible CPU kernel.
+The setup authenticates and imports the frozen environment and writes an idempotently verified
+`runtime_provenance.json` under the environment root. Formal Wi-GATr execution requires an NVIDIA
+CUDA device and visible driver because its frozen xFormers attention has no compatible CPU kernel.
+The adapter records the actual interpreter, complete installed-distribution inventory, RECORD
+digests, lock/vendor digests, Torch/CUDA/cuDNN/driver/GPU identity, and deterministic/TF32 state;
+the outer runner probes the interpreter again and rejects a mismatch.
 
 Sionna RT and the official large-radio-map tools use a separate Python 3.12 environment because of
 their Mitsuba/Dr.Jit/Open3D stack:
@@ -80,8 +127,11 @@ formal_v2/external_adapters/setup_sionna.sh
   --runtime-root "$PWD/formal_v2/external_adapters/.runtime-sionna" verify
 ```
 
-The runtime installs fixed CPU PyTorch because the G8 adapter reloads the frozen Stage-0 teacher to
-reproduce route assignments. It excludes the unrelated PyTorch CUDA dependency set.
+The runtime installs from the checked-in `sionna_lrm_uv.lock` with `uv sync --locked`, then installs
+the fixed CPU PyTorch and h5py versions needed to reload the frozen Stage-0 teacher and reproduce
+route assignments. It excludes the unrelated PyTorch CUDA dependency set. Setup writes a verified
+runtime record; G8 accepts the adapter output only when its record exactly matches an independent
+outer probe of the same interpreter.
 
 Use `formal_v2/external_adapters/all_map_adapters_v1.json` for C1 and
 `formal_v2/configs/representation_baselines_v1.json` for the representation comparison. Read
@@ -96,7 +146,9 @@ G8 PASS uses the lower cluster-bootstrap confidence bound for active direction a
 cluster-level null-equivalence interval; repeated rows from one base map cannot increase its weight.
 The built-in source-only SigMap scene-ID runner uses the V3 adapter/provenance contract and is
 selected by default. RT-calibration and literature manifests use the evidence schemas documented
-in `formal_v2/README.md`; legacy aggregate-only manifests are rejected.
+in `formal_v2/README.md`; legacy aggregate-only and RT V3 manifests are rejected. RT V4 additionally
+requires structured fit/validation partitions with inline payloads and disjoint stable scene/unit IDs and
+uses mean per-unit absolute error rather than a difference between aggregate means.
 
 Shuffled-pair, retention, and all five resource controls are first-party executable adapters under
 `formal_v2/external_adapters/`. Each run binds source, config, dataset, checkpoints, per-unit rows,
@@ -118,53 +170,93 @@ Do not start training first. Validate the NPZ against the frozen contract:
 
 Review the generated `data_contract.json`, the engine/config hash, license records, phase/gauge convention, scene roles, support/query isolation, repeats, natural anchors, and primitive permutations.
 
-## 5. Verify physical regeneration before qualification
+## 5. Prepare, review, and authorize a formal run
 
-```bash
-"$PWD/.venv/bin/python" -m formal_v2.formal_cli verify-data \
-  --config "$PWD/formal_v2/configs/formal_v2.json" \
-  --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
-  --verifier-manifest /absolute/path/independent_rt_verifier.json \
-  --output "$PWD/runs/formal-001"
+Formal execution is a two-phase protocol. `prepare-full-run` validates every late manifest, runtime
+executable, license acknowledgement, credential name, pre-staged input, disk budget, CUDA GPU budget,
+and output path before creating run artifacts. It then runs resources, G0, independent RT calibration,
+independent data regeneration, and G1/G2 in that order. Only a successful preparation writes
+`OUTPUT/approval/request.json` and stops. The request binds a random run nonce plus the config,
+dataset, source tree, core and external runtimes, GPU inventory, compute plan, teacher checkpoint, all
+input manifests, pre-staged inputs, and every early gate hash.
 
-"$PWD/.venv/bin/python" -m formal_v2.formal_cli qualify \
-  --config "$PWD/formal_v2/configs/formal_v2.json" \
-  --dataset /absolute/path/csi_pairs_formal_v2_1_v6.npz \
-  --data-verification-gate "$PWD/runs/formal-001/data_verification/gate.json" \
-  --output "$PWD/runs/formal-001"
+The compute-plan JSON has schema `csi-pairs-full-run-compute-plan-v1` and these exact fields:
+
+```json
+{
+  "schema_version": "csi-pairs-full-run-compute-plan-v1",
+  "profile": "formal",
+  "estimated_output_bytes": 0,
+  "minimum_free_disk_bytes": 0,
+  "estimated_wall_time_seconds": 0,
+  "authorized_wall_time_seconds": 0,
+  "required_gpu_count": 0,
+  "minimum_gpu_memory_bytes": 0,
+  "estimated_gpu_hours": 0,
+  "authorized_gpu_hours": 0,
+  "required_environment_variables": [],
+  "license_acknowledgements": []
+}
 ```
 
-Only a non-fixture `qualification/gate.json` with `passed=true` permits the four-arm experiment.
-Qualification writes `route_noise_floor.csv`. For every `source_method_selection` bank, G1 requires
-the registered alignment-physical, alignment-latent, response-physical, and response-latent null
-thresholds to cover the configured quantile of independent repeat-pair noise measured in exactly
-the same normalized units as the corresponding route. A repeat NMSE PASS alone is insufficient.
+The zeros are placeholders, not an executable budget. Formal values must be positive, authorized
+time and GPU hours must cover the estimates, free disk must cover the dataset plus estimated outputs,
+and at least one CUDA GPU is required. `license_acknowledgements` must include every identifier or URL
+from the selected resource and adapter manifests. Secret values are never recorded; only required
+environment-variable names and their presence enter the preflight.
 
-After approval, run the complete chain into another unused directory:
+Prepare into a new root, optionally containing only a pre-staged `inputs/` directory:
 
 ```bash
 CSI_PAIRS_PYTHON="$PWD/.venv/bin/python" \
 CSI_PAIRS_FORMAL_DATASET=/absolute/path/csi_pairs_formal_v2_1_v6.npz \
-CSI_PAIRS_FORMAL_OUTPUT="$PWD/runs/formal-all-001" \
+CSI_PAIRS_FORMAL_OUTPUT="$PWD/runs/formal-001" \
+CSI_PAIRS_COMPUTE_PLAN=/absolute/path/compute-plan.json \
 CSI_PAIRS_VERIFIER_MANIFEST=/absolute/path/independent_rt_verifier.json \
 CSI_PAIRS_EXTERNAL_ADAPTER_MANIFEST=/absolute/path/external_adapters.json \
 CSI_PAIRS_EXTERNAL_VALIDITY_MANIFEST=/absolute/path/external_validity.json \
 CSI_PAIRS_LITERATURE_RESOURCE_MANIFEST=/absolute/path/literature.json \
 CSI_PAIRS_RT_CALIBRATION_MANIFEST=/absolute/path/rt_calibration.json \
+CSI_PAIRS_FULL_RUN_PHASE=prepare \
   formal_v2/scripts/run_formal_v2.sh
 ```
 
-The script defaults to the shipped resource V3, shuffled-pair V3, retention V3, and built-in
-scene-ID manifests. Override those environment variables only with reviewed, hash-authenticated
-alternatives. The verifier, external map baselines, external validity, literature, and independent
-RT-calibration inputs remain external and mandatory.
+Qualification writes `route_noise_floor.csv`. G1 requires every registered route threshold to cover
+the configured independent repeat-noise quantile in the same native units. Review the approval
+request, `qualification/response_gate.csv`, `qualification/null_safety.csv`, G0, independent RT, and
+the compute plan. An authorized human then creates an approval outside the run root:
 
-Never reuse an output directory. Every individual evidence-producing CLI stage atomically reserves
-its registered output under an exclusive run-root operation lock. Incremental execution may share
-one run root only while each next stage output is absent and all upstream manifests remain
-authenticated. Fixture filenames are normalized to `.npz` before exclusive creation. Never replace
-paper placeholders with fixture output. The inherited No-X failures and four warning names remain
-binding until new untouched non-fixture banks pass the registered gates.
+```bash
+"$PWD/.venv/bin/python" -m formal_v2.formal_cli create-run-approval \
+  --request "$PWD/runs/formal-001/approval/request.json" \
+  --output /absolute/path/formal-001-human-approval.json \
+  --approver REVIEWED_HUMAN_IDENTIFIER \
+  --expires-utc 2027-01-01T00:00:00Z \
+  --attest-reviewed
+```
+
+Repeat the same environment with `CSI_PAIRS_FULL_RUN_PHASE=run` and add:
+
+```bash
+CSI_PAIRS_HUMAN_APPROVAL_MANIFEST=/absolute/path/formal-001-human-approval.json
+```
+
+`all` resumes only that authenticated prepared root. It rejects Boolean-only authorization, stale or
+expired approval, changed inputs/runtime/gates/teacher/compute plan, cross-run replay, and consumed
+approval. It does not rerun G0, RT, data verification, or G1/G2 after approval. Any formal stage
+failure stops the chain. The deprecated `--approve-full-experiment` flag and
+`CSI_PAIRS_APPROVE_FULL_EXPERIMENT` variable have no authorization power.
+
+The script defaults to the shipped resource V3, shuffled-pair V3, retention V3, and built-in scene-ID
+manifests. The verifier, a second genuine C1-eligible model, formal scenes, independent RT inputs,
+external validity input, installed Wi-GATr/Sionna runtimes, licenses, CUDA capacity, and reviewed
+budget remain external and mandatory. Missing any one blocks preparation before training.
+
+Never reuse an output directory except for the authenticated `prepare-full-run` to `all` transition.
+Every individual evidence-producing stage holds an exclusive run-root operation lock. Fixture paths
+are normalized to `.npz` before exclusive creation. Never replace paper placeholders with fixture
+output. The inherited No-X failures and four warning names remain binding until untouched non-fixture
+banks pass the registered gates.
 
 The current bidirectional paper/code audit and five-layer readiness verdict are recorded in
 `artifacts/v6_traceability_audit_2026-08-07.md`.

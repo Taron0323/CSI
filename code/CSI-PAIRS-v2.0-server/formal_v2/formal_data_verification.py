@@ -9,7 +9,7 @@ from typing import Iterable
 import numpy as np
 
 from .formal_dataset import _canonical_foundation_sha256
-from .formal_evidence import bind_rows, evidence_context
+from .formal_evidence import EVIDENCE_AUTH_KEYS, bind_rows, evidence_context
 from .formal_io import (
     artifact_manifest,
     parse_strict_json,
@@ -158,7 +158,7 @@ def require_data_verification(gate, config, dataset, gate_path=None):
     if not isinstance(gate, dict) or gate.get("schema_version") != SCHEMA:
         raise RuntimeError("qualification requires a V6 independent data-verification gate")
     expected = evidence_context(config, dataset, str(gate.get("scientific_use", "")))
-    for key in ("dataset_sha256", "config_sha256", "fixture"):
+    for key in EVIDENCE_AUTH_KEYS:
         if gate.get(key) != expected[key]:
             raise RuntimeError(f"data-verification gate {key} mismatch")
     if gate.get("blocking_roles") != list(BLOCKING_ROLES):
@@ -192,7 +192,7 @@ def require_verified_roles(
     if not isinstance(gate, dict) or gate.get("schema_version") != SCHEMA:
         raise RuntimeError("stage requires a V6 independent data-verification gate")
     expected = evidence_context(config, dataset, str(gate.get("scientific_use", "")))
-    for key in ("dataset_sha256", "config_sha256", "fixture"):
+    for key in EVIDENCE_AUTH_KEYS:
         if gate.get(key) != expected[key]:
             raise RuntimeError(f"data-verification gate {key} mismatch")
     if not _binding_checked:
