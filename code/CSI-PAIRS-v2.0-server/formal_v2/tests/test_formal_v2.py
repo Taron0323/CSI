@@ -1325,6 +1325,17 @@ class EvidenceAndPathTests(unittest.TestCase):
         self.assertEqual(len(evidence["dataset_sha256"]), 64)
         self.assertEqual(len(evidence["config_sha256"]), 64)
 
+    def test_direct_evidence_entrypoint_configures_deterministic_torch(self):
+        torch.use_deterministic_algorithms(False)
+        torch.backends.cudnn.deterministic = False
+        runtime_provenance.cache_clear()
+
+        evidence = evidence_context(self.config, self.dataset, "FORBIDDEN")
+
+        self.assertTrue(evidence["runtime_provenance"]["torch"]["deterministic_algorithms"])
+        self.assertTrue(evidence["runtime_provenance"]["torch"]["cudnn_deterministic"])
+        self.assertTrue(evidence["runtime_provenance"]["python_dont_write_bytecode"])
+
     def test_evidence_context_rejects_unlocked_main_runtime(self):
         original = runtime_provenance()
         mutations = []
@@ -1340,6 +1351,37 @@ class EvidenceAndPathTests(unittest.TestCase):
         missing_record = json.loads(json.dumps(original))
         missing_record["installed_distributions"]["numpy"]["record_sha256"] = None
         mutations.append((missing_record, "numpy has no RECORD provenance"))
+
+        wrong_wheel = json.loads(json.dumps(original))
+        wrong_wheel["installed_distributions"]["numpy"]["wheel_sha256"] = "0" * 64
+        mutations.append((wrong_wheel, "numpy wheel hash is not authenticated"))
+
+        nondeterministic = json.loads(json.dumps(original))
+        nondeterministic["torch"]["deterministic_algorithms"] = False
+        mutations.append((nondeterministic, "deterministic torch state"))
+
+        reduced_precision = json.loads(json.dumps(original))
+        reduced_precision["torch"]["float32_matmul_precision"] = "high"
+        mutations.append((reduced_precision, "deterministic torch state"))
+
+        unsupported_platform = json.loads(json.dumps(original))
+        unsupported_platform["platform_system"] = "Windows"
+        unsupported_platform["platform_machine"] = "AMD64"
+        mutations.append((unsupported_platform, "supports only macOS 14\\+ arm64"))
+
+        obsolete_platform = json.loads(json.dumps(original))
+        if original["platform_system"] == "Darwin":
+            obsolete_platform["platform_mac_version"] = "13.6"
+            mutations.append((obsolete_platform, "requires macOS 14.0 or newer"))
+            malformed_platform = json.loads(json.dumps(original))
+            malformed_platform["platform_mac_version"] = "14.beta"
+            mutations.append((malformed_platform, "no valid macOS version"))
+        else:
+            obsolete_platform["platform_libc_version"] = "2.27"
+            mutations.append((obsolete_platform, "requires glibc 2.28 or newer"))
+            malformed_platform = json.loads(json.dumps(original))
+            malformed_platform["platform_libc_version"] = "2.28-custom"
+            mutations.append((malformed_platform, "no valid glibc version"))
 
         for runtime, message in mutations:
             with self.subTest(message=message):

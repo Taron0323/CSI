@@ -24,11 +24,16 @@ python3 -m formal_v2.formal_cli verify-waibu-resources \
 The fetcher refuses to overwrite mismatched files and removes a partial download unless its
 SHA-256 matches the frozen registry. Local downloads must not be committed or redistributed.
 
-Run the code tests with Python 3.12 after installing `formal_v2/requirements-lock.txt`:
+Create the hash-locked Python 3.12 environment, then run the code tests:
 
 ```bash
-python3 -m unittest discover -s formal_v2/tests -v
+formal_v2/scripts/setup_formal_v2.sh "$PWD/.venv"
+"$PWD/.venv/bin/python" -m unittest discover -s formal_v2/tests -v
 ```
+
+Setup writes a read-only pip installation report inside the environment. Evidence commands reject
+missing reports, unsupported platforms, unreviewed wheel hashes, version/RECORD drift, and
+non-deterministic PyTorch state.
 
 The optional fixture dry run is a fail-closed software check:
 

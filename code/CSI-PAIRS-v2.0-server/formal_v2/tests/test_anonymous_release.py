@@ -206,6 +206,9 @@ class AnonymousReleaseTests(unittest.TestCase):
             (release_root / "formal_v2/scripts/build_v6_requirement_matrix.py").exists()
         )
         self.assertFalse(
+            (release_root / "formal_v2/scripts/v6_trace_registry.py").exists()
+        )
+        self.assertFalse(
             (release_root / "formal_v2/tests/test_audit_artifacts.py").exists()
         )
         completed = subprocess.run(

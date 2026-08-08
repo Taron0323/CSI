@@ -18,9 +18,9 @@ code is not imported, copied, or required by this bundle.
 
 ## 1. Server requirements
 
-- Linux with Python 3.12 and `venv` support;
+- glibc 2.28+ Linux x86_64 or macOS 14+ arm64 with Python 3.12 and `venv` support;
 - enough disk space for PyTorch and your formal data;
-- CUDA is optional for the non-scientific dry run and recommended for formal training;
+- CUDA is optional for the non-scientific dry run; formal training remains Linux CUDA only;
 - `sha256sum` for bundle verification.
 
 ## 2. Verify and install
@@ -32,11 +32,22 @@ sha256sum --check SHA256SUMS
 formal_v2/scripts/setup_formal_v2.sh "$PWD/.venv"
 ```
 
-The setup script refuses to overwrite an existing environment directory.
+The setup script refuses to overwrite an existing environment directory or run on an unsupported
+platform. The checked-in lock contains only reviewed wheel hashes for macOS arm64 and Linux x86_64,
+including PyTorch's complete Linux CUDA/Triton dependency closure. Installation uses pip hash mode
+and binary-only mode, so an unlisted transitive dependency, source archive, or changed wheel fails.
+On macOS, the script uses the system `/etc/ssl/cert.pem` when present; set
+`CSI_PAIRS_PIP_CERT` to a different regular CA bundle when required. TLS verification is never
+disabled.
 Every evidence-producing command then revalidates the main runtime before writing evidence:
 CPython must be 3.12, every package named in `formal_v2/requirements-lock.txt` must have the exact
-pinned version, and every installed distribution must expose a nonempty authenticated `RECORD`
-digest. A self-consistent but unlocked environment is rejected rather than merely recorded.
+pinned version, the read-only pip installation report must bind every selected wheel SHA-256 to the
+active platform allowlist, and every hashed installed file must still match its distribution
+`RECORD` entry. Only generated `__pycache__` rows and `RECORD` itself may be unhashed.
+The runtime record also binds the interpreter, supported OS/libc floor, source tree, lock/report
+digests, CUDA inventory, CUBLAS workspace, TF32 controls, and deterministic PyTorch state. A
+self-consistent same-version environment installed from an unreviewed wheel is rejected rather
+than merely recorded.
 
 ## 3. Run code-only verification
 

@@ -8,6 +8,11 @@ from pathlib import Path
 import re
 import tempfile
 
+from formal_v2.scripts.v6_trace_registry import (
+    TRACE_FAMILIES,
+    evidence_family_for_clause,
+)
+
 
 SOURCE_SPECS = {
     "reader": {
@@ -36,163 +41,7 @@ FORMULA_MARKERS = re.compile(
 TOP_SECTION = re.compile(r"^##\s+(\d+)(?:\.|\s)")
 HEADING = re.compile(r"^#{2,6}\s+")
 SENTENCE_BOUNDARY = re.compile(r"(?<=[。！？；;])\s*")
-
-
-SECTION_MAP = {
-    0: {
-        "expected": "Claims remain within the registered relative, non-causal evidence boundary.",
-        "entry": "assemble-claims",
-        "code": (("formal_v2/formal_claims.py", "def assemble_claim_evidence"),),
-        "config": (("artifacts/v2_0_claim_evidence_contract.json", '"claims"'),),
-        "tests": (("formal_v2/tests/test_formal_v2.py", "def test_gate_and_claim_identifiers_are_fixed"),),
-        "paper": "paper_v2/main.tex",
-    },
-    1: {
-        "expected": "The six-condition wrong-map and scene-ID audits remain paired and fail closed.",
-        "entry": "run-wrong-map; run-external-baselines; run-scene-id-audit",
-        "code": (
-            ("formal_v2/formal_wrong_map.py", "def run_formal_wrong_map"),
-            ("formal_v2/formal_external.py", "def run_external_baselines"),
-            ("formal_v2/formal_scene_id.py", "def run_scene_id_audit"),
-        ),
-        "config": (("formal_v2/external_adapters/all_map_adapters_v1.json", '"adapters"'),),
-        "tests": (("formal_v2/tests/test_evidence_integrity.py", "def test_six_equal_conditions_cannot_pass_c1"),),
-        "paper": "paper_v2/main.tex",
-    },
-    2: {
-        "expected": "World banks, typed edits, positions, roles, support/query exclusion, and provenance satisfy the frozen data contract.",
-        "entry": "inspect-data; verify-data",
-        "code": (("formal_v2/formal_dataset.py", "class FormalDataset"),),
-        "config": (("formal_v2/configs/formal_v2.json", '"data"'),),
-        "tests": (("formal_v2/tests/test_formal_v2.py", "class DatasetTests"),),
-        "paper": "paper_v2/main.tex",
-    },
-    3: {
-        "expected": "CSI-only frozen targets, physical-only primary routes, independent teacher strata, masks, and pair-consistent gauge are enforced.",
-        "entry": "qualify",
-        "code": (
-            ("formal_v2/formal_teacher.py", "def train_teacher_bundle"),
-            ("formal_v2/formal_routing.py", "def route_dataset"),
-            ("formal_v2/formal_qualification.py", "def run_formal_qualification"),
-        ),
-        "config": (("formal_v2/configs/formal_v2.json", '"qualification"'),),
-        "tests": (("formal_v2/tests/test_data_protocol_integrity.py", "class QualificationCoverageTests"),),
-        "paper": "paper_v2/main.tex",
-    },
-    4: {
-        "expected": "The shared F/P architecture, endpoint, Alignment, Response, dead zones, dose, and retained-module rules match V6.",
-        "entry": "run-factorial",
-        "code": (
-            ("formal_v2/formal_model.py", "class CSIPairsFormalModel"),
-            ("formal_v2/formal_factorial.py", "def run_formal_factorial"),
-        ),
-        "config": (("formal_v2/configs/formal_v2.json", '"factorial"'),),
-        "tests": (("formal_v2/tests/test_factorial_integrity.py", "class ArmExecutionMutationTests"),),
-        "paper": "paper_v2/main.tex",
-    },
-    5: {
-        "expected": "CGS, native metrics, q_comp, p_fail, support, and calibration remain separate and use registered units.",
-        "entry": "run-evaluation; run-risk",
-        "code": (
-            ("formal_v2/formal_evaluation.py", "def run_formal_evaluation"),
-            ("formal_v2/formal_risk.py", "def run_risk_contract"),
-        ),
-        "config": (("formal_v2/configs/formal_v2.json", '"evaluation"'),),
-        "tests": (("formal_v2/tests/test_risk_path_evaluation_integrity.py", "class RiskPathEvaluationIntegrityTests"),),
-        "paper": "paper_v2/main.tex",
-    },
-    6: {
-        "expected": "Theory states only the registered identification and supervision limits and does not pre-claim synergy.",
-        "entry": "paper protocol and claim gate",
-        "code": (("formal_v2/formal_claims.py", "CLAIM_DEPENDENCIES"),),
-        "config": (("artifacts/v2_0_claim_evidence_contract.json", '"rule"'),),
-        "tests": (("formal_v2/tests/test_formal_v2.py", "def test_claim_semantics_recheck_g0_c2_c11_and_g8_evidence"),),
-        "paper": "paper_v2/main.tex",
-    },
-    7: {
-        "expected": "The strict 2x2 factorial changes only Alignment/Response switches and earns all synchronized G4 subgates.",
-        "entry": "run-factorial; run-evaluation; run-resource-controls",
-        "code": (
-            ("formal_v2/formal_config.py", "ARMS ="),
-            ("formal_v2/formal_statistics.py", "def hierarchical_factorial_interval"),
-            ("formal_v2/formal_controls.py", "def run_resource_controls"),
-        ),
-        "config": (("formal_v2/configs/formal_v2.json", '"arms"'),),
-        "tests": (("formal_v2/tests/test_factorial_integrity.py", "class FactorialStatisticsMutationTests"),),
-        "paper": "paper_v2/main.tex",
-    },
-    8: {
-        "expected": "RQ1-RQ5 execute only through their registered estimands and untouched evaluation units.",
-        "entry": "prepare-full-run; all",
-        "code": (("formal_v2/formal_cli.py", "def _run_authorized_full_chain"),),
-        "config": (("formal_v2/configs/formal_v2.json", '"schema_version"'),),
-        "tests": (("formal_v2/tests/test_run_approval.py", "def test_authorized_chain_order_and_failure_short_circuit"),),
-        "paper": "paper_v2/main.tex",
-    },
-    9: {
-        "expected": "Path incidence, no-op tolerance, matched strata, and bank-level inference use authenticated retraces.",
-        "entry": "run-path",
-        "code": (("formal_v2/formal_path.py", "def run_path_audit"),),
-        "config": (("formal_v2/configs/formal_v2.json", '"path"'),),
-        "tests": (("formal_v2/tests/test_risk_path_evaluation_integrity.py", "def test_path_gate_cannot_pass_without_provenance"),),
-        "paper": "paper_v2/main.tex",
-    },
-    10: {
-        "expected": "Shortcut, shuffled-pair, leakage, and retention controls are independently trained and hash bound.",
-        "entry": "run-shuffled-pair-control; run-retention-audit",
-        "code": (("formal_v2/formal_claim_controls.py", "def run_shuffled_pair_control"),),
-        "config": (("formal_v2/external_adapters/shuffled_pair_control_v3.json", '"schema_version"'),),
-        "tests": (("formal_v2/tests/test_evidence_integrity.py", "def test_shuffled_control_cannot_reuse_matched_checkpoint"),),
-        "paper": "paper_v2/main.tex",
-    },
-    11: {
-        "expected": "Internal and external baselines retain accurate implementation labels, common units, and resource accounting.",
-        "entry": "run-external-baselines; run-representation-baselines",
-        "code": (
-            ("formal_v2/formal_external.py", "def run_external_baselines"),
-            ("formal_v2/formal_representation_baselines.py", "def run_representation_baselines"),
-        ),
-        "config": (("formal_v2/external_adapters/all_map_adapters_v1.json", '"implementation_status"'),),
-        "tests": (("formal_v2/tests/test_evidence_integrity.py", "def test_fewer_than_two_faithful_c1_models_is_blocked_not_supported"),),
-        "paper": "paper_v2/main.tex",
-    },
-    12: {
-        "expected": "City, foundation, bank, seed, and draw hierarchy plus Holm and interval decisions use the frozen independent units.",
-        "entry": "run-evaluation; run-risk; run-path",
-        "code": (("formal_v2/formal_statistics.py", "def exact_factorial_utilities"),),
-        "config": (("formal_v2/configs/formal_v2.json", '"bootstrap_resamples"'),),
-        "tests": (("formal_v2/tests/test_formal_v2.py", "class StatisticsTests"),),
-        "paper": "paper_v2/main.tex",
-    },
-    13: {
-        "expected": "Every main result cell must be populated only by authenticated non-fixture rows with denominators and intervals.",
-        "entry": "paper build after formal evidence",
-        "code": (("paper_v2/main.tex", r"\planned"),),
-        "config": (("artifacts/v2_0_claim_evidence_contract.json", '"current_scientific_status"'),),
-        "tests": (("paper_v2/build_reproducible.sh", "latexmk"),),
-        "paper": "paper_v2/main.tex",
-    },
-    14: {
-        "expected": "C1-C13 promote only through complete authenticated dependencies and otherwise remain BLOCKED.",
-        "entry": "assemble-claims",
-        "code": (("formal_v2/formal_claims.py", "CLAIM_DEPENDENCIES"),),
-        "config": (("artifacts/v2_0_claim_evidence_contract.json", '"claims"'),),
-        "tests": (("formal_v2/tests/test_formal_v2.py", "def test_gate_and_claim_identifiers_are_fixed"),),
-        "paper": "paper_v2/main.tex",
-    },
-    15: {
-        "expected": "G0-G8 run in the frozen order, stop on failure, and preserve PASS/FAIL/BLOCKED/NOT_ASSESSED distinctions.",
-        "entry": "prepare-full-run; create-run-approval; all",
-        "code": (
-            ("formal_v2/formal_cli.py", "def _prepare_full_run"),
-            ("formal_v2/formal_run_approval.py", "def authenticate_prepared_run"),
-        ),
-        "config": (("formal_v2/configs/formal_v2.json", '"schema_version"'),),
-        "tests": (("formal_v2/tests/test_run_approval.py", "def test_authorized_chain_order_and_failure_short_circuit"),),
-        "paper": "paper_v2/main.tex",
-    },
-}
-
+TRACKED_SECTIONS = frozenset(range(16))
 
 FIELDNAMES = (
     "requirement_id",
@@ -203,6 +52,8 @@ FIELDNAMES = (
     "source_clause_sha256",
     "original_norm",
     "normative_signal",
+    "evidence_family",
+    "mapping_basis",
     "section",
     "section_heading",
     "verifiable_expectation",
@@ -267,35 +118,104 @@ def normative_signal(clause: str, raw_line: str) -> str:
     return "CONTEXT_INCLUDED_FOR_COMPLETENESS"
 
 
-def section_status(source_name: str, line_number: int, section: int) -> tuple[str, str, str]:
-    if (source_name == "reader" and 328 <= line_number <= 330) or (
-        source_name == "plan" and line_number == 287
+def is_normative_signal(signal: str) -> bool:
+    return signal.startswith("TERM:") or signal == "FORMULA_OR_CONDITION"
+
+
+def _context_mapping(clause_digest: str) -> dict[str, str]:
+    return {
+        "evidence_family": "not_normative_context",
+        "mapping_basis": f"context-classification;clause-sha256:{clause_digest}",
+        "verifiable_expectation": (
+            "Context is retained for source-line completeness and is not promoted as "
+            "an atomic normative requirement."
+        ),
+        "runtime_entry": "NOT_APPLICABLE_CONTEXT",
+        "code_locations": "NOT_APPLICABLE_CONTEXT",
+        "config_or_schema_locations": "NOT_APPLICABLE_CONTEXT",
+        "regression_test_locations": "NOT_APPLICABLE_CONTEXT",
+        "dynamic_evidence": "NOT_APPLICABLE_CONTEXT",
+        "paper_location": "NOT_APPLICABLE_CONTEXT",
+        "status": "PARTIAL/PROXY",
+        "blocking_type": "NOT_NORMATIVE_CONTEXT",
+        "repair_or_boundary": (
+            "No code implementation is required unless the author designates this "
+            "context clause as normative."
+        ),
+    }
+
+
+def _validate_family(name: str) -> None:
+    family = TRACE_FAMILIES[name]
+    if family.status not in {"EXACT", "PARTIAL/PROXY", "MISSING", "CONFLICT"}:
+        raise RuntimeError(f"semantic trace family {name!r} has invalid status")
+    if family.status == "EXACT" and not all(
+        (family.entry, family.code, family.config, family.tests, family.dynamic)
     ):
-        return (
-            "CONFLICT",
-            "AUTHOR_DECISION_REQUIRED",
-            "Keep the frozen world-independent shared reference; the later Goal's source-derived transform changes the estimand and cannot be selected silently.",
+        raise RuntimeError(
+            f"EXACT semantic trace family {name!r} lacks executable evidence"
         )
-    if section == 13:
-        return (
-            "MISSING",
-            "EXTERNAL_DATA_REQUIRED",
-            "Formal result cells remain absent until authenticated non-fixture execution.",
-        )
-    if section in {1, 6, 8, 11, 14, 15}:
-        return (
-            "PARTIAL/PROXY",
-            "EXTERNAL_DATA_REQUIRED",
-            "A section-level executable contract is mapped; clause-level dynamic or external evidence remains incomplete.",
-        )
-    return (
-        "PARTIAL/PROXY",
-        "CODE_REQUIRED",
-        "The current anchor is section-level and cannot establish atomic EXACT status; add a clause-specific implementation, configuration, regression, and dynamic-evidence mapping.",
+
+
+def _normative_mapping(
+    source_name: str,
+    line_number: int,
+    section: int,
+    heading: str,
+    clause: str,
+    clause_digest: str,
+    project_root: Path,
+) -> dict[str, str]:
+    family_name = (
+        "results"
+        if section == 13
+        else evidence_family_for_clause(section, heading, clause)
     )
+    if not family_name or family_name not in TRACE_FAMILIES:
+        raise RuntimeError(
+            f"normative clause has no semantic trace family: "
+            f"{source_name}:{line_number}:{clause_digest}"
+        )
+    _validate_family(family_name)
+    family = TRACE_FAMILIES[family_name]
+    mapping = {
+        "evidence_family": family_name,
+        "mapping_basis": (
+            f"semantic-family:{family_name};clause-sha256:{clause_digest}"
+        ),
+        "verifiable_expectation": family.expectation,
+        "runtime_entry": family.entry,
+        "code_locations": locate(project_root, family.code),
+        "config_or_schema_locations": locate(project_root, family.config),
+        "regression_test_locations": locate(project_root, family.tests),
+        "dynamic_evidence": family.dynamic,
+        "paper_location": family.paper,
+        "status": family.status,
+        "blocking_type": family.blocker,
+        "repair_or_boundary": family.repair,
+    }
+    if family.status == "EXACT" and any(
+        not mapping[field]
+        for field in (
+            "runtime_entry",
+            "code_locations",
+            "config_or_schema_locations",
+            "regression_test_locations",
+            "dynamic_evidence",
+        )
+    ):
+        raise RuntimeError(
+            f"EXACT clause lacks specific evidence: {source_name}:{line_number}"
+        )
+    return mapping
 
 
-def build_rows(source_name: str, source: Path, project_root: Path, include_text: bool) -> list[dict[str, str]]:
+def build_rows(
+    source_name: str,
+    source: Path,
+    project_root: Path,
+    include_text: bool,
+) -> list[dict[str, str]]:
     spec = SOURCE_SPECS[source_name]
     digest = sha256_file(source)
     if digest != spec["sha256"]:
@@ -311,39 +231,45 @@ def build_rows(source_name: str, source: Path, project_root: Path, include_text:
         top = TOP_SECTION.match(raw_line)
         if top is not None:
             section = int(top.group(1))
-        if section not in SECTION_MAP:
+        if section not in TRACKED_SECTIONS:
             continue
         if HEADING.match(raw_line.strip()):
             heading = HEADING.sub("", raw_line.strip())
-        mapping = SECTION_MAP[section]
         for clause_index, clause in enumerate(clauses_for_line(raw_line), start=1):
             clause = clause.strip()
-            status, blocker, repair = section_status(source_name, line_number, section)
             clause_digest = hashlib.sha256(clause.encode("utf-8")).hexdigest()
+            signal = normative_signal(clause, raw_line)
+            if section == 13 or is_normative_signal(signal):
+                mapping = _normative_mapping(
+                    source_name,
+                    line_number,
+                    section,
+                    heading,
+                    clause,
+                    clause_digest,
+                    project_root,
+                )
+            else:
+                mapping = _context_mapping(clause_digest)
             rows.append(
                 {
-                    "requirement_id": f"{spec['prefix']}-L{line_number:04d}-C{clause_index:02d}",
+                    "requirement_id": (
+                        f"{spec['prefix']}-L{line_number:04d}-C{clause_index:02d}"
+                    ),
                     "source_document": source_name,
                     "source_document_sha256": digest,
                     "source_line": str(line_number),
                     "clause_index": str(clause_index),
                     "source_clause_sha256": clause_digest,
-                    "original_norm": clause if include_text else "[OMITTED_FROM_PUBLIC_REPOSITORY]",
-                    "normative_signal": normative_signal(clause, raw_line),
+                    "original_norm": (
+                        clause if include_text else "[OMITTED_FROM_PUBLIC_REPOSITORY]"
+                    ),
+                    "normative_signal": signal,
                     "section": str(section),
                     "section_heading": (
                         heading if include_text else "[OMITTED_FROM_PUBLIC_REPOSITORY]"
                     ),
-                    "verifiable_expectation": mapping["expected"],
-                    "runtime_entry": mapping["entry"],
-                    "code_locations": locate(project_root, mapping["code"]),
-                    "config_or_schema_locations": locate(project_root, mapping["config"]),
-                    "regression_test_locations": locate(project_root, mapping["tests"]),
-                    "dynamic_evidence": "full unittest, CLI, schema, package, and clean-extraction validation record; non-fixture evidence remains separate",
-                    "paper_location": mapping["paper"],
-                    "status": status,
-                    "blocking_type": blocker,
-                    "repair_or_boundary": repair,
+                    **mapping,
                 }
             )
     return rows
