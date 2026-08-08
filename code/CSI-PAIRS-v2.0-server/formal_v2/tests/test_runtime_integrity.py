@@ -124,6 +124,39 @@ class RuntimeIntegrityTests(unittest.TestCase):
         result = self.validate()
         self.assertEqual(set(result["record_digests"]), {"example"})
 
+    def test_wheel_data_files_are_bound_outside_site_packages(self):
+        archive_name = "example-1.0.data/data/share/example.txt"
+        payload = b"wheel-owned data\n"
+        self.members[archive_name] = payload
+        rows = [
+            [name, f"sha256={_record_hash(content)}", str(len(content))]
+            for name, content in self.members.items()
+            if name != "example-1.0.dist-info/RECORD"
+        ]
+        rows.append(["example-1.0.dist-info/RECORD", "", ""])
+        stream = io.StringIO()
+        csv.writer(stream, lineterminator="\n").writerows(rows)
+        self.members["example-1.0.dist-info/RECORD"] = stream.getvalue().encode()
+        with zipfile.ZipFile(self.wheel, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, content in self.members.items():
+                archive.writestr(name, content)
+        installed_data = self.prefix / "share" / "example.txt"
+        installed_data.parent.mkdir()
+        installed_data.write_bytes(payload)
+        (self.site / "example-1.0.dist-info" / "RECORD").write_bytes(
+            self.members["example-1.0.dist-info/RECORD"]
+        )
+        self.expected["example"]["hashes"] = (
+            hashlib.sha256(self.wheel.read_bytes()).hexdigest(),
+        )
+        manifest = reviewed_wheel_manifest(self.wheelhouse, self.expected, "a" * 64)
+        self.manifest_path.write_bytes(canonical_manifest_bytes(manifest))
+
+        self.validate()
+        installed_data.write_bytes(b"mutated\n")
+        with self.assertRaisesRegex(RuntimeError, "differs from reviewed wheel"):
+            self.validate()
+
     def test_rewritten_record_cannot_hide_installed_file_mutation(self):
         module = self.site / "example" / "__init__.py"
         module.write_bytes(b"VALUE = 9\n")

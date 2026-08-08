@@ -69,7 +69,7 @@ def _installed_path(
     parts = wheel_member.parts
     if parts[0] != data_prefix:
         return root_kind, wheel_member
-    if len(parts) < 3 or parts[1] not in {"purelib", "platlib"}:
+    if len(parts) < 3 or parts[1] not in {"purelib", "platlib", "data"}:
         raise RuntimeError(
             "reviewed runtime wheel uses an unsupported .data installation scheme: "
             f"{wheel_member}"
@@ -287,8 +287,11 @@ def validate_installed_wheel_closure(
     roots = _default_site_roots(prefix) if site_roots is None else {
         kind: path.resolve() for kind, path in site_roots.items()
     }
-    if set(roots) != {"purelib", "platlib"}:
+    if not {"purelib", "platlib"}.issubset(roots) or set(roots).difference(
+        {"purelib", "platlib", "data"}
+    ):
         raise RuntimeError("main runtime site-package roots are incomplete")
+    roots.setdefault("data", prefix)
     for root in roots.values():
         if root != prefix and prefix not in root.parents:
             raise RuntimeError("main runtime site-package root escapes interpreter prefix")
@@ -331,7 +334,7 @@ def validate_installed_wheel_closure(
         record_digests[normalized] = _sha256_file(record_path)
 
     actual_files: set[Path] = set()
-    for root in set(roots.values()):
+    for root in {roots["purelib"], roots["platlib"]}:
         for candidate in root.rglob("*"):
             if candidate.is_symlink():
                 raise RuntimeError(f"main runtime site-packages contains a symlink: {candidate}")
@@ -342,10 +345,15 @@ def validate_installed_wheel_closure(
             if candidate.name in {"sitecustomize.py", "usercustomize.py"}:
                 raise RuntimeError(f"main runtime contains a forbidden startup hook: {candidate}")
             actual_files.add(candidate.resolve())
-    expected_paths = set(expected_files)
-    if actual_files != expected_paths:
-        missing = sorted(str(path) for path in expected_paths.difference(actual_files))
-        unexpected = sorted(str(path) for path in actual_files.difference(expected_paths))
+    site_package_roots = {roots["purelib"], roots["platlib"]}
+    expected_site_files = {
+        path
+        for path in expected_files
+        if any(path == root or root in path.parents for root in site_package_roots)
+    }
+    if actual_files != expected_site_files:
+        missing = sorted(str(path) for path in expected_site_files.difference(actual_files))
+        unexpected = sorted(str(path) for path in actual_files.difference(expected_site_files))
         raise RuntimeError(
             "main runtime installed-file closure mismatch: "
             f"missing={missing[:10]}, unexpected={unexpected[:10]}"
