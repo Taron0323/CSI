@@ -7,16 +7,17 @@ outer-recomputed map/action inputs and cluster-level active/null decisions pass.
 
 ## Frozen adapter set
 
-`all_map_adapters_v1.json` contains four distinct map-conditioned methods:
+`all_map_adapters_v1.json` contains five distinct map-conditioned methods:
 
 | Model | Implementation | Native training target | Six-condition localization |
 |---|---|---|---|
 | SigMap | V6 style-controlled map+CSI locator | source position | direct map-conditioned estimate |
 | Wi-GATr | official-code adaptation | total received power | inverse coordinate optimization |
+| PMNet | official-code adaptation | total received-power radiomap | nearest power-matched free cell |
 | WiSER | style-controlled implementation | local 2D map/CSI surrogate objectives | frozen surrogate inverse search |
 | RFIR | RFIR-inspired 2.5D controlled implementation | visibility-aware anisotropic Gaussian RF field + received power | frozen inverse-renderer search |
 
-All four train on `source_encoder_train`, select on `source_method_selection`, and evaluate only
+All five train on `source_encoder_train`, select on `source_method_selection`, and evaluate only
 `source_final_unseen_bank` plus target `query` positions. Every adapter emits a source-only training
 record, selected checkpoint, exact config, result rows, and hashes. Missing environments resolve to
 `not_executed`; they do not abort into a false PASS.
@@ -25,8 +26,9 @@ WiSER and RFIR have no source archive in `waibu/`. The local WiSER code uses a d
 Transformer, scalar power prediction, IFFT-derived pseudo taps, and random initialization. Those
 choices do not reproduce the paper's sparse 3D TRELLIS scene representation, dense receiver-plane
 radiomap loss, physical unordered path targets, or pretrained checkpoint schedule. WiSER therefore
-remains `style-controlled-implementation` and C1-ineligible, as do RFIR and SigMap. The shipped set
-has only one C1-eligible model (Wi-GATr), so the C1 gate is intentionally blocked.
+remains `style-controlled-implementation` and C1-ineligible, as do RFIR and SigMap. Wi-GATr and
+PMNet are C1-eligible; the C1 gate still requires both non-fixture executions to pass every city's
+cluster-level active/null decisions.
 
 ## Wi-GATr
 
@@ -90,6 +92,25 @@ that interpreter after execution and rejects package, driver, lock, or environme
    qualification, factorial training, and evaluation have produced their authenticated artifacts.
 
 Fixture runs remain `scientific_use=FORBIDDEN`, even if the adapter exits successfully.
+
+## PMNet
+
+`pmnet_adapter.py` adapts the official PMNet v3 source at revision
+`a0e0c5926de721074beeb23f630f2d313f6508dd`. The vendored model and MIT license are authenticated
+under `vendor/PMNet/`; upstream model bytes are unchanged. Its evidence label is
+`official-code-adaptation`, not a reproduction of the USC/UCLA/Boston results.
+
+The adapter retains the official `[3,3,27,3]` encoder blocks, ASPP rates `[6,12,18]`, multi-grid
+`[1,2,4]`, output stride 8, decoder, Adam optimizer, and 30-epoch StepLR schedule. The input boundary
+is expanded from building/Tx images to occupancy, height, material one-hot planes, and the fixed BS
+transmitter raster. It predicts a total received-power radiomap and computes MSE only at registered
+receiver cells. Power normalization is fitted on `source_encoder_train`; checkpoint selection uses
+only `source_method_selection`.
+
+For each frozen six-condition map, PMNet predicts a radiomap without a receiver coordinate. The
+localizer returns the free grid cell whose predicted power is closest to the observed total power;
+the true receiver position is read only afterward to compute localization error. A registered
+source snapshot or successful fixture forward does not support C1 without formal per-city results.
 
 ## Representation baselines
 

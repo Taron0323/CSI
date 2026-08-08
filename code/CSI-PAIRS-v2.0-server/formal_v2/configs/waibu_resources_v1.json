@@ -106,6 +106,19 @@
       "redistribution_allowed": true
     },
     {
+      "file": "PMNet-a0e0c592.zip",
+      "sha256": "e48e283e596270a9932052cc41f213b0a22c0ebbf29ba9551c5562d8cb877331",
+      "resource_id": "github:abman23/pmnet@a0e0c5926de721074beeb23f630f2d313f6508dd",
+      "title": "PMNet official source archive",
+      "kind": "official-source-archive",
+      "integration_role": "PMNet executable C1 adapter",
+      "implementation_status": "official-code-adaptation",
+      "allowed_name": "PMNet official-code adaptation",
+      "source_url": "https://github.com/abman23/pmnet/archive/a0e0c5926de721074beeb23f630f2d313f6508dd.zip",
+      "license_url": "https://opensource.org/license/mit",
+      "redistribution_allowed": true
+    },
+    {
       "file": "sionna-main.zip",
       "sha256": "fdbf89f307cc8933535af1587f00f1bcbd4b5edf7715275cd461bd4779f1fac7",
       "resource_id": "github:NVlabs/sionna@04ddb9312116b408093b9d3ad363a3df355093a6",

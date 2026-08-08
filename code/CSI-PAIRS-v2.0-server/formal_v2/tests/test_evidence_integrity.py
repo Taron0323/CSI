@@ -186,7 +186,7 @@ class EvidenceIntegrityTests(unittest.TestCase):
         evaluate(1)
         evaluate(10_000)
 
-    def test_shipped_wiser_is_style_control_and_c1_stays_underidentified(self):
+    def test_shipped_wiser_is_style_control_and_not_c1_eligible(self):
         manifest = json.loads(
             (ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json").read_text()
         )
@@ -196,7 +196,7 @@ class EvidenceIntegrityTests(unittest.TestCase):
         self.assertFalse(wiser["c1_eligible"])
         self.assertEqual(
             [row["model_name"] for row in manifest["adapters"] if row["c1_eligible"]],
-            ["Wi-GATr"],
+            ["Wi-GATr", "PMNet"],
         )
         resource_registry = json.loads(
             (ROOT / "formal_v2/configs/waibu_resources_v1.json").read_text()

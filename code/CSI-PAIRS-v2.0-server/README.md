@@ -247,8 +247,8 @@ failure stops the chain. The deprecated `--approve-full-experiment` flag and
 `CSI_PAIRS_APPROVE_FULL_EXPERIMENT` variable have no authorization power.
 
 The script defaults to the shipped resource V3, shuffled-pair V3, retention V3, and built-in scene-ID
-manifests. The verifier, a second genuine C1-eligible model, formal scenes, independent RT inputs,
-external validity input, installed Wi-GATr/Sionna runtimes, licenses, CUDA capacity, and reviewed
+manifests. Formal scenes, independent RT inputs, external-validity input, non-fixture Wi-GATr and
+PMNet checkpoints/results, installed Wi-GATr/Sionna runtimes, licenses, CUDA capacity, and reviewed
 budget remain external and mandatory. Missing any one blocks preparation before training.
 
 Never reuse an output directory except for the authenticated `prepare-full-run` to `all` transition.

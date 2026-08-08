@@ -15,7 +15,7 @@ Implemented code surfaces:
 - strict four arms with common batch plans, measured resource fields, and fail-closed seven-part G4;
 - city-level k, heteroscedastic localization, exact V6 J_a, multilevel and bank-only bootstrap, leave-one sensitivity;
 - active CGS plus gray/null distributions, unified response probes, q_comp/p_fail calibration, path matching/equivalence, external/scene-ID/resource/claim controls, independent RT calibration and external-validity adapters, literature/resource G0, and C1-C13/G0-G8 assembly;
-- authenticated `waibu/` resource inventory, five source-only representation baselines, four map-conditioned six-condition adapters (currently one C1-eligible), and Sionna RT/large-radio-map facilities.
+- authenticated `waibu/` resource inventory, five source-only representation baselines, five map-conditioned six-condition adapters (two C1-eligible), and Sionna RT/large-radio-map facilities.
 
 Unavailable data, external models, independent RT calibration, or unrun controls produce `NOT_ASSESSED/BLOCKED`. Code presence is not scientific evidence.
 
@@ -50,14 +50,14 @@ operation lock for the run root, so concurrent, interrupted, or completed eviden
 cannot be silently mixed or overwritten. Fixture paths are normalized to `.npz` before exclusive
 creation.
 
-`external_adapters/all_map_adapters_v1.json` registers SigMap, Wi-GATr, WiSER, and RFIR for the
+`external_adapters/all_map_adapters_v1.json` registers SigMap, Wi-GATr, PMNet, WiSER, and RFIR for the
 same internally generated six-condition unit registry. `configs/representation_baselines_v1.json`
 registers CSI-MAE, CSI-CLIP, CSI-CLIP++, ContraWiMAE, and WWM-inspired same-world prediction for
 the unified localization comparison. Signal-only representation rows can never count toward C1.
 WiSER is a style-controlled 2D map/CSI diagnostic and not a faithful implementation of the paper;
 RFIR remains style-controlled because the data contract lacks its multi-view RGB 3DGS geometry stage.
-Only Wi-GATr is currently C1-eligible, so C1 remains `BLOCKED` until a second authenticated,
-faithful official-code or paper-spec adapter is supplied. The shipped
+Wi-GATr and PMNet are C1-eligible official-code adaptations. C1 remains `BLOCKED` until both produce
+authenticated non-fixture checkpoints and pass the same per-city active/null gate. The shipped
 `configs/sionna_external_validity_adapter_v2.json` is the standard G8 adapter manifest.
 See `WAIBU_INTEGRATION.md` and `external_adapters/README.md` for provenance and execution limits.
 
@@ -117,7 +117,7 @@ directory. `scripts/build_anonymous_supplement.sh` creates the separate determin
 package and excludes all of `waibu/`, internal Git provenance, and identity-bearing delivery audits.
 Use `PYTHONDONTWRITEBYTECODE=1 python3 -m formal_v2.fetch_waibu_resources --registry ... --waibu-root ...` to obtain omitted
 inputs directly from their frozen source URLs; formal resource verification remains strict and fails
-until all ten local files authenticate.
+until all eleven local files authenticate.
 
 C1 rows bind the exact supplied map and directed action by SHA-256; the outer runner recomputes both
 from the frozen unit registry and makes cluster-macro active-effect/null-equivalence decisions.

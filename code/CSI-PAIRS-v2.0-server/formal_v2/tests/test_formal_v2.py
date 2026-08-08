@@ -257,6 +257,30 @@ class ConfigTests(unittest.TestCase):
                     {"source-a", "source-b"},
                 )
 
+    def test_fixture_receivers_remain_inside_common_free_cells(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = write_nonscientific_fixture(
+                Path(temporary) / "many-scenes.npz",
+                scene_count=96,
+                positions=8,
+            )
+            dataset = FormalDataset.load(path)
+            representation = dataset.metadata["representation"]
+            origin = np.asarray(representation["map_origin_xy_m"])
+            resolution = float(representation["map_resolution_m"])
+            grid = (dataset.positions - origin) / resolution
+            cells = np.floor(grid).astype(np.int64)
+            offsets = grid - cells
+            self.assertTrue(np.all(offsets > 0.09))
+            self.assertTrue(np.all(offsets < 0.91))
+
+            occupancy = tuple(dataset.map_channel_names.tolist()).index("occupancy")
+            for scene in range(dataset.scene_count):
+                columns = cells[scene, :, 0]
+                rows = cells[scene, :, 1]
+                values = dataset.maps[scene, :, occupancy][:, rows, columns]
+                self.assertTrue(np.all(values < 0.5))
+
     def test_rejects_teacher_state_initialization_mismatch(self):
         config = load_formal_config(SMOKE_CONFIG)
         config["teacher"]["latent_dim"] += 1
@@ -2919,7 +2943,7 @@ class WaibuIntegrationTests(unittest.TestCase):
             (ROOT / "formal_v2/configs/waibu_resources_v1.json").read_text()
         )
         rows = validate_resource_registry_structure(registry)
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 11)
         self.assertTrue(all(len(row["sha256"]) == 64 for row in rows))
         self.assertEqual(
             {
@@ -3146,17 +3170,19 @@ class WaibuIntegrationTests(unittest.TestCase):
         self.assertEqual(_training_task("wiser", 11, 100, 5), "cir")
         self.assertIn(_training_task("wiser", 25, 100, 5), {"radiomap", "cir"})
 
-    def test_complete_map_manifest_has_four_distinct_c1_models(self):
+    def test_complete_map_manifest_has_five_distinct_map_models(self):
         manifest = parse_strict_json(
             (ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json").read_text()
         )
         validate_external_manifest(manifest)
         self.assertEqual(
             {row["model_name"] for row in manifest["adapters"]},
-            {"SigMap", "Wi-GATr", "WiSER", "RFIR"},
+            {"SigMap", "Wi-GATr", "PMNet", "WiSER", "RFIR"},
         )
         eligible = [row for row in manifest["adapters"] if row["c1_eligible"]]
-        self.assertEqual([row["model_name"] for row in eligible], ["Wi-GATr"])
+        self.assertEqual(
+            [row["model_name"] for row in eligible], ["Wi-GATr", "PMNet"]
+        )
         changed = json.loads(json.dumps(manifest))
         changed["adapters"][0]["c1_eligible"] = True
         with self.assertRaisesRegex(ValueError, "style-controlled"):
