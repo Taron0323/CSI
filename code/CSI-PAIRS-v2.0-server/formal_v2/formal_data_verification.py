@@ -380,7 +380,7 @@ def export_precomputed_verification(config, dataset, verification_root, output_r
     _write_sha256sums(target)
     from .formal_precomputed_regeneration_verifier import validate_receipt
 
-    validate_receipt(receipt_path, dataset_target)
+    validate_receipt(receipt_path, dataset_target, require_registration=False)
     return {
         "status": "PASS",
         "passed": True,

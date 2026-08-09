@@ -335,6 +335,13 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
             }
         )
         write_json(receipt_path, receipt)
+        with self.assertRaisesRegex(RuntimeError, "not registered"):
+            validate_receipt(receipt_path, self.dataset_path)
+        validate_receipt(
+            receipt_path,
+            self.dataset_path,
+            require_registration=False,
+        )
         registry = self.root / "candidate_evidence.json"
         write_json(
             registry,

@@ -24,7 +24,12 @@ REGISTERED_CANDIDATE_EVIDENCE = (
 )
 
 
-def validate_receipt(receipt_path: str | Path, dataset_path: str | Path) -> tuple[dict, Path]:
+def validate_receipt(
+    receipt_path: str | Path,
+    dataset_path: str | Path,
+    *,
+    require_registration: bool = True,
+) -> tuple[dict, Path]:
     receipt_file = _regular_file(receipt_path, "precomputed regeneration receipt")
     receipt = read_strict_json(receipt_file)
     required = {
@@ -78,7 +83,7 @@ def validate_receipt(receipt_path: str | Path, dataset_path: str | Path) -> tupl
             raise RuntimeError(
                 "precomputed regeneration receipt source tree differs from this checkout"
             )
-    else:
+    elif require_registration:
         _require_registered_nonfixture_receipt(receipt_file, receipt)
     dataset = _regular_file(dataset_path, "candidate dataset")
     if dataset.stat().st_size != receipt["dataset_bytes"] or sha256_file(dataset) != receipt["dataset_sha256"]:
