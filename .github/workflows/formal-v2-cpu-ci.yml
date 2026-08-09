@@ -64,6 +64,7 @@ jobs:
           PY
           find formal_v2 -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
           sha256sum --check SHA256SUMS
+          artifacts/dataset_suite_v6/VERIFY_PR_METADATA.sh
           (
             cd formal_v2/external_adapters/vendor/Wi-GATr
             sha256sum --check VENDOR_SHA256SUMS

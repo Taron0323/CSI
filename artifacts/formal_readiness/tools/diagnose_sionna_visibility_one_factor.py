@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import sys
 import time
@@ -17,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from formal_v2 import sionna_osm_candidate as candidate
+from formal_v2 import render_sionna_bank_backend_diagnostic as audited_renderer
 
 
 CONFIG_SCHEMA = "csi-pairs-sionna-visibility-one-factor-config-v1"
@@ -536,7 +536,7 @@ def _validate_against_frozen(config: dict, frozen_config: dict) -> None:
         raise ValueError("diagnostic receiver count differs from the frozen candidate")
 
 
-def diagnose(asset_root: Path, config_path: Path) -> dict:
+def diagnose(asset_root: Path, config_path: Path, *, runtime: dict) -> dict:
     config = load_diagnostic_config(config_path)
     root, manifest, frozen_config, asset_source, manifest_path, _ = _load_asset_bundle(asset_root)
     scene_index = int(config["scene_index"])
@@ -661,7 +661,7 @@ def diagnose(asset_root: Path, config_path: Path) -> dict:
         "backend": config["backend"],
         "drjit_threads": int(config["drjit_threads"]),
         "same_solver_seed_for_all_physical_conditions": int(config["solver_seed"]),
-        "runtime": candidate._sionna_runtime_record(backend=str(config["backend"])),
+        "runtime": runtime,
         "asset_source": asset_source,
         "asset_root": str(root),
         "asset_manifest_path": str(manifest_path),
@@ -706,8 +706,13 @@ def main() -> int:
     args = parser.parse_args()
     config = load_diagnostic_config(args.config)
     output = _checked_output(args.output)
-    candidate.ensure_sionna_runtime(
-        [__file__, *sys.argv[1:]], backend=str(config["backend"])
+    backend_args = argparse.Namespace(
+        backend=str(config["backend"]),
+        drjit_threads=int(config["drjit_threads"]),
+        physical_gpu_index=None,
+    )
+    llvm_path = audited_renderer._prepare_backend(
+        backend_args, [__file__, *sys.argv[1:]]
     )
     import mitsuba as mi
 
@@ -715,7 +720,13 @@ def main() -> int:
     import drjit as dr
 
     dr.set_thread_count(int(config["drjit_threads"]))
-    report = diagnose(args.asset_root, args.config)
+    if llvm_path is None:
+        raise RuntimeError("the registered visibility diagnostic requires LLVM")
+    report = diagnose(
+        args.asset_root,
+        args.config,
+        runtime=audited_renderer._llvm_runtime_record(llvm_path, mi, dr),
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     candidate._write_json_exclusive(output, report)
     print(json.dumps({"output": str(output), "status": report["status"]}, sort_keys=True))

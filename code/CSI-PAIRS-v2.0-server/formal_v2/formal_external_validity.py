@@ -35,7 +35,15 @@ def run_external_validity(config, dataset, manifest_path, output_root):
     adapter_source = None
     bound_manifest = output_dir / "adapter_manifest.json"
     evidence = evidence_context(
-        config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
+        config,
+        dataset,
+        (
+            "DIAGNOSTIC_NOT_CLAIM"
+            if execution_mode == "authenticated_precomputed_rt_archive"
+            else "FORBIDDEN"
+            if dataset.is_fixture
+            else "CANDIDATE_NOT_CLAIM"
+        ),
     )
     if execution_mode == "authenticated_sionna_adapter":
         adapter_source = _verify_adapter_source(manifest)
@@ -134,16 +142,27 @@ def run_external_validity(config, dataset, manifest_path, output_root):
         float(config["external_validity"]["null_equivalence_margin"]),
         int(config["external_validity"]["bootstrap_resamples"]),
     )
-    passed = bool(
+    diagnostic_statistics_passed = bool(
         agreement["ci95_low"]
         >= float(config["external_validity"]["minimum_active_direction_agreement"])
         and equivalence["passed"]
     )
+    passed = bool(
+        execution_mode == "authenticated_sionna_adapter"
+        and diagnostic_statistics_passed
+    )
     write_csv(output_dir / "validated_paired_effects.csv", bind_rows(rows, evidence))
     gate = {
         "schema_version": "csi-pairs-v6-external-validity-gate-v4",
-        "status": "PASS" if passed else "FAIL",
+        "status": (
+            "PASS"
+            if passed
+            else "DIAGNOSTIC_NOT_CLAIM"
+            if execution_mode == "authenticated_precomputed_rt_archive"
+            else "FAIL"
+        ),
         "passed": passed,
+        "diagnostic_statistics_passed": diagnostic_statistics_passed,
         **evidence,
         "gate": "G8",
         "evidence_type": manifest["evidence_type"],
@@ -247,6 +266,15 @@ def _execution_mode(manifest) -> str:
     if manifest["schema_version"] == ARCHIVE_MANIFEST_SCHEMA:
         return "authenticated_precomputed_rt_archive"
     raise ValueError("external-validity manifest schema mismatch")
+
+
+def require_claim_eligible_manifest(manifest) -> None:
+    """Reject archive-only diagnostics at every formal authorization boundary."""
+    _validate_manifest(manifest)
+    if _execution_mode(manifest) != "authenticated_sionna_adapter":
+        raise RuntimeError(
+            "precomputed RT archives are DIAGNOSTIC_NOT_CLAIM and cannot satisfy formal G8"
+        )
 
 
 def _manifest_engine_family(manifest) -> str:

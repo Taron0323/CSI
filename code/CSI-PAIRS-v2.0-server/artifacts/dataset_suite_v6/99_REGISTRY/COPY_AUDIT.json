@@ -3,9 +3,14 @@
   "audit_date": "2026-08-09",
   "method": "cp -cRp on the same APFS data volume",
   "semantics": "Clone copies have independent paths and inodes and are not top-level symlinks. APFS may share physical data blocks until mutation.",
+  "coverage": {
+    "catalog_target_paths_observed": 12,
+    "source_target_entries_audited": 3,
+    "copy_gate": "PARTIAL"
+  },
   "external_wireless": {
-    "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/external_wireless",
-    "target_path": "/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6/02_EXTERNAL_WIRELESS/external_wireless",
+    "source_path": "$LOCAL_DATA_ROOT/external_wireless",
+    "target_path": "$LOCAL_SUITE_ROOT/02_EXTERNAL_WIRELESS/external_wireless",
     "source": {
       "regular_files": 363263,
       "directories": 1005,
@@ -46,8 +51,8 @@
     "inventory_match": true
   },
   "qualcomm_wireless_indoor": {
-    "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/qualcomm_wireless_indoor",
-    "target_path": "/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6/03_INDEPENDENT_ENGINE_QUALCOMM/qualcomm_wireless_indoor",
+    "source_path": "$LOCAL_DATA_ROOT/qualcomm_wireless_indoor",
+    "target_path": "$LOCAL_SUITE_ROOT/03_INDEPENDENT_ENGINE_QUALCOMM/qualcomm_wireless_indoor",
     "source": {
       "regular_files": 190590,
       "directories": 46945,
@@ -70,8 +75,8 @@
     "inventory_match": true
   },
   "failed_m4_formal_20260809T080951Z": {
-    "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z",
-    "target_path": "/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6/05_INCOMPLETE_AND_FAILED_RUNS/failed_m4_formal_20260809T080951Z_path_id_collision",
+    "source_path": "$LOCAL_M4_ROOT/runs/m4-formal-20260809T080951Z",
+    "target_path": "$LOCAL_SUITE_ROOT/05_INCOMPLETE_AND_FAILED_RUNS/failed_m4_formal_20260809T080951Z_path_id_collision",
     "source": {
       "regular_files": 247,
       "regular_file_bytes": 41926059,

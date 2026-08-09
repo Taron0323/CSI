@@ -41,17 +41,8 @@ def _expected_runtime_versions() -> dict[str, str]:
 
 
 def _prepare_backend(args: argparse.Namespace, reexec_arguments: list[str]) -> Path | None:
-    if args.backend == "cuda":
-        visible = os.environ.get("CUDA_VISIBLE_DEVICES")
-        if args.physical_gpu_index is None or visible != str(args.physical_gpu_index):
-            raise RuntimeError(
-                f"expected CUDA_VISIBLE_DEVICES={args.physical_gpu_index}, got {visible!r}"
-            )
-        candidate.ensure_sionna_runtime(reexec_arguments)
-        return None
-
-    if args.physical_gpu_index is not None:
-        raise ValueError("--physical-gpu-index is forbidden for the LLVM backend")
+    if args.backend != "llvm":
+        raise ValueError("the audited bank diagnostic supports only the LLVM backend")
     if args.drjit_threads != 1:
         raise ValueError("the LLVM diagnostic requires --drjit-threads=1")
     if _runtime_versions() != _expected_runtime_versions():
@@ -66,7 +57,10 @@ def _prepare_backend(args: argparse.Namespace, reexec_arguments: list[str]) -> P
         raise RuntimeError("DRJIT_LIBLLVM_PATH must name an absolute regular non-symlink file")
     if not Path(sys.executable).is_file():
         raise RuntimeError("the active fixed Python executable is not a regular file")
-    return llvm_path.resolve()
+    from formal_v2.sionna_runtime_lock import approved_library_record
+
+    approved = approved_library_record(Path(candidate.__file__).resolve().parents[1], llvm_path)
+    return Path(approved["libllvm_path"])
 
 
 def _canonical_path_record(
@@ -172,9 +166,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--asset-root", type=Path, required=True)
     parser.add_argument("--scene-index", type=int, required=True)
-    parser.add_argument("--backend", choices=("cuda", "llvm"), required=True)
+    parser.add_argument("--backend", choices=("llvm",), required=True)
     parser.add_argument("--drjit-threads", type=int)
-    parser.add_argument("--physical-gpu-index", type=int)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     manifest_path = args.output.with_suffix(".manifest.json")
@@ -185,12 +178,12 @@ def main() -> int:
     llvm_path = _prepare_backend(args, [__file__, *sys.argv[1:]])
     import mitsuba as mi
 
-    mi.set_variant(f"{args.backend}_ad_mono_polarized")
+    mi.set_variant("llvm_ad_mono_polarized")
     import drjit as dr
 
     if args.drjit_threads is not None:
-        if args.backend != "llvm" or args.drjit_threads < 1:
-            raise ValueError("--drjit-threads requires LLVM and a positive count")
+        if args.drjit_threads < 1:
+            raise ValueError("--drjit-threads requires a positive count")
         dr.set_thread_count(args.drjit_threads)
     import sionna.rt  # noqa: F401
 
@@ -213,11 +206,7 @@ def main() -> int:
     candidate._write_npz_exclusive(args.output, arrays)
     candidate._write_json_exclusive(signatures_path, recorder.payload())
     tool_path = Path(__file__).resolve()
-    runtime = (
-        _llvm_runtime_record(llvm_path, mi, dr)
-        if args.backend == "llvm"
-        else candidate._sionna_runtime_record()
-    )
+    runtime = _llvm_runtime_record(llvm_path, mi, dr)
     payload = {
         "schema_version": "csi-pairs-sionna-bank-backend-diagnostic-v2",
         "status": "DIAGNOSTIC_NOT_FORMAL_EVIDENCE",
@@ -246,9 +235,6 @@ def main() -> int:
         "tool_sha256": candidate.sha256_file(tool_path),
         "argv": [str(Path(sys.executable)), *sys.argv],
     }
-    if args.backend == "cuda":
-        payload["cuda_visible_devices"] = os.environ.get("CUDA_VISIBLE_DEVICES")
-        payload["physical_gpu_index"] = args.physical_gpu_index
     candidate._write_json_exclusive(manifest_path, payload)
     print(json.dumps({"output": str(args.output.resolve()), "status": payload["status"]}))
     return 0

@@ -2,13 +2,13 @@
 
 ## Local complete snapshot
 
-The complete, independently copied dataset suite is available on the audited workstation at:
+The audited local suite is represented without publishing a workstation path:
 
 ```text
-/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6
+$LOCAL_SUITE_ROOT
 ```
 
-Final local directory view: 554,820 regular files, 48,272 directories, and 37,692,880 KiB (about 35.95 GiB). The data volume had 349 GiB available after the copy. APFS clone-copy semantics provide independent paths/inodes while allowing unchanged files to share physical blocks.
+Final local directory view: 554,820 regular files, 48,272 directories, and 37,692,880 KiB (about 35.95 GiB). The data volume had 349 GiB available after the copy. APFS clone-copy semantics provide independent paths/inodes while allowing unchanged files to share physical blocks. The committed copy audit verifies source/target identity for 3 entries; the remaining catalog targets are existence records, so `G-COPY=PARTIAL`.
 
 The two largest registered roots are:
 
@@ -37,7 +37,7 @@ It does not claim that raw data was uploaded to GitHub.
 
 ```bash
 cd code/CSI-PAIRS-v2.0-server/artifacts/dataset_suite_v6
-CSI_PAIRS_SUITE_ROOT=/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6 \
+CSI_PAIRS_SUITE_ROOT="$LOCAL_SUITE_ROOT" \
   ./VERIFY_SUITE.sh
 ```
 

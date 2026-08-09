@@ -39,7 +39,6 @@ PATH_VERTEX_QUANTIZATION_M = 1e-5
 PATH_ANGLE_QUANTIZATION_RAD = 1e-5
 SIONNA_MITSUBA_VARIANT = "llvm_ad_mono_polarized"
 SIONNA_DRJIT_THREADS = 1
-SIONNA_DEFAULT_LIBLLVM = Path("/lib/x86_64-linux-gnu/libLLVM-18.so")
 SOURCE_ROLES = (
     "source_encoder_train",
     "source_method_selection",
@@ -788,11 +787,16 @@ def _sionna_bootstrap_environment(
     runtime = root / SIONNA_RUNTIME_RELATIVE
     python = runtime / "bin" / "python"
     environment = dict(os.environ if current is None else current)
-    llvm_path = Path(
-        libllvm
-        if libllvm is not None
-        else environment.get("DRJIT_LIBLLVM_PATH", SIONNA_DEFAULT_LIBLLVM)
-    )
+    from .sionna_runtime_lock import approved_library_record, require_runtime_record
+
+    if libllvm is None:
+        llvm_path, _record = require_runtime_record(root, runtime.parent)
+    else:
+        record = approved_library_record(root, libllvm)
+        llvm_path = Path(record["libllvm_path"])
+    configured_llvm = environment.get("DRJIT_LIBLLVM_PATH")
+    if configured_llvm and Path(configured_llvm).resolve() != llvm_path:
+        raise RuntimeError("DRJIT_LIBLLVM_PATH differs from the approved runtime record")
     required = {
         "Sionna runtime Python": python,
         "Dr.Jit LLVM library": llvm_path,
@@ -928,6 +932,8 @@ def _sionna_runtime_record() -> dict:
 
 
 def _validate_shard_runtime(runtime: object) -> None:
+    from .sionna_runtime_lock import approved_library_record
+
     required = {
         "python",
         "sionna",
@@ -955,11 +961,13 @@ def _validate_shard_runtime(runtime: object) -> None:
     if any(runtime.get(key) != value for key, value in expected.items()):
         raise ValueError("render shard runtime differs from the frozen Sionna runtime")
     llvm_path = Path(str(runtime["drjit_libllvm_path"]))
+    approved = approved_library_record(Path(__file__).resolve().parents[1], llvm_path)
     if (
         not llvm_path.is_absolute()
         or not llvm_path.is_file()
         or llvm_path.is_symlink()
         or runtime["drjit_libllvm_sha256"] != sha256_file(llvm_path)
+        or runtime["drjit_libllvm_sha256"] != approved["libllvm_sha256"]
     ):
         raise ValueError("render shard LLVM library provenance is invalid")
 

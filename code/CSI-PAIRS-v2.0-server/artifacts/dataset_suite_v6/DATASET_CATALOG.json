@@ -8,7 +8,7 @@
     "00_FROZEN_SPECS/FORMAL_V2_DATA_CONTRACT.md"
   ],
   "suite_status": {
-    "engineering_copy_status": "ALL_REGISTERED_SOURCES_COPIED",
+    "engineering_copy_status": "PARTIAL_SOURCE_TARGET_AUDIT",
     "formal_status": "POST_AUDIT_NO_GO",
     "scientific_use": "FORBIDDEN",
     "reason": "The newest formal M4 run failed before shard completion/merge, and all scientific qualification/evidence gates remain incomplete."
@@ -19,6 +19,7 @@
     "result": "PASS",
     "checks": 20,
     "mode": "full",
+    "copy_gate": "PARTIAL",
     "formal_status_after_verification": "POST_AUDIT_NO_GO",
     "scientific_use_after_verification": "FORBIDDEN"
   },
@@ -31,7 +32,7 @@
   "datasets": [
     {
       "dataset_id": "external_wireless",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/external_wireless",
+      "source_path": "$LOCAL_DATA_ROOT/external_wireless",
       "suite_path": "02_EXTERNAL_WIRELESS/external_wireless",
       "copy_status": "COPIED",
       "inventory": {
@@ -78,7 +79,7 @@
     },
     {
       "dataset_id": "qualcomm_wireless_indoor",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/qualcomm_wireless_indoor",
+      "source_path": "$LOCAL_DATA_ROOT/qualcomm_wireless_indoor",
       "suite_path": "03_INDEPENDENT_ENGINE_QUALCOMM/qualcomm_wireless_indoor",
       "copy_status": "COPIED",
       "inventory": {
@@ -131,7 +132,7 @@
     },
     {
       "dataset_id": "legacy_sionna_osm_34bank",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate",
+      "source_path": "$LOCAL_HANDOFF_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate",
       "suite_path": "01_FORMAL_MAIN_CANDIDATES/legacy_sionna_osm_34bank_POST_AUDIT_NO_GO",
       "copy_status": "COPIED",
       "inventory": {
@@ -159,7 +160,7 @@
     },
     {
       "dataset_id": "full_synthetic_fixture",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_full_synthetic",
+      "source_path": "$LOCAL_HANDOFF_ROOT/generated_datasets/csi_pairs_v2_1_v6_full_synthetic",
       "suite_path": "04_FIXTURES_SOFTWARE_ONLY/csi_pairs_v2_1_v6_full_synthetic",
       "copy_status": "COPIED",
       "inventory": {
@@ -174,7 +175,7 @@
     },
     {
       "dataset_id": "dual_a100_sionna_fixture",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100",
+      "source_path": "$LOCAL_HANDOFF_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100",
       "suite_path": "04_FIXTURES_SOFTWARE_ONLY/csi_pairs_v2_1_v6_sionna_rt_dual_a100",
       "copy_status": "COPIED",
       "inventory": {
@@ -191,7 +192,7 @@
     },
     {
       "dataset_id": "smoke_fixture",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_smoke",
+      "source_path": "$LOCAL_HANDOFF_ROOT/generated_datasets/csi_pairs_v2_1_v6_smoke",
       "suite_path": "04_FIXTURES_SOFTWARE_ONLY/csi_pairs_v2_1_v6_smoke",
       "copy_status": "COPIED",
       "inventory": {
@@ -206,7 +207,7 @@
     },
     {
       "dataset_id": "legacy_candidate_005000Z",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z",
+      "source_path": "$LOCAL_HANDOFF_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z",
       "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/legacy_sionna_osm_candidate_005000Z",
       "copy_status": "COPIED",
       "inventory": {
@@ -221,7 +222,7 @@
     },
     {
       "dataset_id": "diagnostic_scene_00_004000Z",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/sionna_osm_candidate_20260809T004000Z_diagnostic",
+      "source_path": "$LOCAL_HANDOFF_ROOT/generated_datasets/sionna_osm_candidate_20260809T004000Z_diagnostic",
       "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/diagnostic_scene_00_004000Z",
       "copy_status": "COPIED",
       "inventory": {
@@ -234,7 +235,7 @@
     },
     {
       "dataset_id": "dense_diagnostic_scene_22_004500Z",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/sionna_osm_candidate_20260809T004500Z_dense_diagnostic",
+      "source_path": "$LOCAL_HANDOFF_ROOT/generated_datasets/sionna_osm_candidate_20260809T004500Z_dense_diagnostic",
       "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/dense_diagnostic_scene_22_004500Z",
       "copy_status": "COPIED",
       "inventory": {
@@ -247,7 +248,7 @@
     },
     {
       "dataset_id": "m4_formal_20260809T080951Z",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z",
+      "source_path": "$LOCAL_M4_ROOT/runs/m4-formal-20260809T080951Z",
       "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/failed_m4_formal_20260809T080951Z_path_id_collision",
       "copy_status": "COPIED",
       "inventory": {
@@ -282,7 +283,7 @@
     },
     {
       "dataset_id": "m4_paper_v2_failed_20260809T082513Z",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_OUTPUTS/sionna-osm-m4-v2-20260809T082513Z",
+      "source_path": "$LOCAL_M4_PAPER_OUTPUTS/sionna-osm-m4-v2-20260809T082513Z",
       "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/failed_m4_paper_v2_20260809T082513Z",
       "copy_status": "COPIED",
       "inventory": {
@@ -296,7 +297,7 @@
     },
     {
       "dataset_id": "failed_visibility_diagnostic_20260809T0852Z",
-      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_OUTPUTS/visibility-diagnostic-20260809T0852Z",
+      "source_path": "$LOCAL_M4_PAPER_OUTPUTS/visibility-diagnostic-20260809T0852Z",
       "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/failed_visibility_diagnostic_20260809T0852Z",
       "copy_status": "COPIED",
       "inventory": {

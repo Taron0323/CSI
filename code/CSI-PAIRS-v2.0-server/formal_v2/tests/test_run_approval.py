@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -145,15 +146,80 @@ class FullRunApprovalTests(unittest.TestCase):
         plan.update(
             {
                 "profile": "formal",
-                "required_gpu_count": 1,
+                "required_gpu_count": 2,
                 "minimum_gpu_memory_bytes": 1024,
                 "estimated_gpu_hours": 2.0,
                 "authorized_gpu_hours": 2.0,
+                "required_environment_variables": [
+                    "CSI_PAIRS_DEVICES",
+                    "CUDA_VISIBLE_DEVICES",
+                ],
             }
         )
-        with patch("formal_v2.formal_run_approval._gpu_inventory", return_value=[]):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "CSI_PAIRS_DEVICES": "cuda:0,cuda:1",
+                    "CUDA_VISIBLE_DEVICES": "0,1",
+                },
+            ),
+            patch("formal_v2.formal_run_approval._gpu_inventory", return_value=[]),
+        ):
             with self.assertRaisesRegex(RuntimeError, "insufficient CUDA GPUs"):
                 _validate_compute_plan(plan, dataset, self.root / "run", {"fixture-license"})
+
+    def test_formal_compute_plan_binds_exact_device_specs_and_uuids(self):
+        dataset = SimpleNamespace(is_fixture=False, source_path=self.dataset_path)
+        plan = self._fixture_plan()
+        plan.update(
+            {
+                "profile": "formal",
+                "required_gpu_count": 2,
+                "minimum_gpu_memory_bytes": 1024,
+                "estimated_gpu_hours": 2.0,
+                "authorized_gpu_hours": 2.0,
+                "required_environment_variables": [
+                    "CSI_PAIRS_DEVICES",
+                    "CUDA_VISIBLE_DEVICES",
+                ],
+            }
+        )
+        inventory = [
+            {
+                "index": index,
+                "uuid": f"GPU-uuid-{index}",
+                "name": "A100",
+                "total_memory_bytes": 4096,
+                "cuda_runtime": "12.1",
+            }
+            for index in range(2)
+        ]
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "CSI_PAIRS_DEVICES": "cuda:0,cuda:1",
+                    "CUDA_VISIBLE_DEVICES": "0,1",
+                },
+            ),
+            patch(
+                "formal_v2.formal_run_approval._gpu_inventory",
+                return_value=inventory,
+            ),
+        ):
+            result = _validate_compute_plan(
+                plan, dataset, self.root / "run", {"fixture-license"}
+            )
+        self.assertEqual(result["required_gpu_count"], 2)
+        self.assertEqual(
+            [row["uuid"] for row in result["execution_devices"]],
+            ["GPU-uuid-0", "GPU-uuid-1"],
+        )
+        self.assertEqual(
+            result["required_environment_values"]["CSI_PAIRS_DEVICES"],
+            "cuda:0,cuda:1",
+        )
 
     def test_consumed_approval_marker_is_exclusive(self):
         approval_dir = self.root / "run" / "approval"
@@ -461,6 +527,9 @@ class FullRunApprovalTests(unittest.TestCase):
             "runtime_provenance": runtime,
             "external_runtime_provenance": external_runtime,
             "gpu_inventory": [],
+            "required_gpu_count": 0,
+            "execution_devices": [],
+            "required_environment_values": {},
             "compute_plan": compute_plan,
             "input_bindings": input_bindings,
         }

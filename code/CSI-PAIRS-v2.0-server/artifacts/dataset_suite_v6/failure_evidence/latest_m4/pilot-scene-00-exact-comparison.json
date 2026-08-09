@@ -4,7 +4,7 @@
   "exact_fields": 23,
   "field_count": 23,
   "left": {
-    "path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z/pilot-a/scene-00.npz",
+    "path": "$LOCAL_M4_ROOT/runs/m4-formal-20260809T080951Z/pilot-a/scene-00.npz",
     "quality": {
       "all_zero_clean_units": 0,
       "clean_units": 1024,
@@ -15,7 +15,7 @@
     "sha256": "06db1c31c5c51432df035cb83f31b31f75512281b3c8395c18703c03d2a22351"
   },
   "right": {
-    "path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z/pilot-b/scene-00.npz",
+    "path": "$LOCAL_M4_ROOT/runs/m4-formal-20260809T080951Z/pilot-b/scene-00.npz",
     "quality": {
       "all_zero_clean_units": 0,
       "clean_units": 1024,
@@ -473,6 +473,6 @@
   "same_member_order": true,
   "schema_version": "csi-pairs-m4-exact-replay-comparison-v1",
   "status": "PASS",
-  "tool_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/scripts/compare_m4_exact_replay.py",
+  "tool_path": "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/scripts/compare_m4_exact_replay.py",
   "tool_sha256": "d27361ead2a60ad61caf58e2cbbbd3bdf054eb998aa64e4a66631c570294ce2e"
 }

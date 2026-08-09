@@ -1458,7 +1458,7 @@ class EvidenceAndPathTests(unittest.TestCase):
                 "external_runtime_provenance": None,
             }
         )
-        self.assertEqual(_semantic_status("G8", archive), "PASS")
+        self.assertEqual(_semantic_status("G8", archive), "FAIL")
         archive["external_runtime_provenance"] = {
             "environment_sha256": "e" * 64
         }

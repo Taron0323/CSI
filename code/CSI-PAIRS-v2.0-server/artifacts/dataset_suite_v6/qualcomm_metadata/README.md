@@ -1,6 +1,6 @@
 # Qualcomm Wi3R/WiPTR local copy
 
-数据副本位于 `qualcomm_wireless_indoor/`。这是从 `/Users/futaoran/Desktop/ICLR2027/datasets/qualcomm_wireless_indoor` 建立的 APFS clone copy，不是软链接。
+数据副本位于 `qualcomm_wireless_indoor/`。这是从 `$LOCAL_DATA_ROOT/qualcomm_wireless_indoor` 建立的 APFS clone copy，不是软链接。
 
 ## 本地内容
 

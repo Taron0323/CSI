@@ -1,9 +1,9 @@
 {
   "asset_manifest_sha256": "0a14896a1fa2019b585a0620edb8d699e8ac69181061e65d0ef199f2f1231e60",
-  "asset_root": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z/candidate/assets",
+  "asset_root": "$LOCAL_M4_ROOT/runs/m4-formal-20260809T080951Z/candidate/assets",
   "bank_count": 34,
   "created_utc": "2026-08-09T08:20:12.630954+00:00",
-  "generator_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py",
+  "generator_path": "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py",
   "generator_sha256": "9d114723c5180445e8bd4cb62473dcab915414cac10beab4de4570e7863bf192",
   "passed_bank_count": 34,
   "rows": [
@@ -418,7 +418,7 @@
   ],
   "schema_version": "csi-pairs-m4-receiver-protocol-audit-v1",
   "status": "PASS",
-  "tool_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/scripts/audit_m4_receiver_protocol.py",
+  "tool_path": "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/scripts/audit_m4_receiver_protocol.py",
   "tool_sha256": "61399578b652d2b6f81efe3c297cef74c01e7df97c04e3f746f187e1aa6767cf",
   "uses_rendered_csi_or_path_power": false
 }

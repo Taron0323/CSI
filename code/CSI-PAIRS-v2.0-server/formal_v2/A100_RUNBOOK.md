@@ -65,6 +65,11 @@ formal_v2/external_adapters/setup_sionna.sh
 The first command selects the Linux CUDA 12.1 lock and installs PyTorch
 `2.5.1+cu121`. The second command creates the separate Sionna/Dr.Jit runtime.
 Do not activate a CUDA 13 compatibility preload or reuse a Conda environment.
+`setup_sionna.sh` accepts libLLVM only when its exact SHA-256 is already listed
+for Linux x86_64 in `formal_v2/configs/sionna_llvm_approved_v1.json`. The
+repository currently contains only the reviewed Darwin arm64 entry, so A100
+setup must remain blocked until the destination library bytes and provenance
+are reviewed and committed. Do not add a hash discovered during the same run.
 
 Verify the core GPU runtime:
 
@@ -146,8 +151,11 @@ The shipped Sionna G8 adapter cannot close G8 for a Sionna-generated primary
 dataset. Reusing the same engine would only support simulator-consistent
 wording and is rejected before training.
 
-For a genuinely different RT engine, use the precomputed archive contract
-instead of modifying the Sionna adapter. The external-validity manifest has
+For a genuinely different RT engine, the precomputed archive contract may be
+used only for diagnostic interchange and outer-statistics validation. It can
+never authorize formal training or satisfy G8; formal execution requires an
+authenticated executable adapter or controlled real intervention. The
+diagnostic external-validity manifest has
 schema `csi-pairs-v6-external-validity-archive-v1` and binds these files:
 
 ```json
@@ -172,9 +180,10 @@ scenes, sibling worlds, positions, and CSI channels. The scene manifest uses
 schema `csi-pairs-v6-independent-rt-scene-manifest-v1`, covers every external
 scene/world exactly once, binds each world to its canonical map and distinct
 source asset, and repeats the exact engine family, revision, license, dataset
-SHA, and engine-config SHA. Formal preflight loads and validates all three
-files. G8 copies them into the stage inventory and recomputes every direction,
-effect, cluster interval, and null-equivalence decision in first-party code.
+SHA, and engine-config SHA. Diagnostic execution loads and validates all three
+files and recomputes every direction, effect, cluster interval, and
+null-equivalence decision in first-party code, while recording
+`DIAGNOSTIC_NOT_CLAIM`. Formal preflight rejects this archive schema.
 
 Set both devices for every formal command:
 

@@ -32,7 +32,7 @@
 ## 复验与完成语义
 
 ```bash
-cd /Users/futaoran/Desktop/ICLR2027/datasets/external_wireless
+cd $LOCAL_DATA_ROOT/external_wireless
 python3 verify_core_subset.py --deep
 shasum -a 256 -c SHA256SUMS
 ```

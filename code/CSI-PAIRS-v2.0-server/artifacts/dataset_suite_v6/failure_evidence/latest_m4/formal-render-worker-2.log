@@ -3,19 +3,19 @@
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
-  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 2120, in <module>
+  File "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 2120, in <module>
     raise SystemExit(main())
                      ^^^^^^
-  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 2103, in main
+  File "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 2103, in main
     output = render_shard(
              ^^^^^^^^^^^^^
-  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 953, in render_shard
+  File "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 953, in render_shard
     rendered = render_bank(bank_record, root, config, scene_index)
                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 1215, in render_bank
+  File "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 1215, in render_bank
     path_ids[world_index], path_power[world_index], path_surfaces[world_index] = _extract_paths(
                                                                                  ^^^^^^^^^^^^^^^
-  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 1605, in _extract_paths
+  File "$LOCAL_M4_ROOT/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 1605, in _extract_paths
     raise RuntimeError("stable Sionna path identifier collision")
 RuntimeError: stable Sionna path identifier collision
      1421.24 real      1168.06 user        16.28 sys

@@ -14,7 +14,7 @@
     "bytes": 3114005,
     "dataset_id": "NONSCIENTIFIC-SIONNA-RT-DUAL-A100-FIXTURE",
     "fixture": true,
-    "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/csi_pairs_v2_1_v6_sionna_rt_dual_a100.npz",
+    "path": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/csi_pairs_v2_1_v6_sionna_rt_dual_a100.npz",
     "schema_version": "csi-pairs-formal-dataset-v2.1-v6",
     "scientific_use": "FORBIDDEN",
     "sha256": "ae3445739fa3415f7676f544bab28b102459d9819c40028b5ed7e23f7cd5cead"
@@ -46,10 +46,10 @@
   },
   "status": "PASS",
   "validation": {
-    "contract_report": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/inspection/data_contract.json",
+    "contract_report": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/inspection/data_contract.json",
     "contract_status": "PASS",
     "external_validity": "NOT_ASSESSED",
-    "formal_config": "/root/xunlian/Futaoran/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/configs/formal_v2.json",
+    "formal_config": "$LOCAL_PROJECT_ROOT/code/CSI-PAIRS-v2.0-server/formal_v2/configs/formal_v2.json",
     "independent_regeneration_gate": "NOT_RUN",
     "rt_calibration": "NOT_ASSESSED"
   },
@@ -67,7 +67,7 @@
       "duration_seconds": 12.464603511150926,
       "finished_utc": "2026-08-08T17:09:18.353960+00:00",
       "generator": {
-        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/tools/generate_sionna_gpu_shard.py",
+        "path": "$LOCAL_PROJECT_ROOT/generated_datasets/tools/generate_sionna_gpu_shard.py",
         "sha256": "65c30cd870acfc51c48d254a1bd12eb7f541652fcd3d2f6c8ace09c647a78fcd"
       },
       "gpu": {
@@ -80,7 +80,7 @@
           "power_draw_w": 48.9,
           "temperature_c": 31,
           "utilization_percent": 0,
-          "uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176"
+          "uuid": "$GPU_0_UUID"
         },
         "before": {
           "memory_free_mib": 39870,
@@ -91,16 +91,16 @@
           "power_draw_w": 48.39,
           "temperature_c": 30,
           "utilization_percent": 0,
-          "uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176"
+          "uuid": "$GPU_0_UUID"
         },
         "cuda_visible_devices": "0",
         "logical_device": 0,
         "physical_gpu_index": 0,
-        "uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176"
+        "uuid": "$GPU_0_UUID"
       },
       "output": {
         "bytes": 1265817,
-        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/shards/gpu0_scenes_00_17.npz",
+        "path": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/shards/gpu0_scenes_00_17.npz",
         "sha256": "f6fa0e5d05b9610a2944e28430af2749613913cedc00cc843386372f72c31410"
       },
       "runtime": {
@@ -239,7 +239,7 @@
             "stable_surface_id": 105
           }
         ],
-        "xml_path": "/root/xunlian/Futaoran/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.runtime-sionna/venv/lib/python3.12/site-packages/sionna/rt/scenes/simple_street_canyon/simple_street_canyon.xml",
+        "xml_path": "$LOCAL_PROJECT_ROOT/code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.runtime-sionna/venv/lib/python3.12/site-packages/sionna/rt/scenes/simple_street_canyon/simple_street_canyon.xml",
         "xml_sha256": "02e4c97a82dfa3fbcc42a1742ed28a3b64fdeeeb962a15f505445b38a9179dc0"
       },
       "schema_version": "csi-pairs-sionna-gpu-shard-manifest-v1",
@@ -272,7 +272,7 @@
       "duration_seconds": 12.841874012723565,
       "finished_utc": "2026-08-08T17:09:18.727061+00:00",
       "generator": {
-        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/tools/generate_sionna_gpu_shard.py",
+        "path": "$LOCAL_PROJECT_ROOT/generated_datasets/tools/generate_sionna_gpu_shard.py",
         "sha256": "65c30cd870acfc51c48d254a1bd12eb7f541652fcd3d2f6c8ace09c647a78fcd"
       },
       "gpu": {
@@ -285,7 +285,7 @@
           "power_draw_w": 55.74,
           "temperature_c": 30,
           "utilization_percent": 0,
-          "uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d"
+          "uuid": "$GPU_1_UUID"
         },
         "before": {
           "memory_free_mib": 39870,
@@ -296,16 +296,16 @@
           "power_draw_w": 55.31,
           "temperature_c": 29,
           "utilization_percent": 0,
-          "uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d"
+          "uuid": "$GPU_1_UUID"
         },
         "cuda_visible_devices": "1",
         "logical_device": 0,
         "physical_gpu_index": 1,
-        "uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d"
+        "uuid": "$GPU_1_UUID"
       },
       "output": {
         "bytes": 1272928,
-        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/shards/gpu1_scenes_18_35.npz",
+        "path": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/shards/gpu1_scenes_18_35.npz",
         "sha256": "02d6e107a67e954101570c30443037df4835e5580a0fbb6d328ab060cb3eab3f"
       },
       "runtime": {
@@ -444,7 +444,7 @@
             "stable_surface_id": 105
           }
         ],
-        "xml_path": "/root/xunlian/Futaoran/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.runtime-sionna/venv/lib/python3.12/site-packages/sionna/rt/scenes/simple_street_canyon/simple_street_canyon.xml",
+        "xml_path": "$LOCAL_PROJECT_ROOT/code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.runtime-sionna/venv/lib/python3.12/site-packages/sionna/rt/scenes/simple_street_canyon/simple_street_canyon.xml",
         "xml_sha256": "02e4c97a82dfa3fbcc42a1742ed28a3b64fdeeeb962a15f505445b38a9179dc0"
       },
       "schema_version": "csi-pairs-sionna-gpu-shard-manifest-v1",

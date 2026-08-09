@@ -10,6 +10,7 @@ export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON_BIN="${CSI_PAIRS_SIONNA_PYTHON:-${PROJECT_ROOT}/formal_v2/external_adapters/.runtime-sionna/venv/bin/python}"
+RUNTIME_ROOT="${PROJECT_ROOT}/formal_v2/external_adapters/.runtime-sionna"
 OUTPUT_ROOT_INPUT="${1:?usage: generate_sionna_osm_formal_candidate.sh OUTPUT_ROOT [RAW_OSM_CACHE]}"
 OUTPUT_PARENT="$(cd "$(dirname "${OUTPUT_ROOT_INPUT}")" && pwd)"
 OUTPUT_ROOT="${OUTPUT_PARENT}/$(basename "${OUTPUT_ROOT_INPUT}")"
@@ -30,6 +31,13 @@ if [[ ! -x "${PYTHON_BIN}" ]]; then
   echo "Sionna Python is unavailable; run formal_v2/external_adapters/setup_sionna.sh first" >&2
   exit 3
 fi
+DRJIT_LIBLLVM_PATH="$(
+  PYTHONPATH="${PROJECT_ROOT}" "${PYTHON_BIN}" -B -m formal_v2.sionna_runtime_lock \
+    --project-root "${PROJECT_ROOT}" \
+    --runtime-root "${RUNTIME_ROOT}" \
+    environment
+)"
+export DRJIT_LIBLLVM_PATH
 
 mkdir -p "${OUTPUT_ROOT}/logs" "${OUTPUT_ROOT}/shards"
 ASSET_ARGS=(

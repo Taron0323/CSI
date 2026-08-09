@@ -10,9 +10,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
-import math
 from pathlib import Path
-import sys
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -327,7 +325,10 @@ def load_diagnostic_asset_manifest(
         raise ValueError("diagnostic manifest lacks simulation classification")
     if manifest.get("scientific_use") != SCIENTIFIC_USE:
         raise ValueError("diagnostic manifest scientific-use classification mismatch")
-    config_path = root / str(manifest["config_path"])
+    config_input = root / str(manifest["config_path"])
+    config_path = config_input.resolve()
+    if config_input.is_symlink() or not config_path.is_relative_to(root):
+        raise ValueError("diagnostic asset config escapes the asset root")
     config = candidate.load_config(config_path)
     if candidate.sha256_file(config_path) != manifest["config_sha256"]:
         raise ValueError("diagnostic asset config snapshot hash mismatch")
@@ -338,8 +339,24 @@ def load_diagnostic_asset_manifest(
     for key, expected in EXPECTED_SCENE.items():
         if row.get(key) != expected:
             raise ValueError(f"diagnostic asset ledger mismatch for {key}")
-    for file_row in row.get("files", []):
+    bank_record_path = Path(str(row.get("bank_record_path", "")))
+    scene_xml_path = Path(str(row.get("scene_xml_path", "")))
+    expected_root = Path("banks") / EXPECTED_SCENE["scene_id"]
+    expected_paths = {str(expected_root / relative) for relative in ASSET_RELATIVE_PATHS}
+    if bank_record_path != expected_root / "bank.json" or scene_xml_path != expected_root / "scene.xml":
+        raise ValueError("diagnostic bank record and scene XML paths are inconsistent")
+    files = row.get("files")
+    if not isinstance(files, list) or len(files) != len(expected_paths):
+        raise ValueError("diagnostic asset manifest must register the exact six scene files")
+    actual_paths = [str(file_row.get("path", "")) for file_row in files if isinstance(file_row, dict)]
+    if len(actual_paths) != len(files) or set(actual_paths) != expected_paths:
+        raise ValueError("diagnostic asset manifest scene file set differs from the exact contract")
+    if len(set(actual_paths)) != len(actual_paths):
+        raise ValueError("diagnostic asset manifest contains duplicate scene files")
+    for file_row in files:
         path = root / str(file_row["path"])
+        if not path.resolve().is_relative_to(root):
+            raise ValueError("diagnostic asset file escapes the asset root")
         _assert_regular_file(path, "diagnostic asset file")
         if candidate.sha256_file(path) != file_row["sha256"]:
             raise ValueError(f"diagnostic asset file changed: {path}")

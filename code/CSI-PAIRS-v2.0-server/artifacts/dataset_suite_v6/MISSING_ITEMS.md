@@ -7,7 +7,7 @@
 
 | 层级 | 当前状态 | 判定 |
 | --- | --- | --- |
-| 静态数据复制 | external、Qualcomm、旧 candidates、fixtures 已复制到独立套件 | `PASS` |
+| 静态数据复制 | 12 个 catalog 目标路径存在；仅 external、Qualcomm、latest failed M4 有源/目标复制审计 | `PARTIAL` |
 | external 公开核心 | 四类公开核心可复验；133 项 SHA；无 partial | `PASS_WITH_SUBSTITUTIONS` |
 | 所有 original external 来源 | 缺原始 IRT2HighRes 和原始 WWM 文件 | `NO` |
 | Qualcomm 本地副本完整性 | 关键 ZIP/HDF5 已生成 SHA；源/目标规模一致 | `PASS` |
@@ -73,7 +73,7 @@
 最新运行：
 
 ```text
-/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z
+$LOCAL_M4_ROOT/runs/m4-formal-20260809T080951Z
 ```
 
 该运行已于 2026-08-09 终止。已通过的前置检查只有：
@@ -138,7 +138,7 @@
 
 | Gate | 通过条件 | 当前 |
 | --- | --- | --- |
-| G-COPY | 所有登记静态源均有独立副本，源/目标规模一致，关键哈希通过 | `PASS` |
+| G-COPY | 所有登记静态源均有独立副本，源/目标规模一致，关键哈希通过 | `PARTIAL`；12 个 catalog 目标路径存在，但仅 3 项有源/目标复制审计 |
 | G-EXTERNAL-FILES | external deep verify + 133 SHA | `PASS`；但 originals 不全 |
 | G-LICENSE | 每个论文使用数据有明确许可证与再分发边界 | `NO_GO` |
 | G-FORMAL-COMPLETE | 全部 shard/merge/hash/contract/quality 通过 | `PENDING` |

@@ -5,6 +5,7 @@
   "result": "PASS",
   "checks": 20,
   "mode": "full",
+  "copy_gate": "PARTIAL",
   "suite_allocated_kib": 37692880,
   "suite_regular_files": 554820,
   "suite_directories": 48272,
@@ -17,6 +18,7 @@
   "verified": {
     "dataset_roots_are_real_directories": true,
     "catalog_copied_entries_exist": 12,
+    "source_target_copy_audited_entries": 3,
     "external_regular_files": 363263,
     "external_regular_file_bytes": 23857330137,
     "external_deep_verifier": "PASS",
@@ -35,5 +37,5 @@
   },
   "formal_status": "POST_AUDIT_NO_GO",
   "scientific_use": "FORBIDDEN",
-  "boundary": "Engineering verification confirms the local snapshot and registered failure states. It does not establish data qualification or scientific validity."
+  "boundary": "Engineering verification confirms registered target paths, selected hashes, inventory, and failure states. Only 3 entries have source/target copy audits; it does not establish full copy independence, data qualification, or scientific validity."
 }

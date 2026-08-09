@@ -108,8 +108,10 @@ pass 'required documentation and registry files exist'
 
 jq -e '
   .schema_version == "csi-pairs-dataset-suite-catalog-v1" and
+  .suite_status.engineering_copy_status == "PARTIAL_SOURCE_TARGET_AUDIT" and
   .suite_status.formal_status == "POST_AUDIT_NO_GO" and
   .suite_status.scientific_use == "FORBIDDEN" and
+  .final_verification.copy_gate == "PARTIAL" and
   ([.datasets[] | select(.copy_status == "COPIED")] | length) >= 12
 ' "$suite_root/DATASET_CATALOG.json" >/dev/null || die 'DATASET_CATALOG.json invariant failure'
 jq -e '.schema_version == "csi-pairs-suite-copy-audit-v1"' \
@@ -202,6 +204,7 @@ PY
 pass 'legacy 34-bank candidate remains quarantined with exactly 16124 pathless/all-zero units'
 
 printf '\nSUITE_VERIFICATION=PASS checks=%d mode=%s\n' "$checks" "$mode"
+printf 'COPY_GATE=PARTIAL source_target_audited=3 catalog_targets=12\n'
 printf 'FORMAL_STATUS=POST_AUDIT_NO_GO\n'
 printf 'SCIENTIFIC_USE=FORBIDDEN\n'
 printf 'NOTE=Engineering verification does not establish scientific validity.\n'

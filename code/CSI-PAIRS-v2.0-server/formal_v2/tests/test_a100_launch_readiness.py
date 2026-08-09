@@ -23,10 +23,12 @@ from formal_v2.formal_metrics import (
 )
 from formal_v2.formal_factorial import _run_training_jobs
 from formal_v2.formal_external_validity import (
+    _load_external_csi,
     _load_rt_scene_manifest,
     _stage_independent_source_assets,
     _validate_manifest as validate_external_validity_manifest,
     _verify_archive_inputs,
+    require_claim_eligible_manifest,
     require_independent_primary_engine,
 )
 from formal_v2.formal_model import (
@@ -264,7 +266,7 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
         candidate.is_fixture = True
         self.assertEqual(_qualification_scientific_use(candidate, True), "FORBIDDEN")
 
-    def test_precomputed_independent_rt_archive_is_a_supported_g8_input(self):
+    def test_precomputed_independent_rt_archive_is_diagnostic_only(self):
         manifest = {
             "schema_version": "csi-pairs-v6-external-validity-archive-v1",
             "evidence_type": "independent_rt_engine",
@@ -279,6 +281,8 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
             "rt_scene_manifest_sha256": "b" * 64,
         }
         validate_external_validity_manifest(manifest)
+        with self.assertRaisesRegex(RuntimeError, "DIAGNOSTIC_NOT_CLAIM"):
+            require_claim_eligible_manifest(manifest)
         dataset = SimpleNamespace(
             is_fixture=False,
             engine_config={
@@ -296,6 +300,43 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
                 same_engine["engine_family"] = alias
                 with self.assertRaisesRegex(RuntimeError, "not independent"):
                     require_independent_primary_engine(dataset, same_engine)
+
+    def test_primary_plus_epsilon_archive_cannot_satisfy_formal_g8(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            primary = np.ones((1, 2, 1, 4), dtype=np.float64)
+            dataset = SimpleNamespace(
+                csi_clean=primary,
+                scene_ids=np.asarray(["external-a"]),
+                position_ids=np.asarray([["p-a"]]),
+                position_count=1,
+                world_count=2,
+                channel_count=4,
+                indices_for_role=lambda role: np.asarray([0], dtype=np.int64),
+            )
+            archive = root / "external_csi.npz"
+            np.savez(
+                archive,
+                scene_ids=np.asarray(["external-a"]),
+                position_ids=np.asarray([["p-a"]]),
+                external_csi=primary + 1e-12,
+            )
+            self.assertEqual(_load_external_csi(archive, dataset).shape, primary.shape)
+            manifest = {
+                "schema_version": "csi-pairs-v6-external-validity-archive-v1",
+                "evidence_type": "independent_rt_engine",
+                "engine_family": "claimed-independent-engine",
+                "source_revision": "claimed-revision",
+                "license_id": "CLAIMED-LICENSE",
+                "external_csi_path": archive.name,
+                "external_csi_sha256": sha256_file(archive),
+                "engine_config_path": "engine-config.bin",
+                "engine_config_sha256": "c" * 64,
+                "rt_scene_manifest_path": "scene.json",
+                "rt_scene_manifest_sha256": "d" * 64,
+            }
+            with self.assertRaisesRegex(RuntimeError, "DIAGNOSTIC_NOT_CLAIM"):
+                require_claim_eligible_manifest(manifest)
 
     def test_independent_rt_scene_manifest_binds_every_external_world(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -500,27 +541,7 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
                 ),
             )
             with patches[0], patches[1], patches[2], patches[3]:
-                _validate_stage_bound_input(
-                    staged_root / "gate.json", gate, config, "G8", dataset
-                )
-
-                missing_inventory = {
-                    "files": [
-                        row
-                        for row in files
-                        if row["path"] != staged_context["worlds"][0]["source_asset_path"]
-                    ]
-                }
-                write_json(staged_root / "manifest.json", missing_inventory)
-                with self.assertRaisesRegex(RuntimeError, "source asset is absent"):
-                    _validate_stage_bound_input(
-                        staged_root / "gate.json", gate, config, "G8", dataset
-                    )
-
-                write_json(staged_root / "manifest.json", {"files": files})
-                source_path = staged_root / staged_context["worlds"][0]["source_asset_path"]
-                source_path.write_bytes(b"replaced-independent-source")
-                with self.assertRaisesRegex(RuntimeError, "missing or hash-mismatched"):
+                with self.assertRaisesRegex(RuntimeError, "DIAGNOSTIC_NOT_CLAIM"):
                     _validate_stage_bound_input(
                         staged_root / "gate.json", gate, config, "G8", dataset
                     )
@@ -662,11 +683,10 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
         self.assertIn('if [[ "${SYSTEM}" == "Darwin" ]]', script)
         self.assertIn("CSI_PAIRS_BREW", script)
         self.assertIn("--prefix llvm@18", script)
-        self.assertIn("'torch==2.9.1'", script)
-        self.assertIn(
-            'uv pip install --python "${ENV_DIR}/bin/python" \'torch==2.9.1\'',
-            script,
-        )
+        self.assertIn("requirements-sionna-runtime-darwin-arm64.txt", script)
+        self.assertIn("requirements-sionna-runtime-linux-x86_64.txt", script)
+        self.assertIn("--require-hashes", script)
+        self.assertIn("sionna_runtime_lock", script)
         self.assertIn("llvm_ad_mono_polarized", script)
         self.assertIn("drjit.set_thread_count(1)", script)
 
@@ -748,11 +768,16 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
             python.parent.mkdir(parents=True)
             python.touch()
             llvm.touch()
-            resolved_python, environment = _sionna_bootstrap_environment(
-                project,
-                {"PYTHONPATH": "/existing"},
-                libllvm=llvm,
-            )
+            approved = {"libllvm_path": str(llvm.resolve())}
+            with patch(
+                "formal_v2.sionna_runtime_lock.approved_library_record",
+                return_value=approved,
+            ):
+                resolved_python, environment = _sionna_bootstrap_environment(
+                    project,
+                    {"PYTHONPATH": "/existing"},
+                    libllvm=llvm,
+                )
         self.assertEqual(resolved_python, python.resolve())
         self.assertEqual(environment["DRJIT_LIBLLVM_PATH"], str(llvm))
         self.assertEqual(environment["MI_DEFAULT_VARIANT"], SIONNA_MITSUBA_VARIANT)
@@ -774,10 +799,15 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
                 "drjit_libllvm_path": str(llvm),
                 "drjit_libllvm_sha256": sha256_file(llvm),
             }
-            _validate_shard_runtime(runtime)
-            runtime["mitsuba_variant"] = "cuda_ad_mono_polarized"
-            with self.assertRaisesRegex(ValueError, "frozen Sionna runtime"):
+            approved = {"libllvm_sha256": sha256_file(llvm)}
+            with patch(
+                "formal_v2.sionna_runtime_lock.approved_library_record",
+                return_value=approved,
+            ):
                 _validate_shard_runtime(runtime)
+                runtime["mitsuba_variant"] = "cuda_ad_mono_polarized"
+                with self.assertRaisesRegex(ValueError, "frozen Sionna runtime"):
+                    _validate_shard_runtime(runtime)
 
 
 if __name__ == "__main__":

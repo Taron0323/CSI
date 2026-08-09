@@ -204,6 +204,9 @@ def write_approval_request(
         "runtime_provenance": preflight["runtime_provenance"],
         "external_runtime_provenance": preflight["external_runtime_provenance"],
         "gpu_inventory": preflight["gpu_inventory"],
+        "required_gpu_count": preflight["required_gpu_count"],
+        "execution_devices": preflight["execution_devices"],
+        "required_environment_values": preflight["required_environment_values"],
         "compute_plan": preflight["compute_plan"],
         "input_bindings": preflight["input_bindings"],
         "preflight_path": str(preflight_path.relative_to(output)),
@@ -510,11 +513,11 @@ def _validate_compute_plan(plan, dataset, output, required_licenses):
         ):
             raise ValueError("nonscientific fixture compute plans must not require GPU resources")
     elif (
-        plan["required_gpu_count"] < 1
+        plan["required_gpu_count"] != 2
         or plan["minimum_gpu_memory_bytes"] <= 0
         or plan["estimated_gpu_hours"] <= 0
     ):
-        raise ValueError("formal compute plans must budget at least one CUDA GPU")
+        raise ValueError("formal compute plans must bind exactly two CUDA GPUs")
 
     env_names = plan["required_environment_variables"]
     if (
@@ -528,6 +531,14 @@ def _validate_compute_plan(plan, dataset, output, required_licenses):
         raise RuntimeError(
             f"required credential/environment variables are unset: {missing_environment}"
         )
+    if not dataset.is_fixture and not {
+        "CSI_PAIRS_DEVICES",
+        "CUDA_VISIBLE_DEVICES",
+    }.issubset(env_names):
+        raise ValueError(
+            "formal compute plans must require CSI_PAIRS_DEVICES and CUDA_VISIBLE_DEVICES"
+        )
+    environment_values = {name: os.environ[name] for name in env_names}
     acknowledgements = plan["license_acknowledgements"]
     if (
         not isinstance(acknowledgements, list)
@@ -555,6 +566,16 @@ def _validate_compute_plan(plan, dataset, output, required_licenses):
     ]
     if undersized:
         raise RuntimeError("available CUDA GPU memory is below the compute-plan minimum")
+    execution_devices = (
+        []
+        if dataset.is_fixture
+        else _bind_execution_devices(
+            environment_values["CSI_PAIRS_DEVICES"],
+            environment_values["CUDA_VISIBLE_DEVICES"],
+            gpus,
+            required_count,
+        )
+    )
     return {
         "compute_budget": {
             "dataset_bytes": dataset_bytes,
@@ -567,7 +588,10 @@ def _validate_compute_plan(plan, dataset, output, required_licenses):
             "authorized_gpu_hours": float(plan["authorized_gpu_hours"]),
         },
         "gpu_inventory": gpus,
+        "required_gpu_count": required_count,
+        "execution_devices": execution_devices,
         "required_environment_variables": env_names,
+        "required_environment_values": environment_values,
         "environment_variables_present": True,
         "license_acknowledgements": acknowledgements,
     }
@@ -590,7 +614,7 @@ def _validate_static_manifests(
     from .formal_external_validity import (
         _execution_mode as external_validity_execution_mode,
         _validate_manifest as validate_external_validity,
-        _verify_archive_inputs,
+        require_claim_eligible_manifest,
         require_independent_primary_engine,
         _verify_adapter_source,
     )
@@ -653,24 +677,17 @@ def _validate_static_manifests(
 
     external_validity = payloads["external_validity_manifest"]
     validate_external_validity(external_validity)
+    require_claim_eligible_manifest(external_validity)
     require_independent_primary_engine(dataset, external_validity)
     licenses.add(external_validity["license_id"])
-    if external_validity_execution_mode(external_validity) == "authenticated_sionna_adapter":
-        _verify_adapter_source(external_validity)
-        _require_declared_executables([external_validity])
-        _merge_external_runtimes(
-            external_runtimes,
-            _probe_declared_external_runtimes([external_validity]),
-        )
-    else:
-        external_validity_path = Path(
-            input_values["external_validity_manifest"]
-        ).resolve()
-        _verify_archive_inputs(
-            external_validity,
-            external_validity_path.parent,
-            dataset,
-        )
+    if external_validity_execution_mode(external_validity) != "authenticated_sionna_adapter":
+        raise RuntimeError("formal preflight requires an executable G8 adapter")
+    _verify_adapter_source(external_validity)
+    _require_declared_executables([external_validity])
+    _merge_external_runtimes(
+        external_runtimes,
+        _probe_declared_external_runtimes([external_validity]),
+    )
 
     literature_path = Path(input_values["literature_resource_manifest"]).resolve()
     literature = payloads["literature_resource_manifest"]
@@ -860,6 +877,9 @@ def _validate_request_against_current_run(request, preflight, output):
         "runtime_provenance",
         "external_runtime_provenance",
         "gpu_inventory",
+        "required_gpu_count",
+        "execution_devices",
+        "required_environment_values",
         "compute_plan",
         "input_bindings",
         "preflight_path",
@@ -900,6 +920,9 @@ def _validate_request_against_current_run(request, preflight, output):
         "runtime_provenance",
         "external_runtime_provenance",
         "gpu_inventory",
+        "required_gpu_count",
+        "execution_devices",
+        "required_environment_values",
         "compute_plan",
         "input_bindings",
     ):
@@ -922,6 +945,9 @@ def _validate_request_against_current_run(request, preflight, output):
         "runtime_provenance",
         "external_runtime_provenance",
         "gpu_inventory",
+        "required_gpu_count",
+        "execution_devices",
+        "required_environment_values",
         "compute_plan",
         "input_bindings",
     ):
@@ -1050,12 +1076,42 @@ def _gpu_inventory():
         output.append(
             {
                 "index": index,
+                "uuid": str(getattr(properties, "uuid", "") or ""),
                 "name": str(properties.name),
                 "total_memory_bytes": int(properties.total_memory),
                 "cuda_runtime": str(torch.version.cuda) if torch.version.cuda else None,
             }
         )
     return output
+
+
+def _bind_execution_devices(value, cuda_visible_devices, gpu_inventory, required_count):
+    visible = [item.strip() for item in str(cuda_visible_devices).split(",")]
+    if len(visible) != int(required_count) or any(not item for item in visible) or len(
+        set(visible)
+    ) != len(visible):
+        raise RuntimeError("CUDA_VISIBLE_DEVICES must expose exactly two unique devices")
+    specs = [item.strip() for item in str(value).split(",")]
+    expected_specs = [f"cuda:{index}" for index in range(int(required_count))]
+    if specs != expected_specs:
+        raise RuntimeError(
+            "CSI_PAIRS_DEVICES must exactly match the approved ordered device list: "
+            + ",".join(expected_specs)
+        )
+    by_index = {int(row["index"]): row for row in gpu_inventory}
+    if len(by_index) != len(gpu_inventory):
+        raise RuntimeError("CUDA inventory contains duplicate logical indices")
+    selected = []
+    for spec in specs:
+        index = int(spec.split(":", 1)[1])
+        row = by_index.get(index)
+        if row is None:
+            raise RuntimeError(f"approved CUDA device is absent from inventory: {spec}")
+        uuid = row.get("uuid")
+        if not isinstance(uuid, str) or not uuid.strip():
+            raise RuntimeError(f"CUDA device {spec} has no stable UUID")
+        selected.append({"spec": spec, **row})
+    return selected
 
 
 def _regular_file(path_value, label):

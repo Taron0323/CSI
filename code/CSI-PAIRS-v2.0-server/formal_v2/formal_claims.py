@@ -300,22 +300,7 @@ def _semantic_status(name, payload):
             ):
                 return "FAIL"
         elif execution_mode == "authenticated_precomputed_rt_archive":
-            if (
-                not isinstance(payload.get("engine_family"), str)
-                or not payload["engine_family"].strip()
-                or payload.get("adapter_source_path") is not None
-                or payload.get("adapter_source_sha256") is not None
-                or payload.get("external_engine_config_path")
-                != "external_engine_config.bin"
-                or not _lower_sha256(
-                    payload.get("external_engine_config_sha256")
-                )
-                or payload.get("external_runtime_provenance_path") is not None
-                or payload.get("external_runtime_provenance_sha256") is not None
-                or payload.get("external_runtime_environment_sha256") is not None
-                or payload.get("external_runtime_provenance") is not None
-            ):
-                return "FAIL"
+            return "FAIL"
         else:
             return "FAIL"
     elif name == "external_baselines":
@@ -777,6 +762,7 @@ def _validate_stage_bound_input(
             _rows_from_external_csi,
             _validate_manifest,
             _verify_adapter_source,
+            require_claim_eligible_manifest,
             require_independent_primary_engine,
         )
 
@@ -785,6 +771,7 @@ def _validate_stage_bound_input(
             raise RuntimeError("G8 reauthentication requires the formal dataset")
         require_independent_primary_engine(dataset, manifest)
         execution_mode = _execution_mode(manifest)
+        require_claim_eligible_manifest(manifest)
         if execution_mode == "authenticated_sionna_adapter":
             _verify_adapter_source(manifest)
         if payload.get("execution_mode") != execution_mode:

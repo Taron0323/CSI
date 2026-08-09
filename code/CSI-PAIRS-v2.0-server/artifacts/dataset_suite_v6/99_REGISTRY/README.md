@@ -1,6 +1,6 @@
 # Registry
 
-- `COPY_AUDIT.json`：源/目标规模、inode 与 clone-copy 语义。
+- `COPY_AUDIT.json`：3 项源/目标规模、inode 与 clone-copy 语义；其余 catalog 项仅验证目标路径，因此 `G-COPY=PARTIAL`。
 - `CRITICAL_SHA256SUMS`：冻结规范、旧 candidate、fixtures 和 diagnostics 的关键哈希。
 - `FAILED_RUN_SHA256SUMS`：失败 M4 run 与 visibility diagnostic 的 233 项文件哈希。
 - `FINAL_VERIFICATION.json` / `.md`：最终 full verifier 的机器可读与人读摘要。

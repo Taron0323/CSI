@@ -69,5 +69,5 @@ OK
 
 The LLVM branch requires the fixed package versions, an absolute regular
 `DRJIT_LIBLLVM_PATH`, the LLVM Mitsuba variant, and exactly one Dr.Jit thread.
-The CUDA branch retains the prior `CUDA_VISIBLE_DEVICES` binding and calls the
-existing CUDA/OptiX bootstrap unchanged.
+The diagnostic CLI is LLVM-only. CUDA/OptiX execution is deliberately not
+offered by this tool because it has no separately authenticated CUDA bootstrap.

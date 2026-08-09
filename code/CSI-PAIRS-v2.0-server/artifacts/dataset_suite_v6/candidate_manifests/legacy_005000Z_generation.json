@@ -1,26 +1,26 @@
 {
-  "asset_manifest_path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/assets/asset_manifest.json",
+  "asset_manifest_path": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/assets/asset_manifest.json",
   "asset_manifest_sha256": "cc91936a1c63a94e645210e6c9f5d661d86d11d96818b86801d65b2ea2d30965",
   "engine_config_sha256": "42e1f8b3ddacb28848ddb9c0f39375f3ccda88100e0c10f5622bd8753bb32867",
   "fixture": false,
   "generator_sha256": "21b9cd925a86671b14db0630e9b636dc409c78610be8617e6321f409c826fba4",
   "output_bytes": 22399698,
-  "output_path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/dataset.npz",
+  "output_path": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/dataset.npz",
   "output_sha256": "8493214ca12ee31a859e27eb6e2b24dc6fb5102e3a223016a0032655e7bab627",
   "schema_version": "csi-pairs-sionna-osm-candidate-generation-v1",
   "scientific_use": "CANDIDATE",
   "shards": [
     {
       "duration_seconds": 100.31101377075538,
-      "gpu_uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176",
-      "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/shards/scenes_00_16_gpu0.npz",
+      "gpu_uuid": "$GPU_0_UUID",
+      "path": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/shards/scenes_00_16_gpu0.npz",
       "physical_gpu_index": 0,
       "sha256": "ba6332a30fbedf3b5ddac1a31e7d80113db557930cee3805c63b60a8491cd707"
     },
     {
       "duration_seconds": 113.01415433129296,
-      "gpu_uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d",
-      "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/shards/scenes_17_33_gpu1.npz",
+      "gpu_uuid": "$GPU_1_UUID",
+      "path": "$LOCAL_PROJECT_ROOT/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z/shards/scenes_17_33_gpu1.npz",
       "physical_gpu_index": 1,
       "sha256": "ae8d5d8a0cee1d3fe857d2eafa833386cd21ee1eff346b1b66cae03594221d45"
     }

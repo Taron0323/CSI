@@ -3,9 +3,9 @@
 - 报告创建时间（UTC）：`2026-08-09T08:47:51Z`
 - 最后更新时间（UTC）：`2026-08-09T09:28:37Z`
 - 主执行：`GPT-5.6 Sol / Max / Local`
-- 工作根：`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM`
-- 只读交接源：`/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z`
-- 权威本轮输出：`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z`
+- 工作根：`$LOCAL_M4_ROOT`
+- 只读交接源：`$HANDOFF_ROOT`
+- 权威本轮输出：`$LOCAL_M4_ROOT/outputs/20260809T074722Z`
 
 ## 0. 最终门控
 
@@ -84,15 +84,15 @@ RT 固定运行时：
 运行时路径：
 
 ```text
-RT_VENV=/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runtime/venv
-FORMAL_VENV=/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runtime/formal_venv
-LLVM=/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runtime/llvm/22.1.8/lib/libLLVM.dylib
+RT_VENV=$LOCAL_M4_ROOT/runtime/venv
+FORMAL_VENV=$LOCAL_M4_ROOT/runtime/formal_venv
+LLVM=$LOCAL_M4_ROOT/runtime/llvm/22.1.8/lib/libLLVM.dylib
 LLVM_SHA256=e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88
 ```
 
 本机没有 Homebrew。LLVM 使用官方 Homebrew `llvm 22.1.8 arm64_tahoe` bottle，在项目目录内解包、重定位并 ad-hoc 签名；原始 bottle 的大小与发布 digest 均匹配。`otool`、`codesign --verify`、真实 Dr.Jit LLVM JIT 数值求值和 Sionna RT import 均通过。完整偏差记录见：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/logs/llvm_install_source_and_deviation.log`
+`$LOCAL_M4_ROOT/logs/llvm_install_source_and_deviation.log`
 
 ## 3. 来源、handoff 与工作副本
 
@@ -143,13 +143,13 @@ environment_exact_equal=true
 
 `setup_formal_v2.sh` 只修复 Bash 3.2 在 `set -u` 下展开空数组的问题。第一次 12 MB 左右的失败 venv 被保留，没有伪装为成功环境：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runtime/formal_venv.failed-bash32-empty-array-20260809T0750Z`
+`$LOCAL_M4_ROOT/runtime/formal_venv.failed-bash32-empty-array-20260809T0750Z`
 
 ## 4. 单 bank 资产构建
 
 权威资产目录：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z/assets`
+`$LOCAL_M4_ROOT/outputs/20260809T074722Z/assets`
 
 结果：
 
@@ -187,7 +187,7 @@ RUNNER_REFUSES_PREEXISTING_OUTPUT=PASS
 
 A 与 B 绑定同一个资产 manifest、generator、renderer、scene、LLVM runtime、Mitsuba variant 和单线程设置。完整补强 sidecar：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z/scene_00_fresh_process_audit.json`
+`$LOCAL_M4_ROOT/outputs/20260809T074722Z/scene_00_fresh_process_audit.json`
 
 零容差的实际含义：
 
@@ -223,7 +223,7 @@ phase_reference_values
 
 完整逐字段 comparator 已保留，不再只依赖汇总 sidecar：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z/scene_00_local_vs_frozen.comparison.json`
+`$LOCAL_M4_ROOT/outputs/20260809T074722Z/scene_00_local_vs_frozen.comparison.json`
 
 ```text
 STATUS=NOT_EXACT
@@ -247,7 +247,7 @@ FROZEN_HANDOFF_CANDIDATE_EXACT_REPRODUCTION=FAIL
 
 分类后的完整审计：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z/rt_visibility_audit.json`
+`$LOCAL_M4_ROOT/outputs/20260809T074722Z/rt_visibility_audit.json`
 
 关键统计：
 
@@ -275,7 +275,7 @@ SCIENTIFIC_GATE=NOT_ASSIGNED_REQUIRES_FROZEN_PROTOCOL
 
 报告：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z/visibility_one_factor_scene27.json`
+`$LOCAL_M4_ROOT/outputs/20260809T074722Z/visibility_one_factor_scene27.json`
 
 所有物理条件固定同一个 seed `2026107904`，LLVM 单线程；除 registered factor 外保持一致。
 
@@ -306,18 +306,18 @@ capacity `16` 没有重新调用 PathSolver，复用 baseline 原始路径计数
 权威候选：
 
 ```text
-DATASET=/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate/dataset.npz
+DATASET=$HANDOFF_ROOT/project/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate/dataset.npz
 DATASET_BYTES=22399401
 DATASET_SHA256=6534777ee33d6cc2f4b964b60e7a6fcd5f8bb14fd9b4714e19cb300c9a9bd5fc
 ```
 
 只有以下完整 retry 目录是成功的原生 `inspect-data` 证据：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z/formal_inspect_data_retry1`
+`$LOCAL_M4_ROOT/outputs/20260809T074722Z/formal_inspect_data_retry1`
 
 它的 stdout 状态为 `PASS`，wall time `25.69 s`，并同时生成 `data_contract.json` 与 `manifest.json`。分类 sidecar：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/outputs/20260809T074722Z/formal_inspect_data_retry1_classification.json`
+`$LOCAL_M4_ROOT/outputs/20260809T074722Z/formal_inspect_data_retry1_classification.json`
 
 首次目录 `formal_inspect_data/` 不是成功证据。首次命令因 `main runtime hashed installer report is missing` 失败，但在失败前留下了内部 `status=PASS` 的孤立 `data_contract.json`。该 partial 文件必须与失败 stderr 一起解释，禁止单独引用为成功运行。
 
@@ -364,7 +364,7 @@ WARNINGS=0
 
 最终 unittest 记录：
 
-`/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/logs/final_focused_unittest_13.log`
+`$LOCAL_M4_ROOT/logs/final_focused_unittest_13.log`
 
 测试后 working、archive、原 handoff 中均无 `__pycache__`、`.pyc` 或 `.pyo`。
 
@@ -513,6 +513,6 @@ FORMAL_SCIENTIFIC_USE=FORBIDDEN
 本轮交付文件的最短完整性复核命令：
 
 ```bash
-cd /Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM
+cd "$LOCAL_M4_ROOT"
 shasum -a 256 -c M4_LOCAL_SIM_SHA256SUMS
 ```

@@ -1,0 +1,11 @@
+{
+  "schema_version": "csi-pairs-sionna-approved-libllvm-v1",
+  "libraries": [
+    {
+      "platform_system": "Darwin",
+      "platform_machine": "arm64",
+      "sha256": "e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88",
+      "provenance": "M4 LLVM 22.1.8 diagnostic runtime audited on 2026-08-09"
+    }
+  ]
+}

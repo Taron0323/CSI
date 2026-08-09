@@ -9,8 +9,8 @@ SCIENTIFIC_USE=FORBIDDEN
 
 ## Outcome
 
-- The local suite exists at `/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6`.
-- All 12 registered data entities were copied to independent APFS paths; top-level dataset roots are not symlinks.
+- The audited local suite is represented by the portable `$LOCAL_SUITE_ROOT` placeholder.
+- All 12 catalog target paths existed during verification and top-level dataset roots were not symlinks. Source/target copy independence is audited for 3 entries only, so `G-COPY=PARTIAL`.
 - The full verifier passed 20 checks.
 - `external_wireless` passed deep structure/CRC checks and 133/133 SHA-256 entries.
 - Qualcomm Wi3R/WiPTR passed 13/13 locally generated ZIP/HDF5 SHA-256 entries.
@@ -36,7 +36,7 @@ SCIENTIFIC_USE=FORBIDDEN
 From this checked-out artifact directory:
 
 ```bash
-CSI_PAIRS_SUITE_ROOT=/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6 \
+CSI_PAIRS_SUITE_ROOT="$LOCAL_SUITE_ROOT" \
   ./VERIFY_SUITE.sh
 ```
 
@@ -46,6 +46,7 @@ Expected final lines:
 
 ```text
 SUITE_VERIFICATION=PASS checks=20 mode=full
+COPY_GATE=PARTIAL source_target_audited=3 catalog_targets=12
 FORMAL_STATUS=POST_AUDIT_NO_GO
 SCIENTIFIC_USE=FORBIDDEN
 ```
@@ -58,7 +59,7 @@ To verify this PR's metadata package without the local data payload:
 ./VERIFY_PR_METADATA.sh
 ```
 
-This checks every committed audit file against `99_REGISTRY/PR_METADATA_SHA256SUMS`, validates the JSON/CSV status boundary, and rejects raw dataset payload extensions or files above GitHub's ordinary per-file limit.
+This portable Bash/Python check authenticates every committed audit file, requires exact catalog/role ID and path joins, validates the No-Go and partial-copy boundaries, and rejects raw payloads, oversized files, and private machine identifiers.
 
 ## External dataset truth boundary
 

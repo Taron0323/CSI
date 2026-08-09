@@ -8,6 +8,20 @@ ENV_DIR="${RUNTIME_ROOT}/venv"
 SOURCE_DIR="${RUNTIME_ROOT}/src"
 FROZEN_LOCK="${PROJECT_ROOT}/formal_v2/external_adapters/sionna_lrm_uv.lock"
 SYSTEM="$(uname -s)"
+MACHINE="$(uname -m)"
+
+case "${SYSTEM}:${MACHINE}" in
+  Darwin:arm64)
+    SIONNA_RUNTIME_LOCK="${PROJECT_ROOT}/formal_v2/requirements-sionna-runtime-darwin-arm64.txt"
+    ;;
+  Linux:x86_64)
+    SIONNA_RUNTIME_LOCK="${PROJECT_ROOT}/formal_v2/requirements-sionna-runtime-linux-x86_64.txt"
+    ;;
+  *)
+    echo "unsupported Sionna runtime target: ${SYSTEM} ${MACHINE}" >&2
+    exit 8
+    ;;
+esac
 
 if [[ -e "${RUNTIME_ROOT}" && ! -d "${RUNTIME_ROOT}" ]]; then
   echo "refusing to reuse a non-directory Sionna runtime: ${RUNTIME_ROOT}" >&2
@@ -53,6 +67,10 @@ if [[ -z "${DRJIT_LIBLLVM_PATH:-}" || ! -f "${DRJIT_LIBLLVM_PATH}" ]]; then
   exit 6
 fi
 export DRJIT_LIBLLVM_PATH
+PYTHONPATH="${PROJECT_ROOT}" "${PYTHON312}" -m formal_v2.sionna_runtime_lock \
+  --project-root "${PROJECT_ROOT}" \
+  --runtime-root "${RUNTIME_ROOT}" \
+  register --libllvm "${DRJIT_LIBLLVM_PATH}"
 
 "${PYTHON312}" - "${WAIBU_ROOT}" <<'PY'
 import hashlib
@@ -114,17 +132,12 @@ if [[ "${installed}" != true ]]; then
   echo "Sionna locked dependency sync failed after 3 attempts" >&2
   exit 5
 fi
-# G8 uses sionna.rt and also reloads the frozen Stage-0 teacher to reproduce the
-# route ledger. Install a fixed CPU build of PyTorch without the unused CUDA stack.
-if [[ "${SYSTEM}" == "Darwin" ]]; then
-  uv pip install --python "${ENV_DIR}/bin/python" 'torch==2.9.1'
-else
-  TORCH_CPU_INDEX="${CSI_PAIRS_TORCH_CPU_INDEX:-https://download.pytorch.org/whl/cpu}"
-  uv pip install --python "${ENV_DIR}/bin/python" \
-    --index "${TORCH_CPU_INDEX}" \
-    'torch==2.9.1+cpu'
-fi
-uv pip install --python "${ENV_DIR}/bin/python" 'h5py==3.15.1'
+# G8 reloads the frozen Stage-0 teacher. Install the exact reviewed Torch and
+# h5py wheels without allowing dependency resolution to select mutable bytes.
+uv pip install --python "${ENV_DIR}/bin/python" \
+  --require-hashes \
+  --no-deps \
+  --requirement "${SIONNA_RUNTIME_LOCK}"
 # The top-level Sionna source package is installed for authenticated version and
 # provenance metadata. RT/LRM dependencies were installed by the project above.
 uv pip install --python "${ENV_DIR}/bin/python" --no-deps "${SOURCE_DIR}/sionna-main"

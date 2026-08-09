@@ -9,7 +9,7 @@
 
 这是一个按 CSI-PAIRS v6 科学角色整理的独立数据套件。它把现有数据复制到同一棵目录下，保存来源、角色、规模和哈希，并把“已经下载”“结构可读”“满足数据资格”“足以支持论文结论”四件事严格分开。
 
-本目录的存在不表示 CSI-PAIRS 正式数据已经完成。当前可以确认的是：静态来源已复制；外部无线核心子集可以复验；部分 fixture 通过软件结构检查。当前不能确认的是：完整 formal 主数据、RT 资格、第二引擎同世界复追踪和论文主张是否成立。
+本目录的存在不表示 CSI-PAIRS 正式数据已经完成。当前可以确认的是：12 个登记目标路径存在，其中 3 项完成源/目标复制审计；外部无线核心子集可以复验；部分 fixture 通过软件结构检查。其余复制独立性、完整 formal 主数据、RT 资格、第二引擎同世界复追踪和论文主张均未确认。
 
 ## 目录
 
@@ -85,4 +85,4 @@ all_original_sources_complete=false
 ./VERIFY_SUITE.sh
 ```
 
-2026-08-09 的最终完整验证为 `SUITE_VERIFICATION=PASS checks=20 mode=full`。它检查目录类型、机器可读 catalog、精确文件数/字节数、external 133 项 SHA-256、external 深度 ZIP/NPZ 校验、Qualcomm 关键 ZIP/HDF5 哈希、失败运行快照、关键 candidate/fixture 哈希和残留部分下载文件。验证通过只证明套件副本与登记状态一致，不会把 `POST_AUDIT_NO_GO` 改为 scientific Go。短报告见 `99_REGISTRY/FINAL_VERIFICATION.md`。
+2026-08-09 的最终完整验证为 `SUITE_VERIFICATION=PASS checks=20 mode=full`。它检查目标目录类型、机器可读 catalog、精确文件数/字节数、external 133 项 SHA-256、external 深度 ZIP/NPZ 校验、Qualcomm 关键 ZIP/HDF5 哈希、失败运行快照、关键 candidate/fixture 哈希和残留部分下载文件。它没有对全部 12 项执行源/目标独立复制审计，因此 `G-COPY=PARTIAL`；验证通过不会把 `POST_AUDIT_NO_GO` 改为 scientific Go。短报告见 `99_REGISTRY/FINAL_VERIFICATION.md`。

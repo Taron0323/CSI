@@ -13,7 +13,7 @@ from formal_v2 import render_sionna_bank_backend_diagnostic as diagnostic
 class M4LLVMBackendDiagnosticTests(unittest.TestCase):
     def test_llvm_path_requires_fixed_llvm_inputs_without_cuda(self):
         args = argparse.Namespace(
-            backend="llvm", drjit_threads=1, physical_gpu_index=None
+            backend="llvm", drjit_threads=1
         )
         with tempfile.TemporaryDirectory() as temporary:
             llvm_path = Path(temporary) / "libLLVM.dylib"
@@ -24,6 +24,10 @@ class M4LLVMBackendDiagnosticTests(unittest.TestCase):
                 patch.object(
                     diagnostic, "_runtime_versions",
                     return_value=diagnostic._expected_runtime_versions(),
+                ),
+                patch(
+                    "formal_v2.sionna_runtime_lock.approved_library_record",
+                    return_value={"libllvm_path": str(llvm_path.resolve())},
                 ),
                 patch.object(
                     diagnostic.candidate,
@@ -36,19 +40,10 @@ class M4LLVMBackendDiagnosticTests(unittest.TestCase):
                     llvm_path.resolve(),
                 )
 
-    def test_cuda_path_preserves_visibility_and_runtime_bootstrap_checks(self):
-        args = argparse.Namespace(
-            backend="cuda", drjit_threads=None, physical_gpu_index=2
-        )
-        with (
-            patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "2"}, clear=True),
-            patch.object(diagnostic.candidate, "ensure_sionna_runtime") as ensure,
-        ):
-            self.assertIsNone(diagnostic._prepare_backend(args, ["diagnostic.py"]))
-            ensure.assert_called_once_with(["diagnostic.py"])
-        with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "1"}, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "CUDA_VISIBLE_DEVICES=2"):
-                diagnostic._prepare_backend(args, ["diagnostic.py"])
+    def test_cuda_backend_is_not_exposed_as_an_authenticated_diagnostic(self):
+        args = argparse.Namespace(backend="cuda", drjit_threads=None)
+        with self.assertRaisesRegex(ValueError, "only the LLVM backend"):
+            diagnostic._prepare_backend(args, ["diagnostic.py"])
 
 
 if __name__ == "__main__":

@@ -272,6 +272,14 @@ def _lock_files(profile: str, project: Path) -> dict[str, str]:
         }
     else:
         runtime = Path(sys.prefix).absolute().parent
+        system = platform.system()
+        machine = platform.machine()
+        if (system, machine) == ("Darwin", "arm64"):
+            runtime_lock = project / "formal_v2" / "requirements-sionna-runtime-darwin-arm64.txt"
+        elif (system, machine) == ("Linux", "x86_64"):
+            runtime_lock = project / "formal_v2" / "requirements-sionna-runtime-linux-x86_64.txt"
+        else:
+            raise RuntimeError(f"unsupported Sionna runtime target: {system} {machine}")
         paths = {
             "sionna_lrm_frozen_uv_lock": project
             / "formal_v2"
@@ -284,6 +292,12 @@ def _lock_files(profile: str, project: Path) -> dict[str, str]:
             "resource_registry": project / "formal_v2" / "configs" / "waibu_resources_v1.json",
             "sionna_source_archive": project / "waibu" / "sionna-main.zip",
             "sionna_lrm_source_archive": project / "waibu" / "sionna-large-radio-maps-main.zip",
+            "sionna_runtime_requirements_lock": runtime_lock,
+            "sionna_approved_libllvm_registry": project
+            / "formal_v2"
+            / "configs"
+            / "sionna_llvm_approved_v1.json",
+            "sionna_libllvm_runtime_record": runtime / "llvm_runtime.json",
         }
     output = {}
     for label, path in paths.items():
@@ -295,6 +309,10 @@ def _lock_files(profile: str, project: Path) -> dict[str, str]:
         != output["sionna_lrm_runtime_uv_lock"]
     ):
         raise RuntimeError("Sionna runtime uv.lock differs from the frozen project lock")
+    if profile == "sionna":
+        from .sionna_runtime_lock import require_runtime_record
+
+        require_runtime_record(project, Path(sys.prefix).absolute().parent)
     return output
 
 
