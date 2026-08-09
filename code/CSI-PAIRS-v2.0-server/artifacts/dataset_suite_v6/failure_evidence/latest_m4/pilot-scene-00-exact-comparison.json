@@ -1,0 +1,478 @@
+{
+  "atol": 0.0,
+  "created_utc": "2026-08-09T08:40:22.553626+00:00",
+  "exact_fields": 23,
+  "field_count": 23,
+  "left": {
+    "path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z/pilot-a/scene-00.npz",
+    "quality": {
+      "all_zero_clean_units": 0,
+      "clean_units": 1024,
+      "nonfinite_clean_values": 0,
+      "pathless_clean_units": 0,
+      "pathless_noop_units": 0
+    },
+    "sha256": "06db1c31c5c51432df035cb83f31b31f75512281b3c8395c18703c03d2a22351"
+  },
+  "right": {
+    "path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z/pilot-b/scene-00.npz",
+    "quality": {
+      "all_zero_clean_units": 0,
+      "clean_units": 1024,
+      "nonfinite_clean_values": 0,
+      "pathless_clean_units": 0,
+      "pathless_noop_units": 0
+    },
+    "sha256": "06db1c31c5c51432df035cb83f31b31f75512281b3c8395c18703c03d2a22351"
+  },
+  "rows": [
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        2
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "anchor_bits",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        2
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        7
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "bs_pose",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        7
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        16
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "csi_clean",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        16
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        3,
+        16
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "csi_repeat",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        3,
+        16
+      ]
+    },
+    {
+      "exact": true,
+      "left_dtype": "bool",
+      "left_shape": [
+        1,
+        4,
+        256
+      ],
+      "name": "free_space",
+      "present_in_both": true,
+      "right_dtype": "bool",
+      "right_shape": [
+        1,
+        4,
+        256
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        4,
+        3,
+        256,
+        256
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "maps",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        4,
+        3,
+        256,
+        256
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "natural_world_index",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        4,
+        3,
+        256,
+        256
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "noop_maps",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        4,
+        3,
+        256,
+        256
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        64
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "noop_path_ids",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        64
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        64
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "noop_path_power",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        64
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        64,
+        3
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "noop_path_surface_ids",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        64,
+        3
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        64
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "path_ids",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        64
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        64
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "path_power",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        64
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        64,
+        3
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "path_surface_ids",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        64,
+        3
+      ]
+    },
+    {
+      "exact": true,
+      "left_dtype": "<U128",
+      "left_shape": [
+        1,
+        256
+      ],
+      "name": "phase_reference_ids",
+      "present_in_both": true,
+      "right_dtype": "<U128",
+      "right_shape": [
+        1,
+        256
+      ]
+    },
+    {
+      "exact": true,
+      "left_dtype": "<U64",
+      "left_shape": [
+        1,
+        256
+      ],
+      "name": "phase_reference_source_sha256",
+      "present_in_both": true,
+      "right_dtype": "<U64",
+      "right_shape": [
+        1,
+        256
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "complex128",
+      "left_shape": [
+        1,
+        256
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "phase_reference_values",
+      "present_in_both": true,
+      "right_dtype": "complex128",
+      "right_shape": [
+        1,
+        256
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        256,
+        2
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "positions",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        256,
+        2
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        2
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "primitive_ids",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        2
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        2,
+        1
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "primitive_surface_ids",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        2,
+        1
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "float64",
+      "left_shape": [
+        1,
+        4
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "radio_config",
+      "present_in_both": true,
+      "right_dtype": "float64",
+      "right_shape": [
+        1,
+        4
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1,
+        4,
+        256,
+        3
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "repeat_seeds",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1,
+        4,
+        256,
+        3
+      ]
+    },
+    {
+      "different_elements": 0,
+      "exact": true,
+      "left_dtype": "int64",
+      "left_shape": [
+        1
+      ],
+      "max_absolute_difference": 0.0,
+      "name": "scene_indices",
+      "present_in_both": true,
+      "right_dtype": "int64",
+      "right_shape": [
+        1
+      ]
+    }
+  ],
+  "rtol": 0.0,
+  "same_archive_sha256": true,
+  "same_member_order": true,
+  "schema_version": "csi-pairs-m4-exact-replay-comparison-v1",
+  "status": "PASS",
+  "tool_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/scripts/compare_m4_exact_replay.py",
+  "tool_sha256": "d27361ead2a60ad61caf58e2cbbbd3bdf054eb998aa64e4a66631c570294ce2e"
+}

@@ -1,0 +1,51 @@
+{
+  "asset_manifest_sha256": "0a14896a1fa2019b585a0620edb8d699e8ac69181061e65d0ef199f2f1231e60",
+  "duration_seconds": 2417.8334469170077,
+  "executor": {
+    "after": {
+      "drjit_thread_count": 1,
+      "hostname": "futaorandeMacBook-Pro.local",
+      "kind": "apple-silicon-cpu-llvm-worker",
+      "mitsuba_variant": "llvm_ad_mono_polarized",
+      "pid": 71792,
+      "platform_machine": "arm64",
+      "platform_system": "Darwin",
+      "worker_index": 5
+    },
+    "drjit_thread_count": 1,
+    "hostname": "futaorandeMacBook-Pro.local",
+    "kind": "apple-silicon-cpu-llvm-worker",
+    "mitsuba_variant": "llvm_ad_mono_polarized",
+    "pid": 71792,
+    "platform_machine": "arm64",
+    "platform_system": "Darwin",
+    "worker_index": 5
+  },
+  "fixture": false,
+  "generator_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py",
+  "generator_sha256": "9d114723c5180445e8bd4cb62473dcab915414cac10beab4de4570e7863bf192",
+  "output_bytes": 3775187,
+  "output_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z/candidate/shards/worker-5-scenes-22-25.npz",
+  "output_sha256": "9c970ed16ec5609c1aefa0efe11e2a8074fac3e91c01b8e8ddd4ec7d4a67e167",
+  "runtime": {
+    "drjit": "1.2.0",
+    "drjit_thread_count": 1,
+    "libllvm_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runtime/llvm/22.1.8/lib/libLLVM.dylib",
+    "libllvm_sha256": "e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88",
+    "mitsuba": "3.7.1",
+    "mitsuba_variant": "llvm_ad_mono_polarized",
+    "platform_machine": "arm64",
+    "platform_system": "Darwin",
+    "python": "3.12.13",
+    "sionna": "2.0.1",
+    "sionna_revision": "04ddb9312116b408093b9d3ad363a3df355093a6",
+    "sionna_rt": "1.2.1"
+  },
+  "scene_count": 4,
+  "scene_end_exclusive": 26,
+  "scene_start_inclusive": 22,
+  "schema_version": "csi-pairs-sionna-osm-render-shard-v1",
+  "scientific_use": "CANDIDATE",
+  "simulation_not_measurement": true,
+  "status": "PASS"
+}

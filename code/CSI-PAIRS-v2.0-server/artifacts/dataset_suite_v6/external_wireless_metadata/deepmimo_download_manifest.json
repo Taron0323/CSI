@@ -1,0 +1,29 @@
+{
+  "created_at": "2026-08-08T17:22:18.263022+00:00",
+  "records": {
+    "asu_campus_3p5": {
+      "status": "downloaded",
+      "path": "/Users/futaoran/Desktop/ICLR2027/datasets/external_wireless/DeepMIMO/deepmimo_scenarios/asu_campus_3p5_downloaded.zip"
+    },
+    "city_0_newyork_3p5": {
+      "status": "daily_limit",
+      "updated_at": "2026-08-08T17:22:56.354673+00:00",
+      "error": "Daily download limit exceeded: Daily limit has been reached. Please try again tomorrow."
+    },
+    "i1_2p5": {
+      "status": "verified",
+      "updated_at": "2026-08-09T05:19:55+00:00",
+      "expected_size": 2445139772,
+      "path": "/Users/futaoran/Desktop/ICLR2027/datasets/external_wireless/DeepMIMO/all_scenario_zips/i1_2p5.zip",
+      "size": 2445139772,
+      "sha256": "186a775040f6bc45ddae8097b555454df5620ae17d76a2274facd9f583c2d29e",
+      "zip_member_count": 1413,
+      "verified_at": "2026-08-09T05:19:55+00:00"
+    }
+  },
+  "updated_at": "2026-08-09T05:19:55+00:00",
+  "catalog_url": "https://deepmimo.net/api/search/scenarios",
+  "catalog_unique_count": 196,
+  "destination": "/Users/futaoran/Desktop/ICLR2027/datasets/external_wireless/DeepMIMO/all_scenario_zips",
+  "minimum_free_gib": 100.0
+}

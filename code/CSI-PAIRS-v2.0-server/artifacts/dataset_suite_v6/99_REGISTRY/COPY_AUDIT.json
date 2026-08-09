@@ -1,0 +1,90 @@
+{
+  "schema_version": "csi-pairs-suite-copy-audit-v1",
+  "audit_date": "2026-08-09",
+  "method": "cp -cRp on the same APFS data volume",
+  "semantics": "Clone copies have independent paths and inodes and are not top-level symlinks. APFS may share physical data blocks until mutation.",
+  "external_wireless": {
+    "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/external_wireless",
+    "target_path": "/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6/02_EXTERNAL_WIRELESS/external_wireless",
+    "source": {
+      "regular_files": 363263,
+      "directories": 1005,
+      "symlinks": 3,
+      "regular_file_bytes": 23857330137,
+      "allocated_kib": 24184668,
+      "root_inode": 82489765
+    },
+    "target": {
+      "regular_files": 363263,
+      "directories": 1005,
+      "symlinks": 3,
+      "regular_file_bytes": 23857330137,
+      "allocated_kib": 24184668,
+      "root_inode": 83446657,
+      "is_symlink": false
+    },
+    "representative_inode_checks": [
+      {
+        "path": "README.md",
+        "source_inode": 82860660,
+        "target_inode": 83812990,
+        "bytes": 8995
+      },
+      {
+        "path": "SHA256SUMS",
+        "source_inode": 82883327,
+        "target_inode": 83813212,
+        "bytes": 15761
+      },
+      {
+        "path": "DeepMIMO/all_scenario_zips/i1_2p5.zip",
+        "source_inode": 82947668,
+        "target_inode": 83455143,
+        "bytes": 2445139772
+      }
+    ],
+    "inventory_match": true
+  },
+  "qualcomm_wireless_indoor": {
+    "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/qualcomm_wireless_indoor",
+    "target_path": "/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6/03_INDEPENDENT_ENGINE_QUALCOMM/qualcomm_wireless_indoor",
+    "source": {
+      "regular_files": 190590,
+      "directories": 46945,
+      "symlinks": 0,
+      "regular_file_bytes": 13435727571,
+      "allocated_kib": 13321952,
+      "root_inode": 82128676
+    },
+    "target": {
+      "regular_files": 190590,
+      "directories": 46945,
+      "symlinks": 0,
+      "regular_file_bytes": 13435727571,
+      "allocated_kib": 13321952,
+      "root_inode": 83813214,
+      "is_symlink": false
+    },
+    "critical_sha256_manifest": "QUALCOMM_SHA256SUMS",
+    "critical_sha256_entries": 13,
+    "inventory_match": true
+  },
+  "failed_m4_formal_20260809T080951Z": {
+    "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z",
+    "target_path": "/Users/futaoran/Desktop/ICLR2027/CSI_PAIRS_DATASET_SUITE_V6/05_INCOMPLETE_AND_FAILED_RUNS/failed_m4_formal_20260809T080951Z_path_id_collision",
+    "source": {
+      "regular_files": 247,
+      "regular_file_bytes": 41926059,
+      "root_inode": 83308359
+    },
+    "target": {
+      "regular_files": 247,
+      "regular_file_bytes": 41926059,
+      "root_inode": 84072615,
+      "is_symlink": false
+    },
+    "sha256_manifest": "M4_FAILED_RUN_SHA256SUMS",
+    "sha256_entries": 247,
+    "inventory_match": true
+  }
+}
