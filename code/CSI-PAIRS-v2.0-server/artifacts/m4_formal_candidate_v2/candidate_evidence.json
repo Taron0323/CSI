@@ -1,0 +1,261 @@
+{
+  "schema_version": "csi-pairs-m4-formal-candidate-evidence-v1",
+  "artifact_label": "csi-pairs-formal-v2.1-v6",
+  "record_date": "2026-08-09",
+  "status": "PASS",
+  "scientific_use": "CANDIDATE_NOT_CLAIM",
+  "readiness": {
+    "M4_DATA_PRODUCTION_READY": "YES",
+    "FORMAL_CANDIDATE_READY": "YES",
+    "FORMAL_INPUT_READY": "CANDIDATE_ONLY",
+    "FORMAL_TRAINING_READY": "NO",
+    "LAUNCH_READY": "BLOCKED",
+    "SCIENTIFIC_EVIDENCE": "NOT_ASSESSED"
+  },
+  "closed_issue_ids": [
+    "DATA-VISIBILITY-001",
+    "DATA-REGEN-001",
+    "PATH-ID-001",
+    "INPUT-DATA-001"
+  ],
+  "candidate": {
+    "dataset": {
+      "label": "dataset.npz",
+      "sha256": "e5ec3d32bbb7c639f2fd6e6dcc23bc4bb6085cc76830a700e5b7103b17a37847",
+      "bytes": 28449796,
+      "included_in_repository": false
+    },
+    "generation_manifest": {
+      "label": "dataset.generation.json",
+      "sha256": "ce6ce3a048c8091dd77068c18e0fef5d9585c5d7b9e0c3e3dce2af5d26ee865b",
+      "bytes": 5065,
+      "included_in_repository": false
+    },
+    "asset_manifest": {
+      "label": "assets/asset_manifest.json",
+      "sha256": "0b1a379b0ddd5170376515fe582795a1a84e5eb948c033909b2ba259a5267fe7",
+      "bytes": 79209,
+      "included_in_repository": false,
+      "schema_version": "csi-pairs-sionna-osm-asset-manifest-v2",
+      "asset_config_sha256": "99b75a15ab9219ef9dfd31089a2a029b5da64747d5fb007703761c87d195ebf8",
+      "source_config_sha256": "e40d2f9fec8f5cf7d7f8880d4469d536297a1d9f96f549231fcaa0b5c1257f75"
+    },
+    "generator": {
+      "repository_path": "formal_v2/sionna_osm_candidate.py",
+      "source_sha256": "d149fe687a8b063ff3dab8dd75bd38d4de764657e1f7e6d3698162b6bb3a0157",
+      "evidence_source_commit": "3fb3133f959f953091f911a5a256ca65d5b3f850",
+      "evidence_source_commit_is_main_ancestor": true
+    },
+    "engine": {
+      "name": "NVIDIA-Sionna-RT-PathSolver",
+      "version": "1.2.1",
+      "source_revision": "04ddb9312116b408093b9d3ad363a3df355093a6",
+      "license_id": "Apache-2.0",
+      "config_sha256": "542689021d8252edb717c66f2bb2dfc76f017d42a604a0176129bf7c381a1dd2",
+      "simulation_not_measurement": true
+    },
+    "runtime": {
+      "platform_system": "Darwin",
+      "platform_machine": "arm64",
+      "python": "3.12.13",
+      "sionna": "2.0.1",
+      "sionna_rt": "1.2.1",
+      "mitsuba": "3.7.1",
+      "drjit": "1.2.0",
+      "mitsuba_variant": "llvm_ad_mono_polarized",
+      "drjit_thread_count": 1,
+      "libllvm_sha256": "26273678e919e90006fe2f5fc6e020cfc11a428103494d4dad6fa211b5d50451"
+    },
+    "shape": {
+      "scene_banks": 34,
+      "cities": 6,
+      "worlds_per_bank": 4,
+      "positions_per_bank": 256,
+      "repeats": 3,
+      "channels": 16,
+      "clean_units": 34816,
+      "base_map_clusters": 34
+    },
+    "city_counts": {
+      "source-chicago": 7,
+      "source-austin": 7,
+      "target-seattle": 8,
+      "target-boston": 8,
+      "external-denver": 2,
+      "external-miami": 2
+    },
+    "role_counts": {
+      "source_encoder_train": 2,
+      "source_method_selection": 2,
+      "source_probe_train": 2,
+      "source_probe_selection": 2,
+      "source_calibration_fit": 2,
+      "source_calibration_selection": 2,
+      "source_final_unseen_bank": 2,
+      "target": 16,
+      "external_validation": 4
+    },
+    "data_checks": {
+      "pathless_clean_units": 0,
+      "pathless_noop_units": 0,
+      "all_zero_clean_units": 0,
+      "nonfinite_clean_values": 0,
+      "duplicate_path_id_units": 0,
+      "target_support_query_id_intersection": 0,
+      "target_support_query_coordinate_intersection": 0
+    },
+    "shards": {
+      "count": 14,
+      "scene_start_inclusive": 0,
+      "scene_end_exclusive": 34,
+      "exact_contiguous_coverage": true,
+      "total_npz_bytes": 28399625,
+      "total_duration_seconds": "22232.1071894991912"
+    }
+  },
+  "inspection": {
+    "repository_commit": "0812faa5d41e9696a7819c84e31d3f90cb562037",
+    "status": "PASS",
+    "fixture": false,
+    "scientific_use": "CANDIDATE",
+    "data_contract": {
+      "label": "data_contract.json",
+      "sha256": "c0c0644ff546efee9583846ce1120cdd0e80c96ff01dfe8fc210612ed55fc3a3",
+      "bytes": 5834,
+      "included_in_repository": false
+    },
+    "run_manifest": {
+      "label": "manifest.json",
+      "sha256": "7e2d948989ec130316e9521a27f7ea840cc950a48d4db40ebfc8da55186f206c",
+      "bytes": 11591,
+      "included_in_repository": false
+    }
+  },
+  "verification": {
+    "mode": "same-host-same-engine-isolated-regeneration",
+    "independent_rt_engine": false,
+    "status": "PASS",
+    "fixture": false,
+    "scientific_use": "CANDIDATE_NOT_CLAIM",
+    "scene_banks_passed": 34,
+    "scene_banks_total": 34,
+    "role_groups_passed": 9,
+    "role_groups_total": 9,
+    "rtol": 0.0,
+    "atol": 0.0,
+    "engine_config_match": true,
+    "nonblocking_scene_failures": [],
+    "gate": {
+      "label": "data_verification/gate.json",
+      "sha256": "ac790e2ffacca784cba22bc31bc9798049bb219f3f88cfeb3cd0c69fce7c86a8",
+      "bytes": 7295,
+      "included_in_repository": false
+    },
+    "regenerated_dataset": {
+      "label": "data_verification/regenerated.npz",
+      "sha256": "64ed7292b4d2ae2e6da0f65349d189c6eb70a1bf43750fbc11685fad4a47429d",
+      "bytes": 28106727,
+      "included_in_repository": false
+    },
+    "regenerated_array_keys": [
+      "maps",
+      "csi_clean",
+      "csi_repeat",
+      "free_space",
+      "phase_reference_ids",
+      "phase_reference_values",
+      "phase_reference_source_sha256",
+      "engine_config_json",
+      "noop_maps",
+      "path_ids",
+      "path_power",
+      "path_surface_ids",
+      "noop_path_ids",
+      "noop_path_power",
+      "noop_path_surface_ids"
+    ],
+    "per_scene_inventory": {
+      "label": "data_verification/per_scene.csv",
+      "sha256": "972ed8e5a49547515941d83eb6c619e7e5244e111685ecd894ffc0c1c1042697",
+      "bytes": 29158,
+      "included_in_repository": false
+    },
+    "verifier_manifest": {
+      "label": "data_verification/verifier_manifest.json",
+      "sha256": "5849cda3d279676dc6f34120a985d0daf387fa70639097dfaf6a9afd6f5892c0",
+      "bytes": 635,
+      "included_in_repository": false
+    },
+    "stage_manifest": {
+      "label": "data_verification/manifest.json",
+      "sha256": "3fe49efa6c836f678624a2772135188c82511d5b5a5bfdfea7e9f149bc432345",
+      "bytes": 41779,
+      "included_in_repository": false
+    },
+    "run_manifest": {
+      "label": "manifest.json",
+      "sha256": "7604b3c95b2761952f66a5394023822243ad03534295b05aca2e07c9ca55137e",
+      "bytes": 41886,
+      "included_in_repository": false
+    },
+    "verifier_source": {
+      "repository_path": "formal_v2/formal_sionna_osm_verifier.py",
+      "sha256": "025981b7b6c7006b16c4a1addae35f5b2d748bceda4cbf4e23e2fea48d53b420"
+    },
+    "formal_config_sha256": "50a0515956027ee8241f0c9b806f669f65dbe28c11e1274cfb94b486c862f91c",
+    "requirements_lock_sha256": "f372fcd1988e712a47f01e6018289c0bc076f14b1f2d3ab1231f82b9a19b89c8",
+    "source_tree_sha256": "048aef98089cba3b7d5e326ad722daf03f6c55997645c1338fcdb919cd578a75",
+    "runtime_provenance_sha256": "b78a85e51daec771a518f07923a331e6f528e7ffc52d14b02cba5dcb7722f095",
+    "role_status": {
+      "source_encoder_train": "PASS",
+      "source_method_selection": "PASS",
+      "source_probe_train": "PASS",
+      "source_probe_selection": "PASS",
+      "source_calibration_fit": "PASS",
+      "source_calibration_selection": "PASS",
+      "source_final_unseen_bank": "PASS",
+      "target": "PASS",
+      "external_validation": "PASS"
+    },
+    "verified_properties": [
+      "canonical_rendering",
+      "canonical_foundation_content_identity",
+      "complete_cross_generation",
+      "common_free_positions",
+      "independent_repeat_noise_regeneration",
+      "observation_seed_to_residual_binding",
+      "world_independent_complex_phase_reference",
+      "phase_reference_source_sha256",
+      "path_and_noop_retrace",
+      "engine_config_and_license_binding"
+    ]
+  },
+  "licenses": [
+    {
+      "license_id": "ODbL-1.0",
+      "scope": "OpenStreetMap source data and attributed derived assets",
+      "formal_release_review_required": true
+    },
+    {
+      "license_id": "Apache-2.0",
+      "scope": "Sionna and Sionna RT engine source",
+      "formal_release_review_required": true
+    }
+  ],
+  "repository_policy": {
+    "npz_files_included": false,
+    "original_manifests_included": false,
+    "reason": "Large NPZ files are external formal inputs, and original manifests contain host-local absolute paths. Full hashes and byte sizes bind every omitted artifact.",
+    "derived_inventory_files": [
+      "scene_inventory.csv",
+      "shard_inventory.csv"
+    ]
+  },
+  "limitations": [
+    "Same-host, same-engine regeneration establishes deterministic internal consistency only.",
+    "This evidence is not an independent RT engine, controlled measurement, or physical-validity result.",
+    "Independent RT calibration and G8 evidence remain external blockers.",
+    "Destination A100 preflight, Wi-GATr and PMNet formal runs, four-arm training, and claim qualification remain blocked.",
+    "No paper result or scientific claim may cite this candidate before the registered formal gates pass."
+  ]
+}

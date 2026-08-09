@@ -2,18 +2,26 @@
 
 Date: 2026-08-09 (Asia/Shanghai)
 
-`PROTOCOL_READY=PASS`. `FORMAL_INPUT_READY=BLOCKED`, `LAUNCH_READY=BLOCKED`, and
-`SCIENTIFIC_EVIDENCE=NOT_ASSESSED` remain mandatory until every P0 row below closes.
+`PROTOCOL_READY=PASS`, `M4_DATA_PRODUCTION_READY=YES`,
+`FORMAL_CANDIDATE_READY=YES`, and
+`FORMAL_INPUT_READY=CANDIDATE_ONLY`. `FORMAL_TRAINING_READY=NO`,
+`LAUNCH_READY=BLOCKED`, and `SCIENTIFIC_EVIDENCE=NOT_ASSESSED`
+remain mandatory until every open P0 row below closes.
 
 | ID | Severity/type | Missing decision or input | Acceptance check | Consequence |
 |---|---|---|---|---|
-| `INPUT-DATA-001` | P0 `EVIDENCE_INGEST_REQUIRED` | A follow-up reports a 34-bank candidate and independent zero-tolerance regeneration, but this repository contains only abbreviated hashes and prose, not the immutable candidate/gate inventory needed to authenticate that result. | Ingest complete candidate, manifest, inspection gate, verification gate, and per-scene inventory hashes; independently verify the untouched bytes and all 34 scene roles. | The reported candidate cannot enter G1-G8 from repository evidence yet. |
 | `INPUT-RT-001` | P0 `EXTERNAL_DATA_REQUIRED` | Independent RT calibration fit/validation/reference manifests, shared reference evidence and raw rows. Reported candidate-data regeneration does not substitute for the separate calibration partitions. | `run-rt-calibration` plus G1 four-statistic/noise-floor checks pass. | C11 and qualification remain blocked. |
 | `MODEL-C1-001` | P0 `COMPUTE_REQUIRED` | The shipped, licensed PMNet adapter is the second C1-eligible model, but its formal non-fixture checkpoint and authenticated six-condition execution are not yet available. | External-baseline V3 gate passes in every city for both shipped C1-eligible models, Wi-GATr and PMNet. | C1 remains blocked until both formal executions pass. |
 | `INPUT-G8-001` | P0 `EXTERNAL_DATA_REQUIRED` | Licensed independent-engine scenes or controlled real paired intervention with registered active/null units. The shipped Sionna G8 adapter is deliberately rejected when the primary data also declare Sionna. | G8 V4 gate re-probes an actually independent runtime and passes cluster intervals. | C12 and external-validity wording remain blocked; same-Sionna evidence cannot close it. |
 | `RESOURCE-001` | P0 `LICENSE_OR_ACCESS_REQUIRED` | Four nonredistributable papers must be fetched locally from registered URLs; all selected assets/checkpoints need permission records. | `fetch_waibu_resources` then `verify-waibu-resources`; compute-plan license acknowledgements match. | G0/full preflight remains blocked. |
 | `COMPUTE-001` | P0 `COMPUTE_REQUIRED` | A prior handoff verified 2 x A100-SXM4-40GB with PyTorch 2.5.1+cu121, but the final branch must be installed on the destination host and supplied a reviewed disk, wall-time and GPU-hour budget. | Follow `formal_v2/A100_RUNBOOK.md`; formal compute-plan preflight passes actual GPU memory, driver, disk and budget checks. | Formal training is not authorized until destination-host preflight passes. |
 | `RESULTS-001` | P0 `EXTERNAL_DATA_REQUIRED` | Authenticated non-fixture Response qualification, four-arm, two-city, controls and external runs. | Same-run gate chain and claim assembly pass; per-unit rows populate planned cells. | Scientific claims and submission-ready result panels remain absent. |
+
+## Closed data evidence blockers
+
+| ID | Closed at | Evidence and boundary |
+|---|---|---|
+| `INPUT-DATA-001` | Current M4 candidate-evidence delivery | `artifacts/m4_formal_candidate_v2/` records full hashes and sizes for the untouched candidate, generation/asset manifests, latest-main inspection, zero-tolerance verification gate, regenerated NPZ and per-scene output. Repository static verification and local deep verification authenticate all 34 scene roles, exact shard coverage, data-quality counters, and the 15 registered regenerated arrays. This closes evidence ingestion only; `scientific_use=CANDIDATE_NOT_CLAIM`. |
 
 ## Closed author protocol decisions
 
