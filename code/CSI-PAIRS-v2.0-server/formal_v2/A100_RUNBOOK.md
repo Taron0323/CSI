@@ -6,11 +6,27 @@ unrendered candidate, a fixture, or a failed gate as scientific evidence.
 
 ## Required transfer layout
 
-Transfer the verified server bundle and the separate raw-input bundle. Keep
-the raw cache outside Git:
+Transfer the verified server bundle and the portable candidate bundle produced
+by `export-data-verification`:
 
 ```text
 CSI-PAIRS-v2.1-server/
+CSI-PAIRS-A100-verified-candidate-v2/
+  README.md
+  SHA256SUMS
+  dataset.npz
+  regenerated.npz
+  per_scene.csv
+  data_contract.json
+  verification_receipt.json
+  precomputed_verifier.json
+  formal_precomputed_regeneration_verifier.py
+```
+
+Keep the separate raw-input bundle outside Git only when the A100 host must
+render a new candidate instead of replaying the Mac-verified bytes:
+
+```text
 CSI-PAIRS-A100-input-v2/
   README.md
   SHA256SUMS
@@ -41,7 +57,7 @@ nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv,nohea
 df -h "$PWD"
 sha256sum --check SHA256SUMS
 (
-  cd /absolute/path/CSI-PAIRS-A100-input-v2
+  cd /absolute/path/CSI-PAIRS-A100-verified-candidate-v2
   sha256sum --check SHA256SUMS
 )
 ```
@@ -55,15 +71,22 @@ The data renderer uses deterministic single-thread LLVM workers. Install
 `uv`, `unzip`, and a discoverable LLVM shared library before Sionna setup. The
 two A100s are used by model training, not by the frozen LLVM data renderer.
 
-## 2. Install the two reviewed runtimes
+## 2. Install the reviewed runtime
 
 ```bash
 formal_v2/scripts/setup_formal_v2.sh "$PWD/.venv"
+```
+
+The command selects the Linux CUDA 12.1 lock and installs PyTorch
+`2.5.1+cu121`. This core runtime is sufficient to replay the portable
+zero-tolerance verification and start the later model gates. Install the
+separate Sionna/Dr.Jit runtime only when rendering or independently
+regenerating the candidate on this Linux host:
+
+```bash
 formal_v2/external_adapters/setup_sionna.sh
 ```
 
-The first command selects the Linux CUDA 12.1 lock and installs PyTorch
-`2.5.1+cu121`. The second command creates the separate Sionna/Dr.Jit runtime.
 Do not activate a CUDA 13 compatibility preload or reuse a Conda environment.
 `setup_sionna.sh` accepts libLLVM only when its exact SHA-256 is already listed
 for Linux x86_64 in `formal_v2/configs/sionna_llvm_approved_v1.json`. The
@@ -74,7 +97,7 @@ are reviewed and committed. Do not add a hash discovered during the same run.
 Verify the core GPU runtime:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" - <<'PY'
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -B - <<'PY'
 import torch
 assert torch.__version__ == "2.5.1+cu121", torch.__version__
 assert torch.cuda.is_available()
@@ -86,7 +109,36 @@ for index in range(2):
 PY
 ```
 
-## 3. Generate a new V2 candidate from the raw cache
+## 3. Replay the Mac-verified candidate on the A100 host
+
+Use new output paths and run both checks from the extracted server root:
+
+```bash
+CANDIDATE_BUNDLE=/absolute/path/CSI-PAIRS-A100-verified-candidate-v2
+(
+  cd "$CANDIDATE_BUNDLE"
+  sha256sum --check SHA256SUMS
+)
+
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -B -m formal_v2.formal_cli inspect-data \
+  --config "$PWD/formal_v2/configs/formal_v2.json" \
+  --dataset "$CANDIDATE_BUNDLE/dataset.npz" \
+  --output "$PWD/runs/sionna-osm-v2-inspect-001"
+
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -B -m formal_v2.formal_cli verify-data \
+  --config "$PWD/formal_v2/configs/formal_v2.json" \
+  --dataset "$CANDIDATE_BUNDLE/dataset.npz" \
+  --output "$PWD/runs/sionna-osm-v2-verify-001" \
+  --verifier-manifest "$CANDIDATE_BUNDLE/precomputed_verifier.json"
+```
+
+Continue only when inspection passes, `verification_mode` is
+`precomputed_independent_regeneration`, all 34 rows and all nine role groups
+pass, and both tolerances are zero. This replay rechecks the complete candidate
+against the independently regenerated archive. It is candidate-data evidence,
+not an independent RT engine, G8 result, or paper claim.
+
+## 4. Optional: generate a new V2 candidate from the raw cache
 
 Choose a new output root. The command refuses to overwrite it:
 
@@ -112,17 +164,17 @@ Any missing RT path, all-zero clean CSI unit, receiver-map collision, failed
 shard, or runtime drift aborts generation. Do not delete the check or rename a
 failed candidate into a formal dataset.
 
-## 4. Inspect and independently regenerate all banks
+## 5. Inspect and independently regenerate all banks
 
 Use two unused output roots:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.formal_cli inspect-data \
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -B -m formal_v2.formal_cli inspect-data \
   --config "$PWD/formal_v2/configs/formal_v2.json" \
   --dataset "$CANDIDATE_ROOT/dataset.npz" \
   --output "$PWD/runs/sionna-osm-v2-inspect-001"
 
-PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.formal_cli verify-data \
+PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -B -m formal_v2.formal_cli verify-data \
   --config "$PWD/formal_v2/configs/formal_v2.json" \
   --dataset "$CANDIDATE_ROOT/dataset.npz" \
   --output "$PWD/runs/sionna-osm-v2-verify-001" \
@@ -137,7 +189,7 @@ Do not edit the archive metadata after verification. The authenticated
 `CANDIDATE` earns `FORMAL_EXPERIMENT_ALLOWED` only if G1 and G2 subsequently
 pass; a failed gate or fixture remains forbidden.
 
-## 5. Prepare the formal gate chain
+## 6. Prepare the formal gate chain
 
 Before training, provide real reviewed inputs for:
 

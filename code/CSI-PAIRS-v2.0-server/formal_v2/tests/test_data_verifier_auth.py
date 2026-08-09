@@ -17,7 +17,7 @@ from formal_v2.formal_data_verification import (
     run_data_verification,
 )
 from formal_v2.formal_dataset import FormalDataset
-from formal_v2.formal_evidence import evidence_context
+from formal_v2.formal_evidence import config_sha256, evidence_context, _source_tree_sha256
 from formal_v2.formal_fixture import write_nonscientific_fixture
 from formal_v2.formal_io import read_strict_json, sha256_file, write_json
 
@@ -25,6 +25,7 @@ from formal_v2.formal_io import read_strict_json, sha256_file, write_json
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "formal_v2/configs/formal_v2_smoke.json"
 FIXTURE_VERIFIER = ROOT / "formal_v2/formal_fixture_verifier.py"
+PRECOMPUTED_VERIFIER = ROOT / "formal_v2/formal_precomputed_regeneration_verifier.py"
 
 
 class DataVerifierAuthenticationTests(unittest.TestCase):
@@ -74,6 +75,85 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
             output,
         )
         return output, gate
+
+    def _precomputed_bundle(self, origin, gate):
+        stage = origin / "data_verification"
+        bundle = self.root / "portable-source"
+        bundle.mkdir()
+        shutil.copyfile(stage / "regenerated.npz", bundle / "regenerated.npz")
+        shutil.copyfile(PRECOMPUTED_VERIFIER, bundle / PRECOMPUTED_VERIFIER.name)
+        registry = ROOT / "formal_v2/configs/sionna_llvm_approved_v1.json"
+        renderer = {
+            "schema_version": "csi-pairs-sionna-renderer-runtime-receipt-v1",
+            "profile": "sionna",
+            "platform_system": "Darwin",
+            "platform_machine": "arm64",
+            "python_version": "3.12.13",
+            "environment_sha256": "1" * 64,
+            "critical_distributions": {
+                "drjit": {"version": "1.2.0", "record_sha256": "2" * 64},
+                "h5py": {"version": "3.15.1", "record_sha256": "3" * 64},
+                "mitsuba": {"version": "3.7.1", "record_sha256": "4" * 64},
+                "sionna": {"version": "2.0.1", "record_sha256": "5" * 64},
+                "sionna-rt": {"version": "1.2.1", "record_sha256": "6" * 64},
+                "torch": {"version": "2.9.1", "record_sha256": "7" * 64},
+            },
+            "lock_files": {"sionna_approved_libllvm_registry": sha256_file(registry)},
+            "libllvm_sha256": "e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88",
+            "libllvm_registry_sha256": sha256_file(registry),
+            "libllvm_approval_provenance": "M4 LLVM 22.1.8 diagnostic runtime audited on 2026-08-09",
+        }
+        receipt = {
+            "schema_version": "csi-pairs-v6-precomputed-regeneration-receipt-v1",
+            "status": "PASS",
+            "fixture": True,
+            "scientific_use": "FORBIDDEN",
+            "dataset_sha256": sha256_file(self.dataset_path),
+            "dataset_bytes": self.dataset_path.stat().st_size,
+            "config_sha256": config_sha256(self.config),
+            "source_tree_sha256": _source_tree_sha256(),
+            "origin_gate_sha256": sha256_file(stage / "gate.json"),
+            "origin_manifest_sha256": sha256_file(stage / "manifest.json"),
+            "origin_per_scene_sha256": sha256_file(stage / "per_scene.csv"),
+            "origin_verifier_source_sha256": gate["verifier_source_sha256"],
+            "regenerated_path": "regenerated.npz",
+            "regenerated_sha256": sha256_file(stage / "regenerated.npz"),
+            "regenerated_bytes": (stage / "regenerated.npz").stat().st_size,
+            "scene_count": self.dataset.scene_count,
+            "role_status": gate["role_status"],
+            "rtol": 0.0,
+            "atol": 0.0,
+            "engine_source_revision": gate["engine_source_revision"],
+            "engine_license_id": gate["engine_license_id"],
+            "asset_license_ids": gate["asset_license_ids"],
+            "renderer_runtime": renderer,
+        }
+        receipt_path = bundle / "verification_receipt.json"
+        write_json(receipt_path, receipt)
+        manifest = {
+            "schema_version": "csi-pairs-v6-precomputed-data-verifier-v1",
+            "command": [
+                "{python}",
+                "{verifier_source}",
+                "--dataset",
+                "{dataset}",
+                "--output",
+                "{output}",
+                "--receipt",
+                "{verification_receipt}",
+            ],
+            "verifier_source_path": PRECOMPUTED_VERIFIER.name,
+            "verifier_source_sha256": sha256_file(PRECOMPUTED_VERIFIER),
+            "verification_receipt_path": receipt_path.name,
+            "verification_receipt_sha256": sha256_file(receipt_path),
+            "engine_source_revision": gate["engine_source_revision"],
+            "engine_license_id": gate["engine_license_id"],
+            "asset_license_ids": gate["asset_license_ids"],
+            "rtol": 0.0,
+            "atol": 0.0,
+        }
+        write_json(bundle / "verifier.json", manifest)
+        return bundle
 
     def test_manifest_rejects_legacy_or_indirect_commands(self):
         manifest = self._manifest()
@@ -207,6 +287,37 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
                 self.config,
                 self.dataset,
                 gate_path=gate_path,
+            )
+
+    def test_precomputed_regeneration_bundle_is_relocatable_and_rechecked(self):
+        origin, origin_gate = self._verified_run("portable-origin")
+        source = self._precomputed_bundle(origin, origin_gate)
+        relocated = self.root / "portable-relocated"
+        shutil.move(source, relocated)
+
+        output = self.root / "portable-consumer"
+        gate = run_data_verification(
+            self.config,
+            self.dataset,
+            relocated / "verifier.json",
+            output,
+        )
+        self.assertTrue(gate["passed"])
+        self.assertEqual(gate["verification_mode"], "precomputed_independent_regeneration")
+        self.assertEqual(
+            gate["verification_receipt_sha256"],
+            sha256_file(relocated / "verification_receipt.json"),
+        )
+        require_verified_roles_from_root(output, self.config, self.dataset, ("target",))
+
+        regenerated = relocated / "regenerated.npz"
+        regenerated.write_bytes(regenerated.read_bytes() + b"tampered")
+        with self.assertRaisesRegex(RuntimeError, "regenerated hash mismatch"):
+            run_data_verification(
+                self.config,
+                self.dataset,
+                relocated / "verifier.json",
+                self.root / "portable-tampered",
             )
 
 

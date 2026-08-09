@@ -109,6 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
         "run-shuffled-pair-control",
         "run-retention-audit",
         "assemble-claims",
+        "export-data-verification",
         "prepare-full-run",
         "all",
     ):
@@ -128,6 +129,8 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("--data-verification-gate", help="defaults to OUTPUT/data_verification/gate.json")
         if command == "verify-data":
             child.add_argument("--verifier-manifest", required=True)
+        if command == "export-data-verification":
+            child.add_argument("--verification-root", required=True)
         if command in {"prepare-full-run", "all"}:
             child.add_argument(
                 "--compute-plan",
@@ -335,6 +338,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "all":
             if not output.is_dir() or output.is_symlink():
                 raise RuntimeError("all requires an existing prepared run root")
+        elif args.command == "export-data-verification":
+            pass
         else:
             _reserve_command_output(args.command, output)
             output.mkdir(parents=True, exist_ok=True)
@@ -366,6 +371,17 @@ def main(argv: list[str] | None = None) -> int:
             from .formal_data_verification import run_data_verification
 
             result = run_data_verification(config, dataset, args.verifier_manifest, output)
+        elif args.command == "export-data-verification":
+            from .formal_data_verification import export_precomputed_verification
+
+            result = export_precomputed_verification(
+                config,
+                dataset,
+                args.verification_root,
+                output,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return _result_exit_code(result)
         elif args.command == "run-wrong-map":
             from .formal_wrong_map import run_formal_wrong_map
 

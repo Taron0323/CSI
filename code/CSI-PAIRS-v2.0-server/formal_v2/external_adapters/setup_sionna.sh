@@ -186,7 +186,7 @@ print("drjit-threads", drjit.thread_count())
 print("drjit-libllvm", __import__("os").environ["DRJIT_LIBLLVM_PATH"])
 PY
 
-"${ENV_DIR}/bin/python" "${PROJECT_ROOT}/formal_v2/formal_external_runtime.py" \
+PYTHONPATH="${PROJECT_ROOT}" "${ENV_DIR}/bin/python" -m formal_v2.formal_external_runtime \
   --profile sionna \
   --project-root "${PROJECT_ROOT}" \
   --output "${RUNTIME_ROOT}/runtime_provenance.json" \

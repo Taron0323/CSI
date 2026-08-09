@@ -2,15 +2,14 @@
 
 Date: 2026-08-09 (Asia/Shanghai)
 
-`PROTOCOL_READY=PASS`, `M4_DATA_PRODUCTION_READY=REPORTED`, and
-`EVIDENCE_REGISTRY_READY=YES`. `FORMAL_CANDIDATE_READY=BLOCKED_UNAPPROVED_RUNTIME`,
+`PROTOCOL_READY=PASS`, `M4_DATA_PRODUCTION_READY=PASS`,
+`EVIDENCE_REGISTRY_READY=YES`, and `FORMAL_CANDIDATE_READY=PASS_CANDIDATE_NOT_CLAIM`.
 `FORMAL_INPUT_READY=BLOCKED`, `FORMAL_TRAINING_READY=NO`,
 `LAUNCH_READY=BLOCKED`, and `SCIENTIFIC_EVIDENCE=NOT_ASSESSED`
 remain mandatory until every open P0 row below closes.
 
 | ID | Severity/type | Missing decision or input | Acceptance check | Consequence |
 |---|---|---|---|---|
-| `INPUT-DATA-001` | P0 `DEEP_VERIFICATION_AND_RUNTIME_REVIEW_REQUIRED` | The repository has immutable commitments and derived inventories, but omits the candidate/manifests and records a libLLVM hash outside the approved registry. | Deep mode authenticates all external roots and exact arrays; runtime provenance is reviewed and registered or data are regenerated under an approved runtime. | The reported candidate cannot enter G1/G2. |
 | `INPUT-RT-001` | P0 `EXTERNAL_DATA_REQUIRED` | Independent RT calibration fit/validation/reference manifests, shared reference evidence and raw rows. Reported candidate-data regeneration does not substitute for the separate calibration partitions. | `run-rt-calibration` plus G1 four-statistic/noise-floor checks pass. | C11 and qualification remain blocked. |
 | `MODEL-C1-001` | P0 `COMPUTE_REQUIRED` | The shipped, licensed PMNet adapter is the second C1-eligible model, but its formal non-fixture checkpoint and authenticated six-condition execution are not yet available. | External-baseline V3 gate passes in every city for both shipped C1-eligible models, Wi-GATr and PMNet. | C1 remains blocked until both formal executions pass. |
 | `INPUT-G8-001` | P0 `EXTERNAL_DATA_REQUIRED` | Licensed independent-engine scenes or controlled real paired intervention with registered active/null units. The shipped Sionna G8 adapter is deliberately rejected when the primary data also declare Sionna. | G8 V4 gate re-probes an actually independent runtime and passes cluster intervals. | C12 and external-validity wording remain blocked; same-Sionna evidence cannot close it. |
@@ -22,7 +21,13 @@ remain mandatory until every open P0 row below closes.
 
 | ID | Registered at | Evidence and boundary |
 |---|---|---|
-| `INPUT-DATA-001` | Current M4 candidate-evidence delivery | `artifacts/m4_formal_candidate_v2/` records full hashes and sizes for the reported candidate and outputs. Static mode verifies these commitments and explicitly reports `external_artifacts=NOT_VERIFIED`; it does not close the blocker. |
+| `INPUT-DATA-001-HISTORICAL` | Earlier M4 candidate-evidence delivery | `artifacts/m4_formal_candidate_v2/` records hashes and sizes for candidate `e5ec3d32...7847`. Static mode reports `external_artifacts=NOT_VERIFIED`; that historical record does not close current candidate readiness. |
+
+## Closed candidate-data evidence
+
+| ID | Closed at | Evidence and boundary |
+|---|---|---|
+| `INPUT-DATA-001` | latest main plus approved LLVM 22.1.8 | `artifacts/m4_llvm22_candidate_v1/candidate_evidence.json` binds candidate `e8903430...d2e`, 34/34 live zero-tolerance regeneration, all nine role groups and a relocated portable replay. This closes candidate-data ingestion only; G1/G2, independent RT, C1, G8 and A100 resource approval remain blocked. |
 
 ## Closed author protocol decisions
 
