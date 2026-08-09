@@ -56,7 +56,7 @@ elif [[ "$(uname -s)" == "Darwin" && -f /etc/ssl/cert.pem ]]; then
   PIP_CERT_ARGS=(--cert /etc/ssl/cert.pem)
 fi
 "${ENVIRONMENT_PATH}/bin/python" -m pip download \
-  "${PIP_CERT_ARGS[@]}" \
+  ${PIP_CERT_ARGS[@]+"${PIP_CERT_ARGS[@]}"} \
   --require-hashes \
   --only-binary=:all: \
   --dest "${WHEELHOUSE_PATH}" \
