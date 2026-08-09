@@ -265,6 +265,25 @@ class FactorialStatisticsMutationTests(unittest.TestCase):
             ):
                 statistic()
 
+    def test_copied_bank_cannot_move_to_renamed_foundation(self):
+        rows = _statistics_rows()
+        source_foundation = rows[0]["base_map_cluster_id"]
+        copied = [
+            {**row, "base_map_cluster_id": "renamed-foundation"}
+            for row in rows
+            if row["base_map_cluster_id"] == source_foundation
+        ]
+        copied[0]["utility_neg_log_median"] = 1000.0
+        forged = rows + copied
+        for statistic in (
+            lambda: exact_factorial_utilities(forged, [0]),
+            lambda: hierarchical_factorial_interval(forged, [0], 20, 9127),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "assigned to multiple independent units"
+            ):
+                statistic()
+
     def test_primary_g4_intervals_are_one_synchronized_family(self):
         report = hierarchical_factorial_interval(
             _statistics_rows(), [0], 200, 9127

@@ -125,6 +125,7 @@ def _cluster_differences(
 
 def exact_factorial_utilities(rows: list[dict], primary_budgets: list[int] | tuple[int, ...]) -> dict:
     """Compute V6 J_a with equal city, k, bank, seed and draw layers."""
+    _validate_canonical_bank_foundations(rows)
     budgets = tuple(int(value) for value in primary_budgets)
     arms = sorted({str(row["arm"]) for row in rows})
     cities = sorted({str(row["city_id"]) for row in rows})
@@ -158,6 +159,7 @@ def hierarchical_factorial_interval(
     seed: int,
 ) -> dict:
     """Paired city-fixed bootstrap over base-map cluster, seed, and k>0 draw."""
+    _validate_canonical_bank_foundations(rows)
     budgets = tuple(int(value) for value in primary_budgets)
     cities = sorted({str(row["city_id"]) for row in rows})
     seeds = sorted({int(row["seed"]) for row in rows})
@@ -275,6 +277,7 @@ def bank_only_factorial_interval(
     resamples: int,
     seed: int,
 ) -> dict:
+    _validate_canonical_bank_foundations(rows)
     collapsed = _collapsed_cells(rows, primary_budgets)
     rng = np.random.default_rng(int(seed))
     cities = sorted({key[1] for key in collapsed})
@@ -325,6 +328,7 @@ def bank_only_factorial_interval(
 def leave_one_factorial_sensitivity(
     rows: list[dict], primary_budgets: list[int] | tuple[int, ...]
 ) -> dict:
+    _validate_canonical_bank_foundations(rows)
     seeds = sorted({int(row["seed"]) for row in rows})
     positive_draws = sorted({int(row["draw"]) for row in rows if int(row["budget"]) > 0})
     leave_seed = [
@@ -488,6 +492,18 @@ def _canonical_bank_macro_mean(by_bank: dict[str, list[float]]) -> float:
             )
         values.append(value)
     return float(np.mean(values))
+
+
+def _validate_canonical_bank_foundations(rows: list[dict]) -> None:
+    owners = {}
+    for row in rows:
+        bank = _bank_unit(row)
+        foundation = _independent_unit(row)
+        previous = owners.setdefault(bank, foundation)
+        if previous != foundation:
+            raise ValueError(
+                f"canonical bank {bank} is assigned to multiple independent units"
+            )
 
 
 def _independent_unit(row: dict) -> str:
