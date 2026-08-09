@@ -335,8 +335,14 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
             }
         )
         write_json(receipt_path, receipt)
-        with self.assertRaisesRegex(RuntimeError, "not registered"):
-            validate_receipt(receipt_path, self.dataset_path)
+        unregistered = self.root / "unregistered_candidate_evidence.json"
+        write_json(unregistered, {})
+        with patch(
+            "formal_v2.formal_precomputed_regeneration_verifier.REGISTERED_CANDIDATE_EVIDENCE",
+            unregistered,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "not registered"):
+                validate_receipt(receipt_path, self.dataset_path)
         validate_receipt(
             receipt_path,
             self.dataset_path,

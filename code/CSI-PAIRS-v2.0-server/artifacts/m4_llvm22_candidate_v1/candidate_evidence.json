@@ -68,7 +68,7 @@
     "verification_receipt_sha256": "9396eab866ac21998f4031f4cc728e07d25ccabb3e14ff2b3468cfef21dff1be",
     "precomputed_verifier_sha256": "30bb62b6c07ac2bff0dc2139d30b187c5e8dbd275ad715e23f9e3297a0ff6574",
     "bundle_sha256sums_sha256": "9587e89391aee6ca0c8ab78846499a849fc48f9daef1ada94fe8da4a3dada84b",
-    "relocated_replay_gate_sha256": "772182356ef51d21ab1b79bd1b6e5969bdbe28efc99969043f8d2b5d126fdef9",
+    "relocated_replay_gate_sha256": "3a64b22102a02f5ab789366c85108e7bfcb4f82cca056276d2f90b5dcc57a481",
     "scene_banks_passed": 34,
     "scene_banks_total": 34,
     "rtol": 0.0,
