@@ -280,7 +280,7 @@ class FactorialStatisticsMutationTests(unittest.TestCase):
             lambda: hierarchical_factorial_interval(forged, [0], 20, 9127),
         ):
             with self.assertRaisesRegex(
-                ValueError, "assigned to multiple independent units"
+                ValueError, "assigned to multiple independent units or cities"
             ):
                 statistic()
 
@@ -300,6 +300,25 @@ class FactorialStatisticsMutationTests(unittest.TestCase):
             self.assertGreaterEqual(
                 interval["familywise_ci95_high"], interval["estimate"]
             )
+
+    def test_copied_bank_cannot_move_to_renamed_city(self):
+        rows = _statistics_rows()
+        source_foundation = rows[0]["base_map_cluster_id"]
+        copied = [
+            {**row, "city_id": "renamed-city"}
+            for row in rows
+            if row["base_map_cluster_id"] == source_foundation
+        ]
+        copied[0]["utility_neg_log_median"] = 1000.0
+        forged = rows + copied
+        for statistic in (
+            lambda: exact_factorial_utilities(forged, [0]),
+            lambda: hierarchical_factorial_interval(forged, [0], 20, 9127),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "assigned to multiple independent units or cities"
+            ):
+                statistic()
 
 
 if __name__ == "__main__":
