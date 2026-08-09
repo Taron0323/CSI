@@ -105,7 +105,10 @@ def run_data_verification(config, dataset, manifest_path, output_root):
         config, dataset, "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     )
     if receipt is not None:
-        for key in ("dataset_sha256", "config_sha256", "fixture", "source_tree_sha256"):
+        receipt_keys = ["dataset_sha256", "config_sha256", "fixture"]
+        if receipt["fixture"]:
+            receipt_keys.append("source_tree_sha256")
+        for key in receipt_keys:
             if receipt[key] != evidence[key]:
                 raise RuntimeError(f"precomputed regeneration receipt {key} mismatch")
     with np.load(regenerated_path, allow_pickle=False) as archive:

@@ -18,6 +18,10 @@ EXPECTED_DISTRIBUTIONS = {
     "sionna": "2.0.1",
     "sionna-rt": "1.2.1",
 }
+REGISTERED_CANDIDATE_EVIDENCE = (
+    Path(formal_evidence.__file__).resolve().parents[1]
+    / "artifacts/m4_llvm22_candidate_v1/candidate_evidence.json"
+)
 
 
 def validate_receipt(receipt_path: str | Path, dataset_path: str | Path) -> tuple[dict, Path]:
@@ -69,8 +73,13 @@ def validate_receipt(receipt_path: str | Path, dataset_path: str | Path) -> tupl
     ):
         if not _lower_sha256(receipt[key]):
             raise RuntimeError(f"precomputed regeneration receipt {key} is invalid")
-    if receipt["source_tree_sha256"] != formal_evidence._source_tree_sha256():
-        raise RuntimeError("precomputed regeneration receipt source tree differs from this checkout")
+    if receipt["fixture"]:
+        if receipt["source_tree_sha256"] != formal_evidence._source_tree_sha256():
+            raise RuntimeError(
+                "precomputed regeneration receipt source tree differs from this checkout"
+            )
+    else:
+        _require_registered_nonfixture_receipt(receipt_file, receipt)
     dataset = _regular_file(dataset_path, "candidate dataset")
     if dataset.stat().st_size != receipt["dataset_bytes"] or sha256_file(dataset) != receipt["dataset_sha256"]:
         raise RuntimeError("precomputed regeneration receipt dataset mismatch")
@@ -117,6 +126,53 @@ def validate_receipt(receipt_path: str | Path, dataset_path: str | Path) -> tupl
         raise RuntimeError("precomputed regenerated hash mismatch")
     _validate_renderer_runtime(receipt["renderer_runtime"])
     return receipt, regenerated
+
+
+def _require_registered_nonfixture_receipt(receipt_file: Path, receipt: dict) -> None:
+    evidence_path = _regular_file(
+        REGISTERED_CANDIDATE_EVIDENCE,
+        "registered LLVM 22 candidate evidence",
+    )
+    evidence = read_strict_json(evidence_path)
+    candidate = evidence.get("candidate") if isinstance(evidence, dict) else None
+    live = (
+        evidence.get("live_independent_regeneration")
+        if isinstance(evidence, dict)
+        else None
+    )
+    portable = evidence.get("portable_replay") if isinstance(evidence, dict) else None
+    registered = bool(
+        evidence.get("schema_version")
+        == "csi-pairs-m4-llvm22-candidate-evidence-v1"
+        and evidence.get("status") == "PASS"
+        and evidence.get("scientific_use") == "CANDIDATE_NOT_CLAIM"
+        and isinstance(candidate, dict)
+        and candidate.get("dataset_sha256") == receipt["dataset_sha256"]
+        and candidate.get("dataset_bytes") == receipt["dataset_bytes"]
+        and candidate.get("fixture") is False
+        and candidate.get("scene_banks") == receipt["scene_count"]
+        and isinstance(live, dict)
+        and live.get("status") == "PASS"
+        and live.get("verification_mode") == "live_independent_regeneration"
+        and live.get("gate_sha256") == receipt["origin_gate_sha256"]
+        and live.get("stage_manifest_sha256") == receipt["origin_manifest_sha256"]
+        and live.get("origin_per_scene_sha256") == receipt["origin_per_scene_sha256"]
+        and live.get("regenerated_sha256") == receipt["regenerated_sha256"]
+        and live.get("source_tree_sha256") == receipt["source_tree_sha256"]
+        and live.get("role_status") == receipt["role_status"]
+        and float(live.get("rtol", -1.0)) == float(receipt["rtol"])
+        and float(live.get("atol", -1.0)) == float(receipt["atol"])
+        and isinstance(portable, dict)
+        and portable.get("status") == "PASS"
+        and portable.get("verification_mode")
+        == "precomputed_independent_regeneration"
+        and portable.get("verification_receipt_sha256")
+        == sha256_file(receipt_file)
+    )
+    if not registered:
+        raise RuntimeError(
+            "non-fixture precomputed regeneration receipt is not registered"
+        )
 
 
 def _validate_renderer_runtime(runtime: object) -> None:

@@ -20,6 +20,7 @@ from formal_v2.formal_dataset import FormalDataset
 from formal_v2.formal_evidence import config_sha256, evidence_context, _source_tree_sha256
 from formal_v2.formal_fixture import write_nonscientific_fixture
 from formal_v2.formal_io import read_strict_json, sha256_file, write_json
+from formal_v2.formal_precomputed_regeneration_verifier import validate_receipt
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -319,6 +320,62 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
                 relocated / "verifier.json",
                 self.root / "portable-tampered",
             )
+
+    def test_nonfixture_precomputed_receipt_must_match_registered_origin(self):
+        origin, origin_gate = self._verified_run("registered-origin")
+        bundle = self._precomputed_bundle(origin, origin_gate)
+        receipt_path = bundle / "verification_receipt.json"
+        receipt = read_strict_json(receipt_path)
+        receipt.update(
+            {
+                "fixture": False,
+                "scientific_use": "CANDIDATE_NOT_CLAIM",
+                "scene_count": 34,
+                "source_tree_sha256": "a" * 64,
+            }
+        )
+        write_json(receipt_path, receipt)
+        registry = self.root / "candidate_evidence.json"
+        write_json(
+            registry,
+            {
+                "schema_version": "csi-pairs-m4-llvm22-candidate-evidence-v1",
+                "status": "PASS",
+                "scientific_use": "CANDIDATE_NOT_CLAIM",
+                "candidate": {
+                    "dataset_sha256": receipt["dataset_sha256"],
+                    "dataset_bytes": receipt["dataset_bytes"],
+                    "fixture": False,
+                    "scene_banks": 34,
+                },
+                "live_independent_regeneration": {
+                    "status": "PASS",
+                    "verification_mode": "live_independent_regeneration",
+                    "gate_sha256": receipt["origin_gate_sha256"],
+                    "stage_manifest_sha256": receipt["origin_manifest_sha256"],
+                    "origin_per_scene_sha256": receipt["origin_per_scene_sha256"],
+                    "regenerated_sha256": receipt["regenerated_sha256"],
+                    "source_tree_sha256": receipt["source_tree_sha256"],
+                    "role_status": receipt["role_status"],
+                    "rtol": 0.0,
+                    "atol": 0.0,
+                },
+                "portable_replay": {
+                    "status": "PASS",
+                    "verification_mode": "precomputed_independent_regeneration",
+                    "verification_receipt_sha256": sha256_file(receipt_path),
+                },
+            },
+        )
+        with patch(
+            "formal_v2.formal_precomputed_regeneration_verifier.REGISTERED_CANDIDATE_EVIDENCE",
+            registry,
+        ):
+            validate_receipt(receipt_path, self.dataset_path)
+            receipt["origin_gate_sha256"] = "f" * 64
+            write_json(receipt_path, receipt)
+            with self.assertRaisesRegex(RuntimeError, "not registered"):
+                validate_receipt(receipt_path, self.dataset_path)
 
 
 if __name__ == "__main__":
