@@ -588,7 +588,10 @@ def _validate_static_manifests(
     )
     from .formal_external import _validate_manifest as validate_external
     from .formal_external_validity import (
+        _execution_mode as external_validity_execution_mode,
         _validate_manifest as validate_external_validity,
+        _verify_archive_inputs,
+        require_independent_primary_engine,
         _verify_adapter_source,
     )
     from .formal_literature import _validate_manifest as validate_literature
@@ -650,13 +653,24 @@ def _validate_static_manifests(
 
     external_validity = payloads["external_validity_manifest"]
     validate_external_validity(external_validity)
-    _verify_adapter_source(external_validity)
+    require_independent_primary_engine(dataset, external_validity)
     licenses.add(external_validity["license_id"])
-    _require_declared_executables([external_validity])
-    _merge_external_runtimes(
-        external_runtimes,
-        _probe_declared_external_runtimes([external_validity]),
-    )
+    if external_validity_execution_mode(external_validity) == "authenticated_sionna_adapter":
+        _verify_adapter_source(external_validity)
+        _require_declared_executables([external_validity])
+        _merge_external_runtimes(
+            external_runtimes,
+            _probe_declared_external_runtimes([external_validity]),
+        )
+    else:
+        external_validity_path = Path(
+            input_values["external_validity_manifest"]
+        ).resolve()
+        _verify_archive_inputs(
+            external_validity,
+            external_validity_path.parent,
+            dataset,
+        )
 
     literature_path = Path(input_values["literature_resource_manifest"]).resolve()
     literature = payloads["literature_resource_manifest"]

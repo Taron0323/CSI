@@ -73,6 +73,11 @@ artifacts. Support/query exclusion compares both the stable ID and the BS-center
 - The resulting patch count must be a multiple of four. Stage-0 and the frozen model mask bank use
   an exact 75% hidden-patch cardinality; rounding to a nearby count is not admissible.
 - `map_resolution_m` and `map_origin_xy_m` bind raster cells to the BS-centered meter frame used by path matching.
+- `engine_config.path_identity` freezes ordered surface IDs, 1 ps delay bins,
+  `theta_r/phi_r/theta_t/phi_t` in `1e-5` radian bins, and interaction vertices in
+  `1e-5` meter bins. Sionna records with the same complete quantized physical
+  identity are one numerical duplicate group whose path powers are summed; two
+  different physical records may not share a path ID.
 - Material values are categorical integers bounded by `assets.material_category_count`; model actions use explicit from/to planes, never category subtraction.
 - `external_reference.available` must agree with actual external banks, but external validity remains `NOT_ASSESSED` until G8 evidence is run.
 - Fixtures always use `fixture=true, scientific_use=FORBIDDEN`.
@@ -81,9 +86,18 @@ artifacts. Support/query exclusion compares both the stable ID and the BS-center
 
 The loader verifies shapes, finite values, hypercube completeness, canonical digests, engine-config digest, common-free-space declarations, phase/coordinate enums, categorical materials, unique repeat seeds, exact copied residual noise, role/city/bank constraints, path/no-op tensor consistency, and asset-field completeness.
 
+For non-fixture data, every clean and no-op `(scene, world, position)` unit must
+contain at least one registered RT path, and every clean CSI vector must have
+nonzero norm. The loader rejects a candidate containing even one pathless or
+all-zero clean unit before any teacher or model training starts.
+
 Before qualification, `verify-data` executes a separately registered renderer command and compares regenerated maps, clean/repeated CSI, common-free-space masks, phase-reference IDs, complex reference values, reference-source SHA-256 values, paths, and no-op retraces against the archive independently for every scene. Engine source revision, engine license, asset licenses, dataset hash, and config hash are bound into its gate. Only `source_encoder_train` and `source_method_selection` failures are blocking for startup. Every later stage separately requires regeneration PASS for each role it reads, so a target/probe/calibration/final-unseen failure blocks that downstream stage without controlling startup. The fixture copy verifier is permanently non-scientific and refuses non-fixture input.
 
 This regeneration gate still does not establish RT calibration or legal sufficiency. C11 requires independent RT calibration artifacts, and G8 requires an independent engine or controlled real intervention. Metadata `QUALIFIED` never supplies either result by itself.
+
+When the primary dataset declares Sionna RT, a Sionna rerender from the same
+engine family is not independent G8 evidence. Formal preflight rejects that
+combination rather than allowing a same-simulator result to support C12.
 
 ## Evidence propagation
 

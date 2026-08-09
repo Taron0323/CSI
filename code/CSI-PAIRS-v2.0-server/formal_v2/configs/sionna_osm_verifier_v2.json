@@ -1,0 +1,18 @@
+{
+  "schema_version": "csi-pairs-v6-data-verifier-v1",
+  "command": [
+    "{python}",
+    "{verifier_source}",
+    "--dataset",
+    "{dataset}",
+    "--output",
+    "{output}"
+  ],
+  "verifier_source_path": "../formal_sionna_osm_verifier.py",
+  "verifier_source_sha256": "025981b7b6c7006b16c4a1addae35f5b2d748bceda4cbf4e23e2fea48d53b420",
+  "engine_source_revision": "04ddb9312116b408093b9d3ad363a3df355093a6",
+  "engine_license_id": "Apache-2.0",
+  "asset_license_ids": ["ODbL-1.0"],
+  "rtol": 0.0,
+  "atol": 0.0
+}

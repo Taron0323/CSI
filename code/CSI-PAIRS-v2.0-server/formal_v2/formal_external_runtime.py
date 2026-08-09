@@ -161,8 +161,13 @@ def validate_external_runtime(
         raise RuntimeError("external runtime provenance fields must be exact")
     if record["schema_version"] != SCHEMA or record["profile"] != profile:
         raise RuntimeError("external runtime provenance schema or profile mismatch")
-    expected_python = "3.10" if profile == "wigatr" else "3.12"
-    if not str(record["python_version"]).startswith(expected_python + "."):
+    expected_python = "3.10" if profile == "wigatr" else "3.12.13"
+    python_matches = (
+        str(record["python_version"]).startswith(expected_python + ".")
+        if profile == "wigatr"
+        else record["python_version"] == expected_python
+    )
+    if not python_matches:
         raise RuntimeError(f"{profile} runtime requires Python {expected_python}")
     if executable is not None and os.path.realpath(record["python_executable"]) != os.path.realpath(executable):
         raise RuntimeError("external runtime provenance interpreter mismatch")
@@ -198,9 +203,16 @@ def validate_external_runtime(
             f"{sorted(set(required_distributions) - set(distributions))}"
         )
     for name, version in required_distributions.items():
-        if distributions[name]["version"] != version:
+        expected_version = (
+            "2.9.1"
+            if profile == "sionna"
+            and name == "torch"
+            and record["platform_system"] == "Darwin"
+            else version
+        )
+        if distributions[name]["version"] != expected_version:
             raise RuntimeError(
-                f"{profile} runtime distribution {name} must be exactly {version}"
+                f"{profile} runtime distribution {name} must be exactly {expected_version}"
             )
         if distributions[name]["record_sha256"] is None:
             raise RuntimeError(
@@ -307,7 +319,9 @@ def _torch_record() -> dict:
                 {
                     "index": index,
                     "name": str(properties.name),
-                    "total_memory_bytes": int(properties.total_memory),
+                    "total_memory_bytes": _cuda_total_memory_bytes(
+                        torch, index, properties
+                    ),
                     "compute_capability": [int(properties.major), int(properties.minor)],
                 }
             )
@@ -329,6 +343,21 @@ def _torch_record() -> dict:
         "nvidia_driver_versions": _nvidia_driver_versions(),
         "devices": devices,
     }
+
+
+def _cuda_total_memory_bytes(torch_module, index: int, properties) -> int:
+    reported = int(getattr(properties, "total_memory", 0))
+    if reported > 0:
+        return reported
+    try:
+        _free, total = torch_module.cuda.mem_get_info(int(index))
+    except TypeError:
+        with torch_module.cuda.device(int(index)):
+            _free, total = torch_module.cuda.mem_get_info()
+    total = int(total)
+    if total <= 0:
+        raise RuntimeError(f"CUDA device {index} reports non-positive total memory")
+    return total
 
 
 def _nvidia_driver_versions() -> list[str]:

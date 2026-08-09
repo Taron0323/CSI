@@ -18,7 +18,7 @@ if [[ "${PYTHON_VERSION}" != "3.12" ]]; then
   exit 3
 fi
 
-"${PYTHON_BIN}" - <<'PY'
+TARGET="$("${PYTHON_BIN}" - <<'PY'
 import platform
 import sys
 
@@ -38,29 +38,46 @@ else:
         "supported setup targets are macOS 14+ arm64 and glibc 2.28+ Linux x86_64; "
         f"observed {system} {machine}"
     )
-print(f"validated setup target: {system} {machine}")
+print(f"{system}:{machine}")
 PY
+)"
+echo "validated setup target: ${TARGET/:/ }"
+
+PIP_DOWNLOAD_ARGS=(
+  --require-hashes
+  --only-binary=:all:
+)
+case "${TARGET}" in
+  Darwin:arm64)
+    REQUIREMENTS_LOCK="${PROJECT_ROOT}/formal_v2/requirements-lock.txt"
+    ;;
+  Linux:x86_64)
+    REQUIREMENTS_LOCK="${PROJECT_ROOT}/formal_v2/requirements-lock-linux-x86_64-cu121.txt"
+    PIP_DOWNLOAD_ARGS+=(--extra-index-url https://download.pytorch.org/whl/cu121)
+    ;;
+  *)
+    echo "validated target has no requirements lock: ${TARGET}" >&2
+    exit 5
+    ;;
+esac
 
 "${PYTHON_BIN}" -m venv "${ENVIRONMENT_PATH}"
 WHEELHOUSE_PATH="${ENVIRONMENT_PATH}/csi-pairs-reviewed-wheels"
 WHEEL_MANIFEST_PATH="${ENVIRONMENT_PATH}/csi-pairs-reviewed-wheel-manifest.json"
 mkdir -p "${WHEELHOUSE_PATH}"
-PIP_CERT_ARGS=()
 if [[ -n "${CSI_PAIRS_PIP_CERT:-}" ]]; then
   if [[ ! -f "${CSI_PAIRS_PIP_CERT}" ]]; then
     echo "CSI_PAIRS_PIP_CERT is not a regular certificate file: ${CSI_PAIRS_PIP_CERT}" >&2
     exit 4
   fi
-  PIP_CERT_ARGS=(--cert "${CSI_PAIRS_PIP_CERT}")
+  PIP_DOWNLOAD_ARGS+=(--cert "${CSI_PAIRS_PIP_CERT}")
 elif [[ "$(uname -s)" == "Darwin" && -f /etc/ssl/cert.pem ]]; then
-  PIP_CERT_ARGS=(--cert /etc/ssl/cert.pem)
+  PIP_DOWNLOAD_ARGS+=(--cert /etc/ssl/cert.pem)
 fi
 "${ENVIRONMENT_PATH}/bin/python" -m pip download \
-  "${PIP_CERT_ARGS[@]}" \
-  --require-hashes \
-  --only-binary=:all: \
+  "${PIP_DOWNLOAD_ARGS[@]}" \
   --dest "${WHEELHOUSE_PATH}" \
-  --requirement "${PROJECT_ROOT}/formal_v2/requirements-lock.txt"
+  --requirement "${REQUIREMENTS_LOCK}"
 "${ENVIRONMENT_PATH}/bin/python" -m pip install \
   --no-index \
   --find-links "${WHEELHOUSE_PATH}" \
@@ -68,12 +85,12 @@ fi
   --require-hashes \
   --only-binary=:all: \
   --report "${ENVIRONMENT_PATH}/csi-pairs-install-report.json" \
-  --requirement "${PROJECT_ROOT}/formal_v2/requirements-lock.txt"
+  --requirement "${REQUIREMENTS_LOCK}"
 "${ENVIRONMENT_PATH}/bin/python" -m pip check
 "${ENVIRONMENT_PATH}/bin/python" -c 'import numpy, torch; print("numpy", numpy.__version__, "torch", torch.__version__)'
 PYTHONPATH="${PROJECT_ROOT}" "${ENVIRONMENT_PATH}/bin/python" - \
   "${WHEELHOUSE_PATH}" "${WHEEL_MANIFEST_PATH}" \
-  "${PROJECT_ROOT}/formal_v2/requirements-lock.txt" <<'PY'
+  "${REQUIREMENTS_LOCK}" <<'PY'
 import sys
 from pathlib import Path
 

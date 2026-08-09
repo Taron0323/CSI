@@ -11,6 +11,7 @@ from .formal_dataset import FormalDataset
 from .formal_evidence import QUALIFICATION_SCHEMA, bind_rows, complete_gate_vector, evidence_context
 from .formal_features import protocol_response_features, variant_features
 from .formal_io import artifact_manifest, sha256_file, write_csv, write_json
+from .formal_model import module_device, resolve_execution_device
 from .formal_protocol import PatchSpec, delay_angle_power, patchify_csi, typed_signed_edit, zero_typed_edit
 from .formal_routing import (
     PRIMARY_ROUTE_CONTRACT,
@@ -37,6 +38,14 @@ QUALIFICATION_METHODS = (
     "variant_id_only",
 )
 BASELINES = ("copy", "no_action", "action_swap")
+
+
+def _qualification_scientific_use(dataset: FormalDataset, passed: bool) -> str:
+    if not passed or dataset.is_fixture:
+        return "FORBIDDEN"
+    if dataset.metadata["scientific_use"] not in {"CANDIDATE", "QUALIFIED"}:
+        return "FORBIDDEN"
+    return "FORMAL_EXPERIMENT_ALLOWED"
 
 
 def run_formal_qualification(
@@ -76,11 +85,13 @@ def run_formal_qualification(
     train_scenes = blocking["teacher_train"]
     selection_scenes = blocking["method_selection"]
     patch_spec = PatchSpec.from_metadata(dataset.metadata)
+    execution_device = resolve_execution_device(dataset)
     teacher_bundle = train_teacher_bundle(
         dataset.csi[train_scenes],
         patch_spec,
         config,
         seed=int(config["seeds"][0]) + 1009,
+        device=execution_device,
     )
     teacher_checkpoint = output_dir / "checkpoints" / "stage0_csi_teacher.pt"
     save_teacher_bundle(teacher_checkpoint, teacher_bundle, config, int(config["seeds"][0]) + 1009)
@@ -178,11 +189,7 @@ def run_formal_qualification(
     g1_passed = bool(repeat_passed and route_noise_floor_passed and coverage_passed)
     g2_passed = bool(teacher_passed and response_passed and randomization_passed)
     passed = bool(g1_passed and g2_passed)
-    scientific_use = (
-        "FORMAL_EXPERIMENT_ALLOWED"
-        if passed and not dataset.is_fixture and dataset.metadata["scientific_use"] == "QUALIFIED"
-        else "FORBIDDEN"
-    )
+    scientific_use = _qualification_scientific_use(dataset, passed)
     evidence = evidence_context(config, dataset, scientific_use)
     for path, rows in (
         ("repeat_noise.csv", repeat_rows),
@@ -426,7 +433,17 @@ def _teacher_qualification(dataset, bundle, routed, scenes, config):
         patches = routed.physical_patches[scene]
         latent = routed.teacher_latent[scene]
         with torch.no_grad():
-            prediction = bundle.readout(torch.as_tensor(latent, dtype=torch.float32)).numpy()
+            prediction = (
+                bundle.readout(
+                    torch.as_tensor(
+                        latent,
+                        dtype=torch.float32,
+                        device=module_device(bundle.readout),
+                    )
+                )
+                .cpu()
+                .numpy()
+            )
         readout_nmse = normalized_mse(patches, prediction)
         alignment_items = [
             distances

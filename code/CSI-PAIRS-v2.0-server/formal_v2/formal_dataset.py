@@ -446,6 +446,17 @@ class FormalDataset:
             raise FormalDatasetError("primitive_surface_ids must have shape [scene, bit, surface]")
         if np.any(self.path_power < 0) or np.any((self.path_ids < 0) & (self.path_power != 0)):
             raise FormalDatasetError("padded paths must have zero nonnegative power")
+        if not self.is_fixture:
+            if np.any(np.all(self.path_ids < 0, axis=-1)) or np.any(
+                np.all(self.noop_path_ids < 0, axis=-1)
+            ):
+                raise FormalDatasetError(
+                    "non-fixture clean units must contain a registered RT path"
+                )
+            if np.any(np.linalg.norm(self.csi_clean, axis=-1) == 0.0):
+                raise FormalDatasetError(
+                    "non-fixture clean units must not contain all-zero CSI"
+                )
 
         bits = self.world_bits
         if bits.ndim != 2 or bits.shape[0] != worlds or worlds != 2 ** bits.shape[1]:
@@ -487,7 +498,9 @@ class FormalDataset:
                 raise FormalDatasetError("position_ids must be unique within each scene bank")
         city_position_coordinates = {}
         city_position_roles = {}
-        city_coordinate_rows: dict[str, list[tuple[np.ndarray, str, str]]] = {}
+        city_coordinate_rows: dict[
+            str, dict[tuple[int, int], list[tuple[np.ndarray, str, str]]]
+        ] = {}
         for scene in range(scenes):
             city = str(self.city_ids[scene])
             for position in range(positions):
@@ -507,22 +520,41 @@ class FormalDataset:
                         "a city-level position_id may not cross support_pool/query roles"
                     )
                 city_position_roles[key] = role
-                for existing_coordinate, existing_id, existing_role in city_coordinate_rows.setdefault(
-                    city, []
-                ):
-                    if not same_physical_position(existing_coordinate, coordinate):
-                        continue
-                    if existing_id != position_id:
-                        raise FormalDatasetError(
-                            "the same city-level BS-centered coordinate must map to one position_id"
-                        )
-                    if existing_role != role:
-                        raise FormalDatasetError(
-                            "the same city-level physical position may not cross support_pool/query roles"
-                        )
-                    break
-                else:
-                    city_coordinate_rows[city].append((coordinate, position_id, role))
+                bucket = tuple(
+                    int(value)
+                    for value in np.floor(
+                        np.asarray(coordinate, dtype=np.float64) / PHYSICAL_POSITION_ATOL_M
+                    )
+                )
+                city_buckets = city_coordinate_rows.setdefault(city, {})
+                matched = False
+                for delta_x in (-1, 0, 1):
+                    for delta_y in (-1, 0, 1):
+                        candidate_bucket = (bucket[0] + delta_x, bucket[1] + delta_y)
+                        for existing_coordinate, existing_id, existing_role in city_buckets.get(
+                            candidate_bucket, ()
+                        ):
+                            if not same_physical_position(existing_coordinate, coordinate):
+                                continue
+                            if existing_id != position_id:
+                                raise FormalDatasetError(
+                                    "the same city-level BS-centered coordinate must map to one position_id"
+                                )
+                            if existing_role != role:
+                                raise FormalDatasetError(
+                                    "the same city-level physical position may not cross "
+                                    "support_pool/query roles"
+                                )
+                            matched = True
+                            break
+                        if matched:
+                            break
+                    if matched:
+                        break
+                if not matched:
+                    city_buckets.setdefault(bucket, []).append(
+                        (coordinate, position_id, role)
+                    )
         for name, identifiers in (
             ("scene_ids", self.scene_ids),
             ("bank_ids", self.bank_ids),

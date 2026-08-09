@@ -515,7 +515,7 @@ class ExternalRuntimeProvenanceTests(unittest.TestCase):
             "profile": profile,
             "python_executable": "/runtime/bin/python",
             "python_prefix": "/runtime",
-            "python_version": "3.10.15" if profile == "wigatr" else "3.12.11",
+            "python_version": "3.10.15" if profile == "wigatr" else "3.12.13",
             "python_implementation": "CPython",
             "platform_system": "Linux",
             "platform_release": "6.8",
@@ -594,6 +594,49 @@ class ExternalRuntimeProvenanceTests(unittest.TestCase):
                 profile="wigatr",
                 require_execution_ready=True,
             )
+
+    def test_sionna_runtime_accepts_frozen_macos_arm64_torch_wheel(self):
+        from formal_v2.formal_external_runtime import validate_external_runtime
+
+        record = self._record("sionna")
+        record["platform_system"] = "Darwin"
+        record["platform_release"] = "25.5.0"
+        record["platform_machine"] = "arm64"
+        record["installed_distributions"]["torch"]["version"] = "2.9.1"
+        record["torch"]["version"] = "2.9.1"
+        without_hash = {
+            key: value for key, value in record.items() if key != "environment_sha256"
+        }
+        record["environment_sha256"] = hashlib.sha256(
+            json.dumps(
+                without_hash,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        validate_external_runtime(record, profile="sionna")
+
+    def test_sionna_runtime_requires_exact_python_patch_version(self):
+        from formal_v2.formal_external_runtime import validate_external_runtime
+
+        record = self._record("sionna")
+        record["python_version"] = "3.12.12"
+        without_hash = {
+            key: value for key, value in record.items() if key != "environment_sha256"
+        }
+        record["environment_sha256"] = hashlib.sha256(
+            json.dumps(
+                without_hash,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        with self.assertRaisesRegex(RuntimeError, "Python 3.12.13"):
+            validate_external_runtime(record, profile="sionna")
 
 
 if __name__ == "__main__":
