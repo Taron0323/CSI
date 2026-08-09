@@ -24,6 +24,8 @@ from .formal_io import (
 SCHEMA = "csi-pairs-v6-data-verification-gate-v1"
 LIVE_MANIFEST_SCHEMA = "csi-pairs-v6-data-verifier-v1"
 PRECOMPUTED_MANIFEST_SCHEMA = "csi-pairs-v6-precomputed-data-verifier-v1"
+LIVE_VERIFICATION_MODE = "live_independent_regeneration"
+PRECOMPUTED_DIAGNOSTIC_MODE = "precomputed_regeneration_replay_diagnostic"
 BLOCKING_ROLES = ("source_encoder_train", "source_method_selection")
 REGENERATED_FIELDS = {
     "maps",
@@ -127,26 +129,43 @@ def run_data_verification(config, dataset, manifest_path, output_root):
             for scene in range(dataset.scene_count)
         ]
     blocking = [row for row in rows if row["role"] in BLOCKING_ROLES]
-    blocking_passed = bool(global_engine_match and blocking and all(row["passed"] for row in blocking))
+    comparison_passed = bool(
+        global_engine_match and blocking and all(row["passed"] for row in blocking)
+    )
+    live_verification = receipt is None
+    blocking_passed = bool(live_verification and comparison_passed)
     nonblocking_failures = [row["scene_id"] for row in rows if row["role"] not in BLOCKING_ROLES and not row["passed"]]
     role_status = {}
     for role in sorted(set(str(row["role"]) for row in rows)):
         selected = [row for row in rows if row["role"] == role]
+        role_comparison_passed = bool(
+            global_engine_match and selected and all(row["passed"] for row in selected)
+        )
         role_status[role] = (
-            "PASS" if global_engine_match and selected and all(row["passed"] for row in selected)
+            "PASS"
+            if live_verification and role_comparison_passed
+            else "DIAGNOSTIC_NOT_CLAIM"
+            if role_comparison_passed
             else "FAIL"
         )
     write_csv(output_dir / "per_scene.csv", bind_rows(rows, evidence))
     verification_mode = (
-        "precomputed_independent_regeneration"
+        PRECOMPUTED_DIAGNOSTIC_MODE
         if receipt is not None
-        else "live_independent_regeneration"
+        else LIVE_VERIFICATION_MODE
     )
     gate = {
         "schema_version": SCHEMA,
-        "status": "PASS" if blocking_passed else "FAIL",
+        "status": (
+            "PASS"
+            if blocking_passed
+            else "DIAGNOSTIC_NOT_CLAIM"
+            if not live_verification and comparison_passed
+            else "FAIL"
+        ),
         "passed": blocking_passed,
         "blocking_passed": blocking_passed,
+        "diagnostic_comparison_passed": comparison_passed,
         **evidence,
         "blocking_roles": list(BLOCKING_ROLES),
         "target_and_other_roles_are_nonblocking": True,
@@ -209,6 +228,11 @@ def require_data_verification(gate, config, dataset, gate_path=None):
         raise RuntimeError("data-verification gate uses the wrong blocking roles")
     if gate.get("target_and_other_roles_are_nonblocking") is not True:
         raise RuntimeError("data-verification gate lets target data control qualification")
+    if gate.get("verification_mode") != LIVE_VERIFICATION_MODE:
+        raise RuntimeError(
+            "formal qualification requires live independent regeneration; "
+            "precomputed replay is DIAGNOSTIC_NOT_CLAIM"
+        )
     if gate.get("blocking_passed") is not True or gate.get("passed") is not True:
         raise RuntimeError("independent data-verification blocking partition failed")
     _require_verifier_binding(gate, config, dataset, gate_path=gate_path)
@@ -239,6 +263,14 @@ def require_verified_roles(
     for key in EVIDENCE_AUTH_KEYS:
         if gate.get(key) != expected[key]:
             raise RuntimeError(f"data-verification gate {key} mismatch")
+    if (
+        gate.get("verification_mode") != LIVE_VERIFICATION_MODE
+        or gate.get("passed") is not True
+        or gate.get("blocking_passed") is not True
+    ):
+        raise RuntimeError(
+            "formal stages require a passing live independent regeneration gate"
+        )
     if not _binding_checked:
         _require_verifier_binding(gate, config, dataset, gate_path=gate_path)
     statuses = gate.get("role_status")
@@ -279,7 +311,7 @@ def export_precomputed_verification(config, dataset, verification_root, output_r
     gate = read_strict_json(gate_path)
     require_data_verification(gate, config, dataset, gate_path=gate_path)
     if (
-        gate.get("verification_mode") != "live_independent_regeneration"
+        gate.get("verification_mode") != LIVE_VERIFICATION_MODE
         or gate.get("status") != "PASS"
         or gate.get("passed") is not True
         or gate.get("blocking_passed") is not True
@@ -370,17 +402,18 @@ def export_precomputed_verification(config, dataset, verification_root, output_r
     }
     write_json(target / "precomputed_verifier.json", verifier_manifest)
     (target / "README.md").write_text(
-        "# CSI-PAIRS precomputed independent regeneration\n\n"
+        "# CSI-PAIRS precomputed regeneration diagnostic replay\n\n"
         "Verify `SHA256SUMS`, then pass `dataset.npz` and "
         "`precomputed_verifier.json` to the current CSI-PAIRS server. "
-        "The target host recomputes every zero-tolerance scene comparison; "
-        "these bytes are candidate input, not scientific results.\n",
+        "The target host recomputes every zero-tolerance scene comparison. "
+        "This verifies content integrity only and cannot satisfy the formal "
+        "live-regeneration gate or authenticate the origin execution.\n",
         encoding="ascii",
     )
     _write_sha256sums(target)
     from .formal_precomputed_regeneration_verifier import validate_receipt
 
-    validate_receipt(receipt_path, dataset_target)
+    validate_receipt(receipt_path, dataset_target, require_registration=False)
     return {
         "status": "PASS",
         "passed": True,
@@ -389,6 +422,7 @@ def export_precomputed_verification(config, dataset, verification_root, output_r
         "regenerated_sha256": receipt["regenerated_sha256"],
         "verification_receipt_sha256": sha256_file(receipt_path),
         "scientific_use": "CANDIDATE_NOT_CLAIM",
+        "formal_gate_eligible": False,
     }
 
 
@@ -655,9 +689,9 @@ def _require_verifier_binding(gate, config, dataset, *, gate_path=None) -> None:
         if gate[key] != manifest[key]:
             raise RuntimeError(f"data-verification gate {key} differs from verifier manifest")
     expected_mode = (
-        "precomputed_independent_regeneration"
+        PRECOMPUTED_DIAGNOSTIC_MODE
         if manifest["schema_version"] == PRECOMPUTED_MANIFEST_SCHEMA
-        else "live_independent_regeneration"
+        else LIVE_VERIFICATION_MODE
     )
     if gate["verification_mode"] != expected_mode:
         raise RuntimeError("data-verification gate verification mode mismatch")

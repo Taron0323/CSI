@@ -79,7 +79,7 @@ formal_v2/scripts/setup_formal_v2.sh "$PWD/.venv"
 
 The command selects the Linux CUDA 12.1 lock and installs PyTorch
 `2.5.1+cu121`. This core runtime is sufficient to replay the portable
-zero-tolerance verification and start the later model gates. Install the
+zero-tolerance diagnostic. That replay cannot authorize later model gates. Install the
 separate Sionna/Dr.Jit runtime only when rendering or independently
 regenerating the candidate on this Linux host:
 
@@ -109,7 +109,7 @@ for index in range(2):
 PY
 ```
 
-## 3. Replay the Mac-verified candidate on the A100 host
+## 3. Replay the transferred candidate as a diagnostic
 
 Use new output paths and run both checks from the extracted server root:
 
@@ -132,11 +132,13 @@ PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -B -m formal_v2.formal_cli ver
   --verifier-manifest "$CANDIDATE_BUNDLE/precomputed_verifier.json"
 ```
 
-Continue only when inspection passes, `verification_mode` is
-`precomputed_independent_regeneration`, all 34 rows and all nine role groups
-pass, and both tolerances are zero. This replay rechecks the complete candidate
-against the independently regenerated archive. It is candidate-data evidence,
-not an independent RT engine, G8 result, or paper claim.
+The verifier must report
+`verification_mode=precomputed_regeneration_replay_diagnostic`,
+`status=DIAGNOSTIC_NOT_CLAIM`, `blocking_passed=false`, and
+`formal_gate_eligible=false`, even when all rows compare exactly at zero
+tolerance. This replay detects transfer or registration mismatch. It cannot
+authenticate where the two NPZ files came from and must never be supplied to
+formal run preparation as data-verification evidence.
 
 ## 4. Optional: generate a new V2 candidate from the raw cache
 

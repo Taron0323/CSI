@@ -24,7 +24,12 @@ REGISTERED_CANDIDATE_EVIDENCE = (
 )
 
 
-def validate_receipt(receipt_path: str | Path, dataset_path: str | Path) -> tuple[dict, Path]:
+def validate_receipt(
+    receipt_path: str | Path,
+    dataset_path: str | Path,
+    *,
+    require_registration: bool = True,
+) -> tuple[dict, Path]:
     receipt_file = _regular_file(receipt_path, "precomputed regeneration receipt")
     receipt = read_strict_json(receipt_file)
     required = {
@@ -78,7 +83,7 @@ def validate_receipt(receipt_path: str | Path, dataset_path: str | Path) -> tupl
             raise RuntimeError(
                 "precomputed regeneration receipt source tree differs from this checkout"
             )
-    else:
+    elif require_registration:
         _require_registered_nonfixture_receipt(receipt_file, receipt)
     dataset = _regular_file(dataset_path, "candidate dataset")
     if dataset.stat().st_size != receipt["dataset_bytes"] or sha256_file(dataset) != receipt["dataset_sha256"]:
@@ -144,7 +149,7 @@ def _require_registered_nonfixture_receipt(receipt_file: Path, receipt: dict) ->
     registered = bool(
         evidence.get("schema_version")
         == "csi-pairs-m4-llvm22-candidate-evidence-v1"
-        and evidence.get("status") == "PASS"
+        and evidence.get("status") == "STATIC_REGISTRY_PASS"
         and evidence.get("scientific_use") == "CANDIDATE_NOT_CLAIM"
         and isinstance(candidate, dict)
         and candidate.get("dataset_sha256") == receipt["dataset_sha256"]
@@ -152,7 +157,8 @@ def _require_registered_nonfixture_receipt(receipt_file: Path, receipt: dict) ->
         and candidate.get("fixture") is False
         and candidate.get("scene_banks") == receipt["scene_count"]
         and isinstance(live, dict)
-        and live.get("status") == "PASS"
+        and live.get("status")
+        == "REPORTED_PASS_EXTERNAL_ARTIFACTS_NOT_VERIFIED"
         and live.get("verification_mode") == "live_independent_regeneration"
         and live.get("gate_sha256") == receipt["origin_gate_sha256"]
         and live.get("stage_manifest_sha256") == receipt["origin_manifest_sha256"]
@@ -163,9 +169,9 @@ def _require_registered_nonfixture_receipt(receipt_file: Path, receipt: dict) ->
         and float(live.get("rtol", -1.0)) == float(receipt["rtol"])
         and float(live.get("atol", -1.0)) == float(receipt["atol"])
         and isinstance(portable, dict)
-        and portable.get("status") == "PASS"
+        and portable.get("status") == "DIAGNOSTIC_REPLAY_PASS"
         and portable.get("verification_mode")
-        == "precomputed_independent_regeneration"
+        == "precomputed_regeneration_replay_diagnostic"
         and portable.get("verification_receipt_sha256")
         == sha256_file(receipt_file)
     )
@@ -264,7 +270,7 @@ def _lower_sha256(value: object) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Replay a content-bound independent regeneration on another host"
+        description="Replay a content-bound regeneration diagnostic on another host"
     )
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--output", required=True)
@@ -282,8 +288,10 @@ def main(argv: list[str] | None = None) -> int:
     print(
         json.dumps(
             {
-                "status": "PASS",
-                "mode": "precomputed_independent_regeneration",
+                "status": "DIAGNOSTIC_REPLAY_PASS",
+                "mode": "precomputed_regeneration_replay_diagnostic",
+                "scientific_use": "DIAGNOSTIC_NOT_CLAIM",
+                "formal_gate_eligible": False,
                 "output": str(target),
             },
             sort_keys=True,

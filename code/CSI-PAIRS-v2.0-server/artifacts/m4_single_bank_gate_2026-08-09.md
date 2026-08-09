@@ -1,28 +1,37 @@
-# M4 single-bank LLVM gate (2026-08-09)
+# M4 single-bank backend gate (2026-08-09)
 
 ```text
 simulation_not_measurement=true
 scientific_use=DIAGNOSTIC_NOT_FORMAL_EVIDENCE
 M4_SINGLE_BANK_GATE=PASS
 M4_LOCAL_READY=YES
+M4_BACKEND_CONTRACT_REVALIDATION=PASS
 FORMAL_DATA_READY=NO
 ```
 
 ## Scope
 
-Scene 0 of the frozen v1 Sionna OSM candidate was rendered twice on a native
-Darwin arm64 process with Python 3.12.13, Sionna 2.0.1, Sionna RT 1.2.1,
-Mitsuba 3.7.1, Dr.Jit 1.2.0, `llvm_ad_mono_polarized`, and one Dr.Jit thread.
-The frozen handoff assets, generator, and candidate dataset remained read-only.
-No 34-bank generation, A100 connection, or training was started.
+Scene 0 was rendered twice from the post-merge repair worktree against the
+current V2 asset manifest (`10ebbbf...a969b`, 34 banks) on native Darwin arm64.
+The fixed runtime used Python 3.12.13, Sionna 2.0.1, Sionna RT 1.2.1, Mitsuba
+3.7.1, Dr.Jit 1.2.0, LLVM 18.1.8 (`26273678...0451`),
+`llvm_ad_mono_polarized`, and one Dr.Jit thread. The assets and generator
+remained read-only. Only scene 0 was rendered; no 34-bank generation, A100
+connection, or training was started.
 
-The first render took 1016.7360200840048 seconds and the second took
-696.7697717079427 seconds. They ran in separate Python processes, with process
-B starting 51.446408 seconds after process A ended. Each output was 687,072
-bytes and had the same SHA-256:
+The diagnostic renderer had SHA-256 `8834acad...1a37`. Both process manifests
+bound the absolute asset-manifest path and its full `10ebbbf...a969b` digest,
+in addition to the generator, renderer, runtime, and output hashes.
+
+Process A (`PID=17451`, parent `17449`, `run_id=ab052d...eba8`) took
+429.1010855420027 seconds. Process B (`PID=20327`, parent `20325`,
+`run_id=f3e642...ca2a`) took 395.75950987497345 seconds and started
+60.882647 seconds after process A ended.
+The parent and Python process IDs, run IDs, and output paths were all distinct.
+Each output was 827,540 bytes and had the same SHA-256:
 
 ```text
-a26cbefef92bd881573ba2078dcdb9decdd2107f5e26e3d139dd4cf5f65dea22
+caff866902f96126876948bfc73b9af45ac416c530704d32e107a63f5c8c5392
 ```
 
 ## Exact replay result
@@ -31,18 +40,27 @@ All 23 NPZ fields had identical field names, shapes, dtypes, finite status, and
 values under `rtol=0`, `atol=0`, and `equal_nan=false`. This includes clean and
 repeated CSI, active and null path IDs/power/surfaces, maps, intervention
 identity, phase references, positions, repeat seeds, and scene identity. The
-maximum absolute clean-CSI difference was 0.0. The repository's existing replay
-comparator also passed independently.
+maximum absolute clean-CSI difference was 0.0; the complete NPZ SHA-256 and ZIP
+metadata/payload were also identical. The frozen repository replay comparator
+independently passed all 22 scene-row fields and all 6,984 active plus 6,984
+null path records. The independent exact gate accepted all fresh-process,
+asset, generator, renderer, runtime, comparison-input, and output bindings.
 
-The frozen v1 stable path signature inputs were captured without changing the
-path generator or output ordering. Each process produced 7,168 valid path slots
-and 896 unique canonical IDs. Digest collisions, one signature mapping to
-multiple IDs, one ID mapping to multiple signatures, same-context conflicts,
-and cross-process ID drift were all zero.
+Stable path signature inputs were captured without changing the generator or
+output ordering. Each process produced 13,968 valid active/null path slots and
+1,746 unique canonical IDs. Digest collisions, signature-to-ID ambiguity,
+ID-to-signature ambiguity, same-context conflicts, and cross-process ID drift
+were all zero. The 667 material/power variants are expected because the frozen
+identity is geometry-based and intentionally excludes material state and power.
 
-## Visibility result
+## Visibility boundary
 
-The existing visibility audit completed against the frozen full candidate:
+All 1,024 scene-0 world-position units in this V2 diagnostic had visible clean
+CSI in both processes. This one-scene observation is not a full-candidate
+visibility qualification and cannot be extrapolated to all 34 banks.
+
+For historical clarity, the existing full visibility audit below applies only
+to the prior V1 candidate; it is not evidence about the V2 assets used above:
 
 - overall no-path: 16,124 / 34,816 (46.31204044117647%)
 - target no-path: 8,312 / 16,384 (50.732421875%)
@@ -53,21 +71,39 @@ The existing visibility audit completed against the frozen full candidate:
 - maximum stored paths used: 31 / 64; units at the storage cap: 0
 
 The visibility audit being executable is an engineering PASS, not a scientific
-quality PASS. The current candidate remains forbidden as formal paper evidence
-until a visibility quality protocol and acceptance threshold are frozen and
-qualified.
+quality PASS. The prior V1 candidate remains forbidden as formal paper evidence,
+and this scene-0 diagnostic does not qualify or promote the V2 assets. A frozen
+visibility quality protocol and acceptance threshold are still required.
 
 ## Targeted checks
 
 ```text
+test_asset_manifest_record_binds_digest_to_absolute_path ... ok
+test_cuda_backend_is_not_exposed_without_an_authenticated_setup ... ok
 test_llvm_path_requires_fixed_llvm_inputs_without_cuda ... ok
-test_cuda_path_preserves_visibility_and_runtime_bootstrap_checks ... ok
+test_repository_replay_cli_has_frozen_dependency ... ok
 
-Ran 2 tests
+Ran 4 tests
 OK
 ```
 
 The LLVM branch requires the fixed package versions, an absolute regular
 `DRJIT_LIBLLVM_PATH`, the LLVM Mitsuba variant, and exactly one Dr.Jit thread.
-The diagnostic CLI is LLVM-only. CUDA/OptiX execution is deliberately not
-offered by this tool because it has no separately authenticated CUDA bootstrap.
+The approved Darwin arm64 registry retains both exact audited libraries: LLVM
+18.1.8 (`26273678...451`) for this scene-0 replay and LLVM 22.1.8
+(`e514c689...a88`) for the later M4 diagnostic runtime. CUDA is intentionally
+not exposed by this diagnostic: the repository setup does not provision and
+hash the required OptiX/driver closure, so a nominal CUDA path could not be
+authenticated. A future CUDA backend must first add that complete setup and
+sanitize inherited loader/module paths.
+
+Fresh real-runtime probes loaded both approved libraries, reported LLVM
+18.1.8 and 22.1.8 respectively, selected `llvm_ad_mono_polarized`, and held the
+Dr.Jit thread count at one. The missing frozen dependency for
+`compare_sionna_shard_replay.py` was restored byte-for-byte as
+`compare_sionna_regeneration.py`; the replay CLI now imports successfully under
+`python -P` with only its repository tool directory on `PYTHONPATH`. The
+comparator now requires every registered physical array to match in presence,
+shape, dtype, finiteness, and value. Fresh manifests emit both `asset_manifest_path` and
+`asset_manifest_sha256`; the independent gate fails closed if the bound asset
+bytes change or the path is absent.

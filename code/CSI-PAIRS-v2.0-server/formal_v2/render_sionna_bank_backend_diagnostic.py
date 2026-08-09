@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render one Sionna bank under an explicitly audited CUDA or LLVM backend."""
+"""Render one Sionna bank under the approved LLVM diagnostic runtime."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from pathlib import Path
 import platform
 import sys
 import time
+import uuid
 
 import numpy as np
 
@@ -162,6 +163,14 @@ def _llvm_runtime_record(llvm_path: Path, mi, dr) -> dict[str, object]:
     }
 
 
+def _asset_manifest_record(root: Path) -> dict[str, str]:
+    manifest = (root / "asset_manifest.json").resolve()
+    return {
+        "asset_manifest_path": str(manifest),
+        "asset_manifest_sha256": candidate.sha256_file(manifest),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--asset-root", type=Path, required=True)
@@ -213,6 +222,9 @@ def main() -> int:
         "scientific_use": "DIAGNOSTIC_NOT_FORMAL_EVIDENCE",
         "simulation_not_measurement": True,
         "fixture": False,
+        "run_id": uuid.uuid4().hex,
+        "process_id": os.getpid(),
+        "parent_process_id": os.getppid(),
         "started_utc": started_utc.isoformat(),
         "ended_utc": ended_utc.isoformat(),
         "duration_seconds": duration,
@@ -222,7 +234,7 @@ def main() -> int:
         "scene_index": args.scene_index,
         "scene_id": bank_row["scene_id"],
         "asset_root": str(root),
-        "asset_manifest_sha256": candidate.sha256_file(root / "asset_manifest.json"),
+        **_asset_manifest_record(root),
         "output_path": str(args.output.resolve()),
         "output_bytes": args.output.stat().st_size,
         "output_sha256": candidate.sha256_file(args.output),

@@ -303,13 +303,22 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
             relocated / "verifier.json",
             output,
         )
-        self.assertTrue(gate["passed"])
-        self.assertEqual(gate["verification_mode"], "precomputed_independent_regeneration")
+        self.assertFalse(gate["passed"])
+        self.assertFalse(gate["blocking_passed"])
+        self.assertTrue(gate["diagnostic_comparison_passed"])
+        self.assertEqual(gate["status"], "DIAGNOSTIC_NOT_CLAIM")
+        self.assertEqual(
+            gate["verification_mode"],
+            "precomputed_regeneration_replay_diagnostic",
+        )
         self.assertEqual(
             gate["verification_receipt_sha256"],
             sha256_file(relocated / "verification_receipt.json"),
         )
-        require_verified_roles_from_root(output, self.config, self.dataset, ("target",))
+        with self.assertRaisesRegex(RuntimeError, "live independent regeneration"):
+            require_verified_roles_from_root(
+                output, self.config, self.dataset, ("target",)
+            )
 
         regenerated = relocated / "regenerated.npz"
         regenerated.write_bytes(regenerated.read_bytes() + b"tampered")
@@ -335,12 +344,17 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
             }
         )
         write_json(receipt_path, receipt)
+        validate_receipt(
+            receipt_path,
+            self.dataset_path,
+            require_registration=False,
+        )
         registry = self.root / "candidate_evidence.json"
         write_json(
             registry,
             {
                 "schema_version": "csi-pairs-m4-llvm22-candidate-evidence-v1",
-                "status": "PASS",
+                "status": "STATIC_REGISTRY_PASS",
                 "scientific_use": "CANDIDATE_NOT_CLAIM",
                 "candidate": {
                     "dataset_sha256": receipt["dataset_sha256"],
@@ -349,7 +363,7 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
                     "scene_banks": 34,
                 },
                 "live_independent_regeneration": {
-                    "status": "PASS",
+                    "status": "REPORTED_PASS_EXTERNAL_ARTIFACTS_NOT_VERIFIED",
                     "verification_mode": "live_independent_regeneration",
                     "gate_sha256": receipt["origin_gate_sha256"],
                     "stage_manifest_sha256": receipt["origin_manifest_sha256"],
@@ -361,8 +375,8 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
                     "atol": 0.0,
                 },
                 "portable_replay": {
-                    "status": "PASS",
-                    "verification_mode": "precomputed_independent_regeneration",
+                    "status": "DIAGNOSTIC_REPLAY_PASS",
+                    "verification_mode": "precomputed_regeneration_replay_diagnostic",
                     "verification_receipt_sha256": sha256_file(receipt_path),
                 },
             },

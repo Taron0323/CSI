@@ -1,9 +1,9 @@
 # CSI-PAIRS V2.1 V6 server bundle
 
 Status: formal code `CODE_READY_FOR_FORMAL_INPUT`;
-`M4_DATA_PRODUCTION_READY=PASS`;
+`M4_DATA_PRODUCTION_READY=REPORTED`;
 `EVIDENCE_REGISTRY_READY=YES`;
-`FORMAL_CANDIDATE_READY=PASS_CANDIDATE_NOT_CLAIM`;
+`FORMAL_CANDIDATE_READY=EXTERNAL_DEEP_VERIFICATION_REQUIRED`;
 `FORMAL_INPUT_READY=BLOCKED`;
 `FORMAL_TRAINING_READY=NO`;
 `LAUNCH_READY=BLOCKED`; and scientific evidence `NOT_ASSESSED`.
@@ -200,18 +200,22 @@ verification output, use the optional deep-verification command documented in
 `artifacts/m4_formal_candidate_v2/README.md`. The repository does not
 contain either NPZ or unsanitized host-local manifests.
 
-That historical run used libLLVM `26273678...451`, which is not in the current
-approved registry. It remains an immutable historical commitment.
+That historical run used registered libLLVM `26273678...451`, but its bound
+generator predates approval enforcement. Later registration cannot prove that
+the runtime was preapproved at generation, so it remains blocked historical
+evidence.
 
-The current candidate is dataset `e8903430...d2e`, generated and independently
-regenerated under the approved LLVM 22.1.8 library `e514c689...a88` on the
-latest repository baseline. `artifacts/m4_llvm22_candidate_v1/` records the
-34-scene zero-tolerance inventory, source/runtime provenance and relocated
-portable replay. The large candidate and regenerated NPZ files remain outside
-Git; transfer and replay them with `formal_v2/A100_RUNBOOK.md`.
+The newer registry reports dataset `e8903430...d2e` and an independent
+regeneration under LLVM 22.1.8 library `e514c689...a88`.
+`artifacts/m4_llvm22_candidate_v1/` records the claimed 34-scene inventory,
+source/runtime fields, and portable receipt. The candidate, regenerated NPZ,
+origin bundle, and runtime evidence remain outside Git, so source CI cannot
+authenticate that execution. Transfer and replay are diagnostic content checks
+only; formal use requires deep verification of the originals and a fresh live
+independent regeneration on the destination.
 
-This same-host, same-Sionna regeneration establishes deterministic internal
-consistency only. It does not close independent RT calibration, G8,
+If authenticated, a same-host, same-Sionna regeneration establishes
+deterministic internal consistency only. It does not close independent RT calibration, G8,
 destination A100 preflight, model execution, training, license review, or
 scientific qualification.
 

@@ -35,7 +35,7 @@ REQUIRED_FILES = {
 EXPECTED_READINESS = {
     "M4_DATA_PRODUCTION_READY": "REPORTED",
     "EVIDENCE_REGISTRY_READY": "YES",
-    "FORMAL_CANDIDATE_READY": "BLOCKED_UNAPPROVED_RUNTIME",
+    "FORMAL_CANDIDATE_READY": "BLOCKED_NOT_PREAPPROVED_AT_GENERATION",
     "FORMAL_INPUT_READY": "BLOCKED",
     "FORMAL_TRAINING_READY": "NO",
     "LAUNCH_READY": "BLOCKED",
@@ -294,13 +294,14 @@ def verify_runtime_trust(evidence: dict[str, Any]) -> None:
     ]
     registered = len(matches) == 1
     require(
-        runtime["approved_registry_match"] is registered,
+        registered and runtime["approved_registry_match"] is True,
         "candidate LLVM registry-match declaration is stale",
     )
     require(
-        not registered
-        and runtime["formal_runtime_status"] == "BLOCKED_UNAPPROVED_LIBLLVM",
-        "this evidence package must remain blocked until its LLVM runtime is approved",
+        runtime.get("preapproved_at_generation") is False
+        and runtime["formal_runtime_status"]
+        == "BLOCKED_NOT_PREAPPROVED_AT_GENERATION",
+        "this evidence package must remain blocked because its bound generation source predates runtime approval enforcement",
     )
 
 
@@ -1014,7 +1015,7 @@ def main() -> int:
                 "PASS mode=deep "
                 f"dataset_sha256={evidence['candidate']['dataset']['sha256']} "
                 f"scenes={len(scenes)} shards={len(shards)} npz_arrays={array_count} "
-                "formal_candidate=BLOCKED_UNAPPROVED_RUNTIME"
+                "formal_candidate=BLOCKED_NOT_PREAPPROVED_AT_GENERATION"
             )
         else:
             print(
@@ -1022,7 +1023,7 @@ def main() -> int:
                 f"dataset_sha256={evidence['candidate']['dataset']['sha256']} "
                 f"scenes={len(scenes)} shards={len(shards)} "
                 "external_artifacts=NOT_VERIFIED "
-                "formal_candidate=BLOCKED_UNAPPROVED_RUNTIME"
+                "formal_candidate=BLOCKED_NOT_PREAPPROVED_AT_GENERATION"
             )
     except (EvidenceError, OSError, ValueError, KeyError, TypeError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)

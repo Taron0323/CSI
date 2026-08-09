@@ -36,7 +36,10 @@ class M4CandidateEvidenceTests(unittest.TestCase):
         self.assertIn("PASS mode=static", completed.stdout)
         self.assertIn("scenes=34 shards=14", completed.stdout)
         self.assertIn("external_artifacts=NOT_VERIFIED", completed.stdout)
-        self.assertIn("formal_candidate=BLOCKED_UNAPPROVED_RUNTIME", completed.stdout)
+        self.assertIn(
+            "formal_candidate=BLOCKED_NOT_PREAPPROVED_AT_GENERATION",
+            completed.stdout,
+        )
 
     def test_critical_hashes_and_readiness_boundary_are_frozen(self):
         self.assertEqual(
@@ -56,7 +59,7 @@ class M4CandidateEvidenceTests(unittest.TestCase):
             {
                 "M4_DATA_PRODUCTION_READY": "REPORTED",
                 "EVIDENCE_REGISTRY_READY": "YES",
-                "FORMAL_CANDIDATE_READY": "BLOCKED_UNAPPROVED_RUNTIME",
+                "FORMAL_CANDIDATE_READY": "BLOCKED_NOT_PREAPPROVED_AT_GENERATION",
                 "FORMAL_INPUT_READY": "BLOCKED",
                 "FORMAL_TRAINING_READY": "NO",
                 "LAUNCH_READY": "BLOCKED",
@@ -87,10 +90,12 @@ class M4CandidateEvidenceTests(unittest.TestCase):
         )
         runtime = self.evidence["candidate"]["runtime"]
         approved_hashes = {row["sha256"] for row in registry["libraries"]}
-        self.assertNotIn(runtime["libllvm_sha256"], approved_hashes)
-        self.assertFalse(runtime["approved_registry_match"])
+        self.assertIn(runtime["libllvm_sha256"], approved_hashes)
+        self.assertTrue(runtime["approved_registry_match"])
+        self.assertFalse(runtime["preapproved_at_generation"])
         self.assertEqual(
-            runtime["formal_runtime_status"], "BLOCKED_UNAPPROVED_LIBLLVM"
+            runtime["formal_runtime_status"],
+            "BLOCKED_NOT_PREAPPROVED_AT_GENERATION",
         )
 
     def test_scene_and_shard_inventories_are_complete(self):
@@ -146,6 +151,7 @@ class M4CandidateEvidenceTests(unittest.TestCase):
             SERVER_ROOT / "formal_v2" / "scripts" / "build_anonymous_supplement.sh"
         ).read_text(encoding="utf-8")
         self.assertIn("artifacts/m4_formal_candidate_v2", server_builder)
+        self.assertIn("artifacts/m4_llvm22_candidate_v1", server_builder)
         self.assertIn("test_m4_candidate_evidence.py", anonymous_builder)
 
 
