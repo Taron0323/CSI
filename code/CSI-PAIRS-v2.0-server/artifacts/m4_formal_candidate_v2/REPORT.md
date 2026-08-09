@@ -60,11 +60,13 @@ at main-ancestor commit
 runtime-library approval but do not rewrite this historical generator-bound
 evidence.
 
-The recorded LLVM digest is not in the current approved runtime registry. The
-only reviewed Darwin arm64 entry is
-<code>e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88</code>.
-Consequently, the reported dataset cannot be treated as a current formal
-candidate even if deep verification succeeds.
+The recorded LLVM digest now matches a reviewed Darwin arm64 registry entry.
+However, the bound generator source at <code>3fb3133</code> predates the runtime
+approval mechanism and did not bind an approved-runtime record. Registering the
+digest after generation does not retroactively establish pre-approval or
+authenticate the omitted runtime bytes. Consequently, the reported dataset
+cannot be treated as a current formal candidate even if deep verification
+succeeds; regeneration under enforced runtime approval remains required.
 
 ## Data checks
 
@@ -90,8 +92,8 @@ Its run manifest is bound by
 The registry records reported findings for <code>DATA-VISIBILITY-001</code>,
 <code>DATA-REGEN-001</code>, <code>PATH-ID-001</code>, and
 <code>INPUT-DATA-001</code>. None is closed by static mode. Closure requires
-deep verification of the omitted bytes plus resolution of the unapproved LLVM
-runtime.
+deep verification of the omitted bytes plus regeneration under an enforced,
+approved LLVM runtime.
 
 ## What remains blocked
 

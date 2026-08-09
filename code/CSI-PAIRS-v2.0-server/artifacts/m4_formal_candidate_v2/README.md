@@ -66,10 +66,13 @@ physical arrays with their original NPZ counterparts at zero tolerance. The
 remaining 20 identity, position, configuration, and metadata arrays are not
 duplicated in the verifier's regeneration archive.
 
-Even a successful deep check remains blocked from formal use: the recorded
-libLLVM SHA-256 is absent from
-<code>formal_v2/configs/sionna_llvm_approved_v1.json</code>. The runtime must be
-reviewed and registered, or the data regenerated under an approved runtime.
+Even a successful deep check remains blocked from formal use. The recorded
+libLLVM SHA-256 now appears in
+<code>formal_v2/configs/sionna_llvm_approved_v1.json</code>, but the candidate's
+bound generation source predates registry enforcement. Current registration
+cannot retroactively prove pre-approval, so the external bytes must pass deep
+verification and the data must be regenerated under an enforced approved
+runtime before promotion.
 
 ## Binary and privacy policy
 

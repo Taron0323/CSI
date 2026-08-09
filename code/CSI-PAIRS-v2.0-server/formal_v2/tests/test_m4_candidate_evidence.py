@@ -87,10 +87,12 @@ class M4CandidateEvidenceTests(unittest.TestCase):
         )
         runtime = self.evidence["candidate"]["runtime"]
         approved_hashes = {row["sha256"] for row in registry["libraries"]}
-        self.assertNotIn(runtime["libllvm_sha256"], approved_hashes)
-        self.assertFalse(runtime["approved_registry_match"])
+        self.assertIn(runtime["libllvm_sha256"], approved_hashes)
+        self.assertTrue(runtime["approved_registry_match"])
+        self.assertFalse(runtime["preapproved_at_generation"])
         self.assertEqual(
-            runtime["formal_runtime_status"], "BLOCKED_UNAPPROVED_LIBLLVM"
+            runtime["formal_runtime_status"],
+            "BLOCKED_NOT_PREAPPROVED_AT_GENERATION",
         )
 
     def test_scene_and_shard_inventories_are_complete(self):

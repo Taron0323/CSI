@@ -4,6 +4,12 @@
     {
       "platform_system": "Darwin",
       "platform_machine": "arm64",
+      "sha256": "26273678e919e90006fe2f5fc6e020cfc11a428103494d4dad6fa211b5d50451",
+      "provenance": "M4 LLVM 18.1.8 Homebrew arm64 scene-0 two-process exact replay audited on 2026-08-09"
+    },
+    {
+      "platform_system": "Darwin",
+      "platform_machine": "arm64",
       "sha256": "e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88",
       "provenance": "M4 LLVM 22.1.8 diagnostic runtime audited on 2026-08-09"
     }
