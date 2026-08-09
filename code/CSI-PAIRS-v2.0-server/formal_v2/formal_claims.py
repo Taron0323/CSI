@@ -149,7 +149,7 @@ def _assess_stage(path, schema, name, config, dataset):
             schema_version=schema,
         )
         if name == "external_baselines":
-            _validate_external_manifest_binding(path, payload, dataset)
+            _validate_external_manifest_binding(path, payload, dataset, config)
         if name == "G6":
             _validate_risk_mixture_binding(path, payload, config, dataset)
         if name in {
@@ -533,8 +533,17 @@ def _lower_sha256(value):
     )
 
 
-def _validate_external_manifest_binding(gate_path, payload, dataset=None):
-    from .formal_external import _validate_execution_manifest, _validate_manifest
+def _validate_external_manifest_binding(
+    gate_path, payload, dataset=None, config=None
+):
+    from .formal_external import (
+        _c1_model_assessment,
+        _expected_condition_contract,
+        _expected_six_condition_units,
+        _validate_execution_manifest,
+        _validate_manifest,
+        _validate_six_condition_rows,
+    )
 
     manifest_path = gate_path.parent / str(payload.get("adapter_manifest_path", ""))
     if not manifest_path.is_file():
@@ -572,6 +581,8 @@ def _validate_external_manifest_binding(gate_path, payload, dataset=None):
     ] if isinstance(entries, list) else []
     if not status_path.is_file() or len(status_matches) != 1:
         raise RuntimeError("external adapter status is not stage-authenticated")
+    if status_matches[0].get("sha256") != sha256_file(status_path):
+        raise RuntimeError("external adapter status hash mismatch")
     with status_path.open(newline="", encoding="utf-8") as handle:
         status_rows = list(csv.DictReader(handle))
     passed_ids = [
@@ -582,12 +593,91 @@ def _validate_external_manifest_binding(gate_path, payload, dataset=None):
     adapters = {row["adapter_id"]: row for row in adapter_manifest["adapters"]}
     if set(passed_ids).difference(adapters):
         raise RuntimeError("external adapter status names an unknown passing adapter")
-    for adapter_id in passed_ids:
+    passed_adapters = [
+        adapter
+        for adapter in adapter_manifest["adapters"]
+        if adapter["adapter_id"] in passed_ids
+    ]
+    passed_models = [adapter["model_name"] for adapter in passed_adapters]
+    if len(passed_models) != len(set(passed_models)):
+        raise RuntimeError("external adapter status duplicates a passing model")
+    for row in status_rows:
+        if row.get("status") == "PASS" and row.get("model_name") != adapters[
+            str(row.get("adapter_id"))
+        ]["model_name"]:
+            raise RuntimeError("external adapter status model mismatch")
+    claimed_eligible = payload.get("c1_eligible_models")
+    if not isinstance(claimed_eligible, list) or any(
+        model not in passed_models
+        or not next(
+            adapter for adapter in passed_adapters if adapter["model_name"] == model
+        )["c1_eligible"]
+        for model in claimed_eligible
+    ):
+        raise RuntimeError(
+            "C1 gate names a model without a passing raw adapter"
+        )
+    if not passed_adapters:
+        if payload.get("model_assessments") not in ([], None):
+            raise RuntimeError("C1 gate has assessments without passing raw adapters")
+        return
+    if config is None:
+        raise RuntimeError("C1 outer recomputation requires the formal config")
+    expected_units = _expected_six_condition_units(
+        config, dataset, gate_path.parent.parent
+    )
+    expected_unit_ids = {unit.unit_id for unit in expected_units}
+    expected_unit_contract = {unit.unit_id: unit for unit in expected_units}
+    expected_condition_contract = _expected_condition_contract(
+        dataset, expected_units
+    )
+    recomputed_assessments = []
+    for adapter in passed_adapters:
+        adapter_id = adapter["adapter_id"]
         adapter_output = gate_path.parent / "adapters" / str(adapter_id)
         result_path = adapter_output / "six_condition_results.csv"
-        _validate_execution_manifest(
-            adapters[str(adapter_id)], adapter_output, result_path, dataset
+        if not result_path.is_file():
+            raise RuntimeError("passing external adapter has no raw six-condition rows")
+        with result_path.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        _validate_six_condition_rows(
+            adapter,
+            rows,
+            dataset,
+            expected_unit_ids=expected_unit_ids,
+            expected_unit_contract=expected_unit_contract,
+            expected_condition_contract=expected_condition_contract,
         )
+        _validate_execution_manifest(
+            adapter, adapter_output, result_path, dataset
+        )
+        recomputed_assessments.append(
+            _c1_model_assessment(
+                config,
+                adapter,
+                rows,
+                dataset,
+                expected_unit_contract=expected_unit_contract,
+            )
+        )
+    if payload.get("model_assessments") != recomputed_assessments:
+        raise RuntimeError("C1 gate assessments differ from raw adapter results")
+    recomputed_eligible = sorted(
+        row["model_name"]
+        for row in recomputed_assessments
+        if row["c1_eligible"] is True and row["passed"] is True
+    )
+    if (
+        claimed_eligible != recomputed_eligible
+        or int(payload.get("c1_eligible_model_count", -1))
+        != len(recomputed_eligible)
+        or payload.get("unique_passing_models") != sorted(passed_models)
+        or int(payload.get("unique_passing_model_count", -1))
+        != len(passed_models)
+        or int(payload.get("passing_map_conditioned_models", -1))
+        != len(passed_models)
+    ):
+        raise RuntimeError("C1 gate model counts differ from raw adapter results")
 
 
 def _validate_risk_mixture_binding(gate_path, payload, config, dataset):

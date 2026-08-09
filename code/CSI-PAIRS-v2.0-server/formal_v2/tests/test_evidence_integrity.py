@@ -9,7 +9,10 @@ from unittest.mock import patch
 
 import numpy as np
 
-from formal_v2.formal_claims import _semantic_status
+from formal_v2.formal_claims import (
+    _semantic_status,
+    _validate_external_manifest_binding,
+)
 from formal_v2.formal_claim_controls import (
     SHUFFLED_SYSTEMS,
     _require_distinct_checkpoint_hash,
@@ -45,7 +48,11 @@ from formal_v2.formal_external_validity import (
     _rows_from_external_csi,
     _validate_manifest as validate_external_validity_manifest,
 )
-from formal_v2.formal_io import sha256_file, write_json
+from formal_v2.formal_io import (
+    sha256_file,
+    write_csv,
+    write_json,
+)
 from formal_v2.formal_statistics import (
     interval_decision,
     paired_sign_flip_test,
@@ -451,6 +458,139 @@ class EvidenceIntegrityTests(unittest.TestCase):
             "adapter_manifest_sha256": "a" * 64,
         }
         self.assertEqual(_semantic_status("external_baselines", payload), "BLOCKED")
+
+    def test_c1_claim_rejects_gate_without_passing_raw_adapters(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary) / "external_baselines"
+            stage.mkdir()
+            manifest_path = stage / "adapter_manifest.json"
+            manifest_path.write_bytes(
+                (
+                    ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json"
+                ).read_bytes()
+            )
+            condition_path = stage / "external_condition_registry.csv"
+            write_csv(condition_path, [{"contract": "outer"}])
+            status_path = stage / "adapter_status.csv"
+            status_path.write_text(
+                "adapter_id,model_name,status\n", encoding="utf-8"
+            )
+            write_json(
+                stage / "manifest.json",
+                {
+                    "files": [
+                        {"path": path.name, "sha256": sha256_file(path)}
+                        for path in (manifest_path, condition_path, status_path)
+                    ]
+                },
+            )
+            payload = {
+                "c1_eligible_models": ["Wi-GATr", "PMNet"],
+                "condition_registry_path": condition_path.name,
+                "condition_registry_sha256": sha256_file(condition_path),
+                "adapter_manifest_path": manifest_path.name,
+                "adapter_manifest_sha256": sha256_file(manifest_path),
+            }
+            with self.assertRaisesRegex(
+                RuntimeError, "without a passing raw adapter"
+            ):
+                _validate_external_manifest_binding(
+                    stage / "gate.json", payload, self.dataset, {}
+                )
+
+    def test_c1_claim_recomputes_raw_adapter_assessments(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary) / "external_baselines"
+            stage.mkdir()
+            manifest = json.loads(
+                (
+                    ROOT / "formal_v2/external_adapters/all_map_adapters_v1.json"
+                ).read_text()
+            )
+            manifest_path = stage / "adapter_manifest.json"
+            write_json(manifest_path, manifest)
+            condition_path = stage / "external_condition_registry.csv"
+            write_csv(condition_path, [{"contract": "outer"}])
+            eligible = [
+                adapter for adapter in manifest["adapters"] if adapter["c1_eligible"]
+            ]
+            write_csv(
+                stage / "adapter_status.csv",
+                [
+                    {
+                        "adapter_id": adapter["adapter_id"],
+                        "model_name": adapter["model_name"],
+                        "status": "PASS",
+                    }
+                    for adapter in eligible
+                ],
+            )
+            for adapter in eligible:
+                output = stage / "adapters" / adapter["adapter_id"]
+                output.mkdir(parents=True)
+                rows = self._rows()
+                for row in rows:
+                    row["model_name"] = adapter["model_name"]
+                write_csv(output / "six_condition_results.csv", rows)
+            write_json(
+                stage / "manifest.json",
+                {
+                    "files": [
+                        {
+                            "path": path.name,
+                            "sha256": sha256_file(path),
+                        }
+                        for path in (
+                            manifest_path,
+                            condition_path,
+                            stage / "adapter_status.csv",
+                        )
+                    ]
+                },
+            )
+            payload = {
+                "adapter_manifest_path": manifest_path.name,
+                "adapter_manifest_sha256": sha256_file(manifest_path),
+                "condition_registry_path": condition_path.name,
+                "condition_registry_sha256": sha256_file(condition_path),
+                "model_assessments": [],
+                "c1_eligible_models": [],
+                "c1_eligible_model_count": 0,
+                "unique_passing_models": sorted(
+                    adapter["model_name"] for adapter in eligible
+                ),
+                "unique_passing_model_count": len(eligible),
+                "passing_map_conditioned_models": len(eligible),
+            }
+            units = [
+                SimpleNamespace(unit_id=unit_id, **vars(unit))
+                for unit_id, unit in self.units.items()
+            ]
+            config = {
+                "evaluation": {
+                    "bootstrap_resamples": 20,
+                    "c1_active_error_minimum_m": 0.1,
+                    "c1_null_error_equivalence_margin_m": 0.1,
+                    "null_overclassification_rate_max": 0.05,
+                }
+            }
+            with (
+                patch(
+                    "formal_v2.formal_external._expected_six_condition_units",
+                    return_value=units,
+                ),
+                patch(
+                    "formal_v2.formal_external._expected_condition_contract",
+                    return_value=self.contract,
+                ),
+                patch("formal_v2.formal_external._validate_execution_manifest"),
+                self.assertRaisesRegex(
+                    RuntimeError, "assessments differ from raw adapter results"
+                ),
+            ):
+                _validate_external_manifest_binding(
+                    stage / "gate.json", payload, self.dataset, config
+                )
 
     def test_g4_excludes_generous_control_from_required_subgate(self):
         self.assertEqual(
