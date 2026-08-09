@@ -452,7 +452,7 @@ def _factorial_cell_lookup(rows, budgets):
     if not grouped:
         raise ValueError("factorial lookup is empty")
     return {
-        key: float(np.mean([np.mean(values) for values in by_bank.values()]))
+        key: _canonical_bank_macro_mean(by_bank)
         for key, by_bank in grouped.items()
     }
 
@@ -473,11 +473,21 @@ def _layered_cell_mean(rows: list[dict]) -> float:
                     by_bank.setdefault(_bank_unit(row), []).append(
                         float(row["utility_neg_log_median"])
                     )
-            draw_values.append(
-                float(np.mean([np.mean(values) for values in by_bank.values()]))
-            )
+            draw_values.append(_canonical_bank_macro_mean(by_bank))
         seed_values.append(float(np.mean(draw_values)))
     return float(np.mean(seed_values))
+
+
+def _canonical_bank_macro_mean(by_bank: dict[str, list[float]]) -> float:
+    values = []
+    for bank, copies in by_bank.items():
+        value = copies[0]
+        if any(copy != value for copy in copies[1:]):
+            raise ValueError(
+                f"conflicting utility values for canonical bank {bank}"
+            )
+        values.append(value)
+    return float(np.mean(values))
 
 
 def _independent_unit(row: dict) -> str:

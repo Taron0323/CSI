@@ -250,6 +250,21 @@ class FactorialStatisticsMutationTests(unittest.TestCase):
         self.assertEqual(original["utilities"], repeated["utilities"])
         self.assertEqual(original["interaction"], repeated["interaction"])
 
+    def test_conflicting_copied_bank_is_rejected(self):
+        rows = _statistics_rows()
+        copied = dict(rows[0])
+        copied["bank_id"] = "renamed-copy"
+        copied["utility_neg_log_median"] = 1000.0
+        forged = rows + [copied] * 100
+        for statistic in (
+            lambda: exact_factorial_utilities(forged, [0]),
+            lambda: hierarchical_factorial_interval(forged, [0], 20, 9127),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "conflicting utility values for canonical bank"
+            ):
+                statistic()
+
     def test_primary_g4_intervals_are_one_synchronized_family(self):
         report = hierarchical_factorial_interval(
             _statistics_rows(), [0], 200, 9127
