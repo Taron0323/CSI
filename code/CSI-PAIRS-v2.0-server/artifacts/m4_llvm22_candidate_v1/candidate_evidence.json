@@ -1,0 +1,102 @@
+{
+  "schema_version": "csi-pairs-m4-llvm22-candidate-evidence-v1",
+  "record_date": "2026-08-09",
+  "baseline_commit": "790053c44ac5cb3792ec87f72554bf2bb5ac42c4",
+  "baseline_ci": {
+    "conclusion": "success",
+    "run_id": 31320593591,
+    "url": "https://github.com/yiweinanzi/CSI/actions/runs/31320593591"
+  },
+  "status": "PASS",
+  "scientific_use": "CANDIDATE_NOT_CLAIM",
+  "candidate": {
+    "dataset_sha256": "e89034302d6c4a64c838c244a60ad7c42b081e760ef2c9fc548440b0d5458d2e",
+    "dataset_bytes": 28449805,
+    "generation_manifest_sha256": "6241016729cea29ab5c0ec25e32cf900c11d568509bda6640843f0cd793305b3",
+    "asset_manifest_sha256": "10ebbbf8b38daeb00d7ee86cf0ce9d9be91cf5c10a9bf6bf0867289f7a1a969b",
+    "generator_sha256": "fce3c6dfc220068bb550faf5977995c7a37f1755c81ba3d1655c932d5de4d1d2",
+    "fixture": false,
+    "scene_banks": 34,
+    "base_map_clusters": 34,
+    "worlds_per_bank": 4,
+    "positions_per_bank": 256,
+    "repeats": 3,
+    "channels": 16,
+    "target_cities": [
+      "target-boston",
+      "target-seattle"
+    ]
+  },
+  "inspection": {
+    "status": "PASS",
+    "data_contract_sha256": "b371b0ca8c75905cb0d250cbe44f0c94702898a395cfbc50beb0b0609b4a02b2",
+    "run_manifest_sha256": "41da53b734feea4be80d8887c3378aba186827cda298a906d691d1270e05986b"
+  },
+  "live_independent_regeneration": {
+    "status": "PASS",
+    "verification_mode": "live_independent_regeneration",
+    "gate_sha256": "ec60cc887e4811f9f1dfb41eadd82c8421b254d7176b8e0e962a0c04adffc03e",
+    "stage_manifest_sha256": "042313f827547ab07e593b8dc35566a82949d59556ed571383457770eb2f650e",
+    "regenerated_sha256": "39f36c8a382cf03a995ccc4acf884e6424e3ed3ec9f513669191840b6b406c96",
+    "scene_inventory_path": "artifacts/m4_llvm22_candidate_v1/scene_verification.csv",
+    "origin_per_scene_sha256": "a4657bfadd5b5a2acb8927f018cf8627df360c0327a8817707ec894cc6eb848e",
+    "repository_scene_inventory_sha256": "bf7037d2fe7066f52551286f87c347f12d8b02f2fc0038e0944e6bccb5d3a028",
+    "scene_banks_passed": 34,
+    "scene_banks_total": 34,
+    "match_fields": 16,
+    "engine_config_match": true,
+    "rtol": 0.0,
+    "atol": 0.0,
+    "nonblocking_scene_failures": [],
+    "source_tree_sha256": "338f6164f6c464982ea408f61eff2b21b4aa7da5c366a4237da405a45e9f55e0",
+    "runtime_provenance_sha256": "446154f660c945f9c9e5d2cba50602fc2e91de5cec9a700d712e38a6b0fb6863",
+    "role_status": {
+      "external_validation": "PASS",
+      "source_calibration_fit": "PASS",
+      "source_calibration_selection": "PASS",
+      "source_encoder_train": "PASS",
+      "source_final_unseen_bank": "PASS",
+      "source_method_selection": "PASS",
+      "source_probe_selection": "PASS",
+      "source_probe_train": "PASS",
+      "target": "PASS"
+    }
+  },
+  "portable_replay": {
+    "status": "PASS",
+    "verification_mode": "precomputed_independent_regeneration",
+    "verification_receipt_sha256": "9396eab866ac21998f4031f4cc728e07d25ccabb3e14ff2b3468cfef21dff1be",
+    "precomputed_verifier_sha256": "61805642870e5f80cd7afe80b13722cec1fb9ea0a3b9f6b05fda2eacfde5e2f9",
+    "bundle_sha256sums_sha256": "6501a91ce4256173fa9f8528d128bab21c4948edfd2a10675021d06bc1bbf1a4",
+    "relocated_replay_gate_sha256": "e0b411057986e0db7e43d82a91303f2e77c1b6c023491baad3532cc0cb645963",
+    "scene_banks_passed": 34,
+    "scene_banks_total": 34,
+    "rtol": 0.0,
+    "atol": 0.0
+  },
+  "renderer_runtime": {
+    "platform_system": "Darwin",
+    "platform_machine": "arm64",
+    "python_version": "3.12.13",
+    "sionna_version": "2.0.1",
+    "sionna_rt_version": "1.2.1",
+    "mitsuba_version": "3.7.1",
+    "drjit_version": "1.2.0",
+    "libllvm_version": "22.1.8",
+    "libllvm_sha256": "e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88",
+    "environment_sha256": "6919478c59272f38be957fbfbeb91adc92dbe53aea171f68adb731e02456ab75"
+  },
+  "closed_issue_ids": [
+    "DATA-VISIBILITY-001",
+    "DATA-REGEN-001",
+    "PATH-ID-001",
+    "INPUT-DATA-001"
+  ],
+  "remaining_blockers": [
+    "independent RT calibration fit, validation, and reference inputs",
+    "Wi-GATr and PMNet formal checkpoints and six-condition results",
+    "independent G8 engine or controlled real paired intervention",
+    "destination 2 x A100 runtime and reviewed compute plan",
+    "formal G1 and G2 qualification"
+  ]
+}

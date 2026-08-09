@@ -687,8 +687,27 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
         self.assertIn("requirements-sionna-runtime-linux-x86_64.txt", script)
         self.assertIn("--require-hashes", script)
         self.assertIn("sionna_runtime_lock", script)
+        self.assertIn("-m formal_v2.formal_external_runtime", script)
         self.assertIn("llvm_ad_mono_polarized", script)
         self.assertIn("drjit.set_thread_count(1)", script)
+
+    def test_sionna_torch_runtime_lock_includes_direct_dependency_closure(self):
+        root = Path(__file__).resolve().parents[1]
+        expected = {
+            "filelock==3.32.2": "87dd94cf281e586d135fa51132b8e3d9a598b316e90377a288663c9321036c82",
+            "fsspec==2026.7.0": "b57ddbafedfaef7018c1ecab32aa200a9d7ca26b77965f64e48b70061249d279",
+            "mpmath==1.3.0": "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c",
+            "sympy==1.14.0": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5",
+        }
+        for name in (
+            "requirements-sionna-runtime-darwin-arm64.txt",
+            "requirements-sionna-runtime-linux-x86_64.txt",
+        ):
+            text = (root / name).read_text(encoding="utf-8")
+            with self.subTest(lock=name):
+                for requirement, digest in expected.items():
+                    self.assertIn(requirement, text)
+                    self.assertIn(f"--hash=sha256:{digest}", text)
 
     def test_a100_runbook_forbids_old_candidate_and_binds_two_devices(self):
         root = Path(__file__).resolve().parents[1]

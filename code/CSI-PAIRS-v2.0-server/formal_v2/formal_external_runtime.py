@@ -96,15 +96,16 @@ def probe_external_runtime(
     executable_path = Path(executable).absolute()
     if not executable_path.is_file() or not os.access(executable_path, os.X_OK):
         raise RuntimeError(f"external runtime interpreter is unavailable: {executable_path}")
-    script = Path(__file__).resolve()
+    project = Path(project_root).resolve()
     completed = subprocess.run(
         [
             str(executable_path),
-            str(script),
+            "-m",
+            "formal_v2.formal_external_runtime",
             "--profile",
             profile,
             "--project-root",
-            str(Path(project_root).resolve()),
+            str(project),
             *(
                 ["--require-execution-ready"]
                 if require_execution_ready
@@ -115,6 +116,7 @@ def probe_external_runtime(
         capture_output=True,
         text=True,
         timeout=120,
+        cwd=project,
     )
     if completed.returncode != 0:
         raise RuntimeError(
