@@ -68,8 +68,9 @@
       "drjit_thread_count": 1,
       "libllvm_sha256": "26273678e919e90006fe2f5fc6e020cfc11a428103494d4dad6fa211b5d50451",
       "approved_registry_path": "formal_v2/configs/sionna_llvm_approved_v1.json",
-      "approved_registry_match": false,
-      "formal_runtime_status": "BLOCKED_UNAPPROVED_LIBLLVM"
+      "approved_registry_match": true,
+      "preapproved_at_generation": false,
+      "formal_runtime_status": "BLOCKED_NOT_PREAPPROVED_AT_GENERATION"
     },
     "shape": {
       "scene_banks": 34,
@@ -257,7 +258,7 @@
     ]
   },
   "limitations": [
-    "The recorded libLLVM SHA-256 is absent from the current approved runtime registry, so this candidate cannot enter the formal pipeline until runtime provenance is reviewed or the data are regenerated under an approved runtime.",
+    "The recorded libLLVM SHA-256 now matches the approved runtime registry, but the bound generation source predates registry enforcement and cannot prove that this runtime was pre-approved at generation time. The candidate remains blocked until the external bytes pass deep verification and the data are regenerated under an enforced approved runtime.",
     "Static mode verifies only the committed registry and hash commitments; it does not authenticate omitted external artifacts or prove that deep verification was run.",
     "Same-host, same-engine regeneration establishes deterministic internal consistency only.",
     "This evidence is not an independent RT engine, controlled measurement, or physical-validity result.",

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -12,6 +15,13 @@ import numpy as np
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 TOOL_PATH = REPOSITORY_ROOT / "artifacts/m4_local_sim/tools/verify_scene0_exact_gate.py"
+REPLAY_TOOL_PATH = (
+    REPOSITORY_ROOT / "artifacts/formal_readiness/tools/compare_sionna_shard_replay.py"
+)
+REGENERATION_TOOL_PATH = REPLAY_TOOL_PATH.with_name("compare_sionna_regeneration.py")
+REGENERATION_TOOL_SHA256 = (
+    "9d46304e039e755290bf3079508b7587d015e53123904c6a507f75388cc267be"
+)
 SPEC = importlib.util.spec_from_file_location("m4_scene0_exact_gate", TOOL_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"cannot load exact gate: {TOOL_PATH}")
@@ -20,6 +30,22 @@ SPEC.loader.exec_module(gate)
 
 
 class M4Scene0ExactGateTests(unittest.TestCase):
+    def test_repository_replay_cli_has_frozen_dependency(self) -> None:
+        self.assertTrue(REGENERATION_TOOL_PATH.is_file())
+        self.assertEqual(gate._sha256(REGENERATION_TOOL_PATH), REGENERATION_TOOL_SHA256)
+        environment = dict(os.environ)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        environment["PYTHONPATH"] = str(REPLAY_TOOL_PATH.parent)
+        result = subprocess.run(
+            [sys.executable, "-P", str(REPLAY_TOOL_PATH), "--help"],
+            check=False,
+            capture_output=True,
+            env=environment,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--scene-index", result.stdout)
+
     def _evidence(self, root: Path) -> tuple[Path, Path, Path]:
         left = root / "process-a.npz"
         right = root / "process-b.npz"

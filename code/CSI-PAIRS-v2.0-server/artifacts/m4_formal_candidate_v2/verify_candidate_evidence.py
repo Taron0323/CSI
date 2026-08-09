@@ -294,13 +294,14 @@ def verify_runtime_trust(evidence: dict[str, Any]) -> None:
     ]
     registered = len(matches) == 1
     require(
-        runtime["approved_registry_match"] is registered,
+        registered and runtime["approved_registry_match"] is True,
         "candidate LLVM registry-match declaration is stale",
     )
     require(
-        not registered
-        and runtime["formal_runtime_status"] == "BLOCKED_UNAPPROVED_LIBLLVM",
-        "this evidence package must remain blocked until its LLVM runtime is approved",
+        runtime.get("preapproved_at_generation") is False
+        and runtime["formal_runtime_status"]
+        == "BLOCKED_NOT_PREAPPROVED_AT_GENERATION",
+        "this evidence package must remain blocked because its bound generation source predates runtime approval enforcement",
     )
 
 
