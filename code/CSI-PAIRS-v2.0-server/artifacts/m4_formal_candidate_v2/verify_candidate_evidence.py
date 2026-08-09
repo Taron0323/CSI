@@ -15,10 +15,12 @@ from typing import Any
 
 
 EVIDENCE_ROOT = Path(__file__).resolve().parent
+SERVER_ROOT = EVIDENCE_ROOT.parents[1]
 EVIDENCE_PATH = EVIDENCE_ROOT / "candidate_evidence.json"
 SCENE_PATH = EVIDENCE_ROOT / "scene_inventory.csv"
 SHARD_PATH = EVIDENCE_ROOT / "shard_inventory.csv"
 CHECKSUM_PATH = EVIDENCE_ROOT / "SHA256SUMS"
+APPROVED_LLVM_PATH = SERVER_ROOT / "formal_v2/configs/sionna_llvm_approved_v1.json"
 
 REQUIRED_FILES = {
     "EXECUTION_PROMPT.md",
@@ -31,14 +33,15 @@ REQUIRED_FILES = {
     "verify_candidate_evidence.py",
 }
 EXPECTED_READINESS = {
-    "M4_DATA_PRODUCTION_READY": "YES",
-    "FORMAL_CANDIDATE_READY": "YES",
-    "FORMAL_INPUT_READY": "CANDIDATE_ONLY",
+    "M4_DATA_PRODUCTION_READY": "REPORTED",
+    "EVIDENCE_REGISTRY_READY": "YES",
+    "FORMAL_CANDIDATE_READY": "BLOCKED_UNAPPROVED_RUNTIME",
+    "FORMAL_INPUT_READY": "BLOCKED",
     "FORMAL_TRAINING_READY": "NO",
     "LAUNCH_READY": "BLOCKED",
     "SCIENTIFIC_EVIDENCE": "NOT_ASSESSED",
 }
-EXPECTED_CLOSED_ISSUES = {
+EXPECTED_CONDITIONAL_ISSUES = {
     "DATA-VISIBILITY-001",
     "DATA-REGEN-001",
     "PATH-ID-001",
@@ -111,8 +114,24 @@ def require(condition: bool, message: str) -> None:
         raise EvidenceError(message)
 
 
+def strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        require(key not in result, f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def reject_constant(value: str) -> None:
+    raise EvidenceError(f"non-finite JSON value is forbidden: {value}")
+
+
 def load_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=strict_object,
+        parse_constant=reject_constant,
+    )
     require(isinstance(value, dict), f"{path.name} must contain a JSON object")
     return value
 
@@ -252,6 +271,39 @@ def verify_shard_inventory(
     return rows
 
 
+def verify_runtime_trust(evidence: dict[str, Any]) -> None:
+    runtime = evidence["candidate"]["runtime"]
+    require(
+        runtime["approved_registry_path"]
+        == "formal_v2/configs/sionna_llvm_approved_v1.json",
+        "approved LLVM registry path mismatch",
+    )
+    registry = load_json(APPROVED_LLVM_PATH)
+    require(
+        registry.get("schema_version") == "csi-pairs-sionna-approved-libllvm-v1"
+        and isinstance(registry.get("libraries"), list),
+        "approved LLVM registry schema mismatch",
+    )
+    matches = [
+        row
+        for row in registry["libraries"]
+        if isinstance(row, dict)
+        and row.get("platform_system") == runtime["platform_system"]
+        and row.get("platform_machine") == runtime["platform_machine"]
+        and row.get("sha256") == runtime["libllvm_sha256"]
+    ]
+    registered = len(matches) == 1
+    require(
+        runtime["approved_registry_match"] is registered,
+        "candidate LLVM registry-match declaration is stale",
+    )
+    require(
+        not registered
+        and runtime["formal_runtime_status"] == "BLOCKED_UNAPPROVED_LIBLLVM",
+        "this evidence package must remain blocked until its LLVM runtime is approved",
+    )
+
+
 def verify_static() -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dict[str, str]], list[dict[str, str]]]:
     verify_privacy_and_binary_policy()
     evidence = load_json(EVIDENCE_PATH)
@@ -259,15 +311,22 @@ def verify_static() -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dic
         evidence["schema_version"] == "csi-pairs-m4-formal-candidate-evidence-v1",
         "unexpected evidence schema",
     )
-    require(evidence["status"] == "PASS", "evidence status must be PASS")
+    require(
+        evidence["status"] == "STATIC_REGISTRY_PASS",
+        "evidence status must describe static registry verification only",
+    )
     require(
         evidence["scientific_use"] == "CANDIDATE_NOT_CLAIM",
         "scientific boundary must remain CANDIDATE_NOT_CLAIM",
     )
     require(evidence["readiness"] == EXPECTED_READINESS, "readiness boundary mismatch")
     require(
-        set(evidence["closed_issue_ids"]) == EXPECTED_CLOSED_ISSUES,
-        "closed issue scope mismatch",
+        evidence["closed_issue_ids"] == [],
+        "unapproved-runtime evidence must not close formal issues",
+    )
+    require(
+        set(evidence["conditional_issue_ids"]) == EXPECTED_CONDITIONAL_ISSUES,
+        "conditional issue scope mismatch",
     )
     require(
         evidence["candidate"]["shape"]
@@ -300,6 +359,7 @@ def verify_static() -> tuple[dict[str, Any], list[dict[str, str]], dict[str, dic
         len(regenerated_keys) == 15 and len(set(regenerated_keys)) == 15,
         "registered regenerated-array inventory mismatch",
     )
+    verify_runtime_trust(evidence)
 
     for section_name, records in (
         (
@@ -469,7 +529,8 @@ def verify_assets(
     evidence: dict[str, Any],
     scene_rows: list[dict[str, str]],
 ) -> None:
-    asset = load_json(candidate_root / "assets" / "asset_manifest.json")
+    asset_root = candidate_root / "assets"
+    asset = load_json(asset_root / "asset_manifest.json")
     require(asset["status"] == "PASS", "asset manifest is not PASS")
     require(
         asset["schema_version"] == evidence["candidate"]["asset_manifest"]["schema_version"],
@@ -493,6 +554,42 @@ def verify_assets(
         == set(evidence["candidate"]["city_counts"]),
         "raw OSM city set mismatch",
     )
+    require(
+        len(asset["raw_sources"]) == 6
+        and len({row["path"] for row in asset["raw_sources"]}) == 6,
+        "raw OSM inventory must contain one distinct file per city",
+    )
+    expected_files = {"asset_manifest.json"}
+    for field, digest_field in (
+        ("config_path", "config_sha256"),
+        ("attribution_path", "attribution_sha256"),
+    ):
+        relative = Path(str(asset[field]))
+        require(
+            not relative.is_absolute() and ".." not in relative.parts,
+            f"unsafe asset {field}",
+        )
+        verify_file_record(
+            asset_root / relative,
+            {
+                "sha256": require_sha256(asset[digest_field], f"asset {digest_field}"),
+                "bytes": (asset_root / relative).stat().st_size,
+            },
+            f"asset {field}",
+        )
+        expected_files.add(relative.as_posix())
+    for source in asset["raw_sources"]:
+        relative = Path(str(source["path"]))
+        require(
+            not relative.is_absolute() and ".." not in relative.parts,
+            "unsafe raw OSM path",
+        )
+        verify_file_record(
+            asset_root / relative,
+            {"sha256": source["sha256"], "bytes": source["bytes"]},
+            f"raw OSM source {source['city_id']}",
+        )
+        expected_files.add(relative.as_posix())
     banks = sorted(asset["banks"], key=lambda row: row["scene_index"])
     require(len(banks) == len(scene_rows), "asset bank count mismatch")
     for bank, expected in zip(banks, scene_rows, strict=True):
@@ -514,6 +611,49 @@ def verify_assets(
             bank["bank_index_within_city"] == int(expected["bank_index_within_city"]),
             "asset bank-within-city index mismatch",
         )
+        prefix = Path("banks") / expected["scene_id"]
+        expected_bank_files = {
+            (prefix / "bank.json").as_posix(),
+            (prefix / "scene.xml").as_posix(),
+            (prefix / "mesh/background.ply").as_posix(),
+            (prefix / "mesh/ground.ply").as_posix(),
+            (prefix / "mesh/primitive-0.ply").as_posix(),
+            (prefix / "mesh/primitive-1.ply").as_posix(),
+        }
+        file_rows = bank.get("files")
+        require(isinstance(file_rows, list), "asset bank files must be a list")
+        listed = [str(row.get("path")) for row in file_rows if isinstance(row, dict)]
+        require(
+            len(listed) == 6 and len(set(listed)) == 6 and set(listed) == expected_bank_files,
+            f"asset bank file inventory mismatch: {expected['scene_id']}",
+        )
+        require(
+            bank["bank_record_path"] == (prefix / "bank.json").as_posix()
+            and bank["scene_xml_path"] == (prefix / "scene.xml").as_posix(),
+            f"asset bank primary paths mismatch: {expected['scene_id']}",
+        )
+        for file_row in file_rows:
+            relative = Path(file_row["path"])
+            require(".." not in relative.parts, "unsafe asset bank path")
+            verify_file_record(
+                asset_root / relative,
+                {"sha256": file_row["sha256"], "bytes": file_row["bytes"]},
+                f"asset bank file {relative}",
+            )
+            expected_files.add(relative.as_posix())
+        require(
+            bank["bank_record_sha256"]
+            == next(row["sha256"] for row in file_rows if row["path"] == bank["bank_record_path"])
+            and bank["scene_xml_sha256"]
+            == next(row["sha256"] for row in file_rows if row["path"] == bank["scene_xml_path"]),
+            f"asset bank primary hashes mismatch: {expected['scene_id']}",
+        )
+    actual_files = set()
+    for path in asset_root.rglob("*"):
+        require(not path.is_symlink(), f"asset tree contains symlink: {path}")
+        if path.is_file():
+            actual_files.add(path.relative_to(asset_root).as_posix())
+    require(actual_files == expected_files, "asset tree file inventory is not exact")
 
 
 def verify_inspection(
@@ -873,13 +1013,16 @@ def main() -> int:
             print(
                 "PASS mode=deep "
                 f"dataset_sha256={evidence['candidate']['dataset']['sha256']} "
-                f"scenes={len(scenes)} shards={len(shards)} npz_arrays={array_count}"
+                f"scenes={len(scenes)} shards={len(shards)} npz_arrays={array_count} "
+                "formal_candidate=BLOCKED_UNAPPROVED_RUNTIME"
             )
         else:
             print(
                 "PASS mode=static "
                 f"dataset_sha256={evidence['candidate']['dataset']['sha256']} "
-                f"scenes={len(scenes)} shards={len(shards)}"
+                f"scenes={len(scenes)} shards={len(shards)} "
+                "external_artifacts=NOT_VERIFIED "
+                "formal_candidate=BLOCKED_UNAPPROVED_RUNTIME"
             )
     except (EvidenceError, OSError, ValueError, KeyError, TypeError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)

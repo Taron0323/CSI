@@ -2,13 +2,16 @@
 
 Date: 2026-08-09
 
-## Outcome
+## Reported Outcome And Repository Boundary
 
-The M4 data-production phase completed a non-fixture 34-bank, six-city,
+The submitted handoff reports a non-fixture 34-bank, six-city,
 four-world paired dataset and a separate same-host/same-engine regeneration.
 All 34 banks and all nine role groups passed the registered verifier with
 <code>rtol=0</code> and <code>atol=0</code>. No target or other nonblocking
-scene failed.
+scene failed. The external NPZ files and original manifests are not in this
+repository, so source CI verifies the committed hash registry, not that these
+external computations occurred. Deep mode can authenticate the original bytes
+when all three external roots are supplied.
 
 The authoritative candidate and gate digests are:
 
@@ -57,6 +60,12 @@ at main-ancestor commit
 runtime-library approval but do not rewrite this historical generator-bound
 evidence.
 
+The recorded LLVM digest is not in the current approved runtime registry. The
+only reviewed Darwin arm64 entry is
+<code>e514c689a4469887f30396826cec7559ad6ddc1d9db1a0b243790bee7725ca88</code>.
+Consequently, the reported dataset cannot be treated as a current formal
+candidate even if deep verification succeeds.
+
 ## Data checks
 
 Independent inspection of the untouched candidate reported:
@@ -76,13 +85,13 @@ The latest-main inspection contract passed and is bound by
 Its run manifest is bound by
 <code>7e2d948989ec130316e9521a27f7ea840cc950a48d4db40ebfc8da55186f206c</code>.
 
-## What this closes
+## Conditional Findings
 
-This evidence closes <code>DATA-VISIBILITY-001</code>,
+The registry records reported findings for <code>DATA-VISIBILITY-001</code>,
 <code>DATA-REGEN-001</code>, <code>PATH-ID-001</code>, and
-<code>INPUT-DATA-001</code>. It establishes that the replacement candidate is
-visible, complete, path-identity-safe, repository-auditable, and internally
-reproducible under the recorded Sionna/LLVM environment.
+<code>INPUT-DATA-001</code>. None is closed by static mode. Closure requires
+deep verification of the omitted bytes plus resolution of the unapproved LLVM
+runtime.
 
 ## What remains blocked
 
@@ -91,7 +100,8 @@ measurement/G8, asset and checkpoint release review, destination-host A100
 preflight, PMNet/Wi-GATr formal runs, four-arm training, or result
 qualification. Therefore:
 
-<code>FORMAL_INPUT_READY=CANDIDATE_ONLY</code>,
+<code>FORMAL_CANDIDATE_READY=BLOCKED_UNAPPROVED_RUNTIME</code>,
+<code>FORMAL_INPUT_READY=BLOCKED</code>,
 <code>FORMAL_TRAINING_READY=NO</code>,
 <code>LAUNCH_READY=BLOCKED</code>, and
 <code>SCIENTIFIC_EVIDENCE=NOT_ASSESSED</code>.

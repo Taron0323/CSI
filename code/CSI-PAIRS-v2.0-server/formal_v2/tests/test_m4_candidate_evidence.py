@@ -35,6 +35,8 @@ class M4CandidateEvidenceTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("PASS mode=static", completed.stdout)
         self.assertIn("scenes=34 shards=14", completed.stdout)
+        self.assertIn("external_artifacts=NOT_VERIFIED", completed.stdout)
+        self.assertIn("formal_candidate=BLOCKED_UNAPPROVED_RUNTIME", completed.stdout)
 
     def test_critical_hashes_and_readiness_boundary_are_frozen(self):
         self.assertEqual(
@@ -52,16 +54,21 @@ class M4CandidateEvidenceTests(unittest.TestCase):
         self.assertEqual(
             self.evidence["readiness"],
             {
-                "M4_DATA_PRODUCTION_READY": "YES",
-                "FORMAL_CANDIDATE_READY": "YES",
-                "FORMAL_INPUT_READY": "CANDIDATE_ONLY",
+                "M4_DATA_PRODUCTION_READY": "REPORTED",
+                "EVIDENCE_REGISTRY_READY": "YES",
+                "FORMAL_CANDIDATE_READY": "BLOCKED_UNAPPROVED_RUNTIME",
+                "FORMAL_INPUT_READY": "BLOCKED",
                 "FORMAL_TRAINING_READY": "NO",
                 "LAUNCH_READY": "BLOCKED",
                 "SCIENTIFIC_EVIDENCE": "NOT_ASSESSED",
             },
         )
         self.assertEqual(
-            set(self.evidence["closed_issue_ids"]),
+            self.evidence["closed_issue_ids"],
+            [],
+        )
+        self.assertEqual(
+            set(self.evidence["conditional_issue_ids"]),
             {
                 "DATA-VISIBILITY-001",
                 "DATA-REGEN-001",
@@ -72,6 +79,18 @@ class M4CandidateEvidenceTests(unittest.TestCase):
         self.assertEqual(
             len(self.evidence["verification"]["regenerated_array_keys"]),
             15,
+        )
+        registry = json.loads(
+            (SERVER_ROOT / "formal_v2/configs/sionna_llvm_approved_v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        runtime = self.evidence["candidate"]["runtime"]
+        approved_hashes = {row["sha256"] for row in registry["libraries"]}
+        self.assertNotIn(runtime["libllvm_sha256"], approved_hashes)
+        self.assertFalse(runtime["approved_registry_match"])
+        self.assertEqual(
+            runtime["formal_runtime_status"], "BLOCKED_UNAPPROVED_LIBLLVM"
         )
 
     def test_scene_and_shard_inventories_are_complete(self):

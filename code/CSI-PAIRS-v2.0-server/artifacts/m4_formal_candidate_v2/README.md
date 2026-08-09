@@ -1,7 +1,7 @@
 # M4 formal candidate evidence
 
-This directory authenticates the 34-bank CSI-PAIRS V2.1 V6 Sionna/OSM
-paired-world candidate produced on Apple Silicon on 2026-08-09. The candidate
+This directory registers hash commitments for a reported 34-bank CSI-PAIRS
+V2.1 V6 Sionna/OSM paired-world run on Apple Silicon on 2026-08-09. The candidate
 dataset itself and its isolated regeneration are external binary inputs. They
 are bound here by complete SHA-256 digests, byte sizes, a 34-row scene
 inventory, a 14-row shard inventory, and a verifier that can inspect the
@@ -11,9 +11,10 @@ The evidence boundary is:
 
 | Field | Value |
 |---|---|
-| <code>M4_DATA_PRODUCTION_READY</code> | <code>YES</code> |
-| <code>FORMAL_CANDIDATE_READY</code> | <code>YES</code> |
-| <code>FORMAL_INPUT_READY</code> | <code>CANDIDATE_ONLY</code> |
+| <code>M4_DATA_PRODUCTION_READY</code> | <code>REPORTED</code> |
+| <code>EVIDENCE_REGISTRY_READY</code> | <code>YES</code> |
+| <code>FORMAL_CANDIDATE_READY</code> | <code>BLOCKED_UNAPPROVED_RUNTIME</code> |
+| <code>FORMAL_INPUT_READY</code> | <code>BLOCKED</code> |
 | <code>FORMAL_TRAINING_READY</code> | <code>NO</code> |
 | <code>LAUNCH_READY</code> | <code>BLOCKED</code> |
 | <code>SCIENTIFIC_EVIDENCE</code> | <code>NOT_ASSESSED</code> |
@@ -41,9 +42,10 @@ PYTHONDONTWRITEBYTECODE=1 python3 \
 ~~~
 
 Static mode verifies the local evidence checksums, privacy boundary, binary
-omission policy, readiness status, all 34 scene rows, all 14 shard rows, role
-counts, city counts, and exact non-overlapping scene coverage from 0 through
-33.
+omission policy, blocked readiness status, all 34 declared scene rows, all 14
+declared shard rows, and inventory self-consistency. It does not open or
+authenticate any omitted artifact and prints
+<code>external_artifacts=NOT_VERIFIED</code> explicitly.
 
 ## Verify the original artifacts
 
@@ -63,6 +65,11 @@ checks every per-scene gate field, and compares all 15 registered regenerated
 physical arrays with their original NPZ counterparts at zero tolerance. The
 remaining 20 identity, position, configuration, and metadata arrays are not
 duplicated in the verifier's regeneration archive.
+
+Even a successful deep check remains blocked from formal use: the recorded
+libLLVM SHA-256 is absent from
+<code>formal_v2/configs/sionna_llvm_approved_v1.json</code>. The runtime must be
+reviewed and registered, or the data regenerated under an approved runtime.
 
 ## Binary and privacy policy
 

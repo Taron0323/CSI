@@ -51,11 +51,13 @@ Objective:
 10. End with these exact readiness fields unless later external gates have
     actually passed:
 
-    <code>M4_DATA_PRODUCTION_READY=YES</code>
+    <code>M4_DATA_PRODUCTION_READY=REPORTED</code>
 
-    <code>FORMAL_CANDIDATE_READY=YES</code>
+    <code>EVIDENCE_REGISTRY_READY=YES</code>
 
-    <code>FORMAL_INPUT_READY=CANDIDATE_ONLY</code>
+    <code>FORMAL_CANDIDATE_READY=BLOCKED_UNAPPROVED_RUNTIME</code>
+
+    <code>FORMAL_INPUT_READY=BLOCKED</code>
 
     <code>FORMAL_TRAINING_READY=NO</code>
 
@@ -70,6 +72,8 @@ Required stop conditions:
 - Do not relax a registered gate or tolerance.
 - Do not convert a fixture, failed run, partial role pass, or prose handoff into
   formal evidence.
+- Do not promote a candidate whose LLVM digest is absent from the approved
+  platform registry, even when same-host regeneration is exact.
 - Do not call same-engine regeneration independent RT evidence.
 - Do not start teacher, Wi-GATr, PMNet, four-arm, or formal model training on
   the M4.

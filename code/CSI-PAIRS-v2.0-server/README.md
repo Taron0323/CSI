@@ -1,9 +1,10 @@
 # CSI-PAIRS V2.1 V6 server bundle
 
 Status: formal code `CODE_READY_FOR_FORMAL_INPUT`;
-`M4_DATA_PRODUCTION_READY=YES`;
-`FORMAL_CANDIDATE_READY=YES`;
-`FORMAL_INPUT_READY=CANDIDATE_ONLY`;
+`M4_DATA_PRODUCTION_READY=REPORTED`;
+`EVIDENCE_REGISTRY_READY=YES`;
+`FORMAL_CANDIDATE_READY=BLOCKED_UNAPPROVED_RUNTIME`;
+`FORMAL_INPUT_READY=BLOCKED`;
 `FORMAL_TRAINING_READY=NO`;
 `LAUNCH_READY=BLOCKED`; and scientific evidence `NOT_ASSESSED`.
 Archived V1 fixture failures remain non-scientific history.
@@ -179,14 +180,15 @@ retained inference while excluding the common localization head on both sides; c
 parameters and measured training/inference FLOPs remain included. `generous_2x_concat` is
 report-only.
 
-## 4. Authenticate the M4 candidate evidence
+## 4. Verify the M4 evidence registry
 
 The 34-bank Apple Silicon candidate is bound by dataset SHA-256
 `e5ec3d32bbb7c639f2fd6e6dcc23bc4bb6085cc76830a700e5b7103b17a37847`.
 Its isolated zero-tolerance verification gate is bound by
 `ac790e2ffacca784cba22bc31bc9798049bb219f3f88cfeb3cd0c69fce7c86a8`.
-All 34 scene banks and all nine role groups passed at `rtol=0` and
-`atol=0`. Verify the repository evidence from this directory:
+The submitted registry reports that all 34 scene banks and all nine role
+groups passed at `rtol=0` and `atol=0`. Static verification checks the
+committed hash registry and inventories only:
 
 ~~~bash
 PYTHONDONTWRITEBYTECODE=1 python3 \
@@ -197,6 +199,12 @@ To authenticate the omitted local NPZ files, shard manifests, inspection, and
 verification output, use the optional deep-verification command documented in
 `artifacts/m4_formal_candidate_v2/README.md`. The repository does not
 contain either NPZ or unsanitized host-local manifests.
+
+The recorded libLLVM hash `26273678...451` is not present in the current
+approved runtime registry, whose Darwin entry is `e514c689...a88`. Therefore
+this package is a useful commitment to an external run, but it is not a
+current formal candidate. Review and register the exact historical runtime or
+regenerate under an approved runtime before the candidate can enter G1/G2.
 
 This same-host, same-Sionna regeneration establishes deterministic internal
 consistency only. It does not close independent RT calibration, G8,
