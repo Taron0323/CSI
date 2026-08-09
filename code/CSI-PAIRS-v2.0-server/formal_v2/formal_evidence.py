@@ -71,6 +71,10 @@ LINUX_X86_64_LOCK_MARKER = (
     'sys_platform == "linux" and platform_machine == "x86_64"'
 )
 SUPPORTED_LOCK_TARGETS = {("darwin", "arm64"), ("linux", "x86_64")}
+TARGET_REQUIREMENTS_LOCKS = {
+    ("darwin", "arm64"): "requirements-lock.txt",
+    ("linux", "x86_64"): "requirements-lock-linux-x86_64-cu121.txt",
+}
 INSTALL_REPORT_NAME = "csi-pairs-install-report.json"
 _LOCK_ENTRY = re.compile(
     r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)"
@@ -200,6 +204,29 @@ def _locked_requirement_versions(
         machine_value=machine_value,
     )
     return {name: str(record["version"]) for name, record in records.items()}
+
+
+def _requirements_lock_path(
+    *,
+    sys_platform_value: str | None = None,
+    machine_value: str | None = None,
+) -> Path:
+    active_platform = sys.platform if sys_platform_value is None else sys_platform_value
+    active_machine = platform.machine() if machine_value is None else machine_value
+    try:
+        filename = TARGET_REQUIREMENTS_LOCKS[(active_platform, active_machine)]
+    except KeyError as error:
+        raise RuntimeError(
+            "formal requirements lock supports only macOS arm64 and Linux x86_64; "
+            f"observed {active_platform} {active_machine}"
+        ) from error
+    return Path(__file__).resolve().parent / filename
+
+
+def _torch_module_version_matches_lock(module_version: str, locked_version: str) -> bool:
+    if "+" in locked_version:
+        return module_version == locked_version
+    return module_version.split("+", 1)[0] == locked_version
 
 
 def _wheel_receipt_from_install_report(
@@ -341,7 +368,7 @@ def _validated_distribution_record(
 
 
 def runtime_provenance() -> dict[str, object]:
-    requirements = Path(__file__).resolve().parent / "requirements-lock.txt"
+    requirements = _requirements_lock_path()
     expected = _locked_requirement_records(requirements)
     prefix = Path(sys.prefix).resolve()
     report_path = prefix / INSTALL_REPORT_NAME
@@ -475,7 +502,10 @@ def validate_runtime_provenance(runtime: object) -> dict[str, object]:
 
     lock_platform, lock_machine = _validated_runtime_platform(runtime)
 
-    requirements = Path(__file__).resolve().parent / "requirements-lock.txt"
+    requirements = _requirements_lock_path(
+        sys_platform_value=lock_platform,
+        machine_value=lock_machine,
+    )
     if not requirements.is_file() or requirements.is_symlink():
         raise RuntimeError("formal requirements lock is missing or not a regular file")
     if runtime.get("requirements_lock_sha256") != sha256_file(requirements):
@@ -571,7 +601,7 @@ def validate_runtime_provenance(runtime: object) -> dict[str, object]:
     torch_version = torch_record.get("version")
     if (
         not isinstance(torch_version, str)
-        or torch_version.split("+", 1)[0] != expected["torch"]
+        or not _torch_module_version_matches_lock(torch_version, expected["torch"])
     ):
         raise RuntimeError("main runtime torch module version does not match the lock")
     if (

@@ -806,7 +806,9 @@ class DatasetTests(unittest.TestCase):
             str(arrays["position_ids"][second, query]),
         )
         arrays["positions"] = arrays["positions"].copy()
-        arrays["positions"][second, query] = arrays["positions"][first, support]
+        arrays["positions"][second, query] = arrays["positions"][first, support] + np.asarray(
+            (0.75e-9, -0.75e-9)
+        )
         malformed = self.root / "same-coordinate-different-id.npz"
         np.savez_compressed(malformed, **arrays)
         with self.assertRaisesRegex(
@@ -905,6 +907,40 @@ class DatasetTests(unittest.TestCase):
         malformed = self.root / "occupied.npz"
         np.savez_compressed(malformed, **arrays)
         with self.assertRaisesRegex(FormalDatasetError, "free in every sibling"):
+            FormalDataset.load(malformed)
+
+    def test_nonfixture_pathless_clean_unit_is_rejected(self):
+        arrays = _archive_arrays(self.fixture)
+        metadata = json.loads(str(arrays["metadata_json"].item()))
+        metadata["fixture"] = False
+        metadata["scientific_use"] = "CANDIDATE"
+        arrays["metadata_json"] = np.asarray(
+            json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+        )
+        arrays["path_ids"] = arrays["path_ids"].copy()
+        arrays["path_power"] = arrays["path_power"].copy()
+        arrays["path_surface_ids"] = arrays["path_surface_ids"].copy()
+        arrays["path_ids"][0, 0, 0] = -1
+        arrays["path_power"][0, 0, 0] = 0.0
+        arrays["path_surface_ids"][0, 0, 0] = -1
+        malformed = self.root / "nonfixture-pathless.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "registered RT path"):
+            FormalDataset.load(malformed)
+
+    def test_nonfixture_all_zero_clean_unit_is_rejected(self):
+        arrays = _archive_arrays(self.fixture)
+        metadata = json.loads(str(arrays["metadata_json"].item()))
+        metadata["fixture"] = False
+        metadata["scientific_use"] = "CANDIDATE"
+        arrays["metadata_json"] = np.asarray(
+            json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+        )
+        arrays["csi_clean"] = arrays["csi_clean"].copy()
+        arrays["csi_clean"][0, 0, 0] = 0.0
+        malformed = self.root / "nonfixture-zero-csi.npz"
+        np.savez_compressed(malformed, **arrays)
+        with self.assertRaisesRegex(FormalDatasetError, "all-zero CSI"):
             FormalDataset.load(malformed)
 
 
@@ -1385,6 +1421,9 @@ class EvidenceAndPathTests(unittest.TestCase):
         g8 = {
             "status": "PASS",
             "passed": True,
+            "execution_mode": "authenticated_sionna_adapter",
+            "engine_family": "sionna",
+            "adapter_source_path": "/adapter.py",
             "active_direction_cluster_count": 3,
             "active_direction_agreement_ci95_low": 0.85,
             "minimum_active_direction_agreement": 0.8,
@@ -1393,6 +1432,8 @@ class EvidenceAndPathTests(unittest.TestCase):
             "rt_scene_manifest_sha256": "b" * 64,
             "external_csi_path": "external_csi.npz",
             "external_csi_sha256": "c" * 64,
+            "external_engine_config_path": None,
+            "external_engine_config_sha256": None,
             "external_csi_contract": "outer-recomputed-direction-and-effect-from-raw-csi-v1",
             "external_scene_count": 2,
             "external_runtime_provenance_path": "runtime_provenance.json",
@@ -1402,6 +1443,26 @@ class EvidenceAndPathTests(unittest.TestCase):
             "null_equivalence": {"passed": True, "base_map_cluster_count": 3},
         }
         self.assertEqual(_semantic_status("G8", g8), "PASS")
+        archive = dict(g8)
+        archive.update(
+            {
+                "execution_mode": "authenticated_precomputed_rt_archive",
+                "engine_family": "wireless-insite",
+                "adapter_source_path": None,
+                "adapter_source_sha256": None,
+                "external_engine_config_path": "external_engine_config.bin",
+                "external_engine_config_sha256": "f" * 64,
+                "external_runtime_provenance_path": None,
+                "external_runtime_provenance_sha256": None,
+                "external_runtime_environment_sha256": None,
+                "external_runtime_provenance": None,
+            }
+        )
+        self.assertEqual(_semantic_status("G8", archive), "PASS")
+        archive["external_runtime_provenance"] = {
+            "environment_sha256": "e" * 64
+        }
+        self.assertEqual(_semantic_status("G8", archive), "FAIL")
         g8["active_direction_agreement_ci95_low"] = 0.7
         self.assertEqual(_semantic_status("G8", g8), "FAIL")
 

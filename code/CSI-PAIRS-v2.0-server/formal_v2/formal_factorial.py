@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import math
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,9 +30,14 @@ from .formal_model import (
     LossWeights,
     alignment_active_quartet_loss,
     alignment_null_quartet_loss,
+    batch_for_module,
     endpoint_per_sample,
+    module_device,
+    portable_state_dict,
     require_torch,
+    resolve_execution_devices,
     squared_rms_error,
+    tensor_for_module,
     torch,
 )
 from .formal_protocol import (
@@ -123,6 +130,71 @@ class StepPlan:
     response_bundle_count: int
 
 
+def _train_device_queue(config, corpus, pilot, device, jobs, stop_event):
+    completed = []
+    try:
+        for job_index, seed, arm, model in jobs:
+            if stop_event.is_set():
+                break
+            model.to(device)
+            result = _train_arm(
+                config,
+                corpus,
+                seed,
+                arm,
+                pilot,
+                device=device,
+                prepared_model=model,
+                stop_event=stop_event,
+            )
+            result[0].to("cpu")
+            completed.append((job_index, result))
+    except Exception:
+        stop_event.set()
+        raise
+    return completed
+
+
+def _run_training_jobs(config, corpus, pilot, jobs_by_device):
+    stop_event = threading.Event()
+    total_jobs = sum(len(jobs) for jobs in jobs_by_device.values())
+    ordered = [None] * total_jobs
+    if len(jobs_by_device) == 1:
+        device, jobs = next(iter(jobs_by_device.items()))
+        completed = _train_device_queue(config, corpus, pilot, device, jobs, stop_event)
+    else:
+        with ThreadPoolExecutor(
+            max_workers=len(jobs_by_device),
+            thread_name_prefix="csi-pairs-gpu",
+        ) as executor:
+            futures = [
+                executor.submit(
+                    _train_device_queue,
+                    config,
+                    corpus,
+                    pilot,
+                    device,
+                    jobs,
+                    stop_event,
+                )
+                for device, jobs in jobs_by_device.items()
+            ]
+            completed = []
+            try:
+                for future in as_completed(futures):
+                    completed.extend(future.result())
+            except Exception:
+                stop_event.set()
+                for future in futures:
+                    future.cancel()
+                raise
+    for job_index, result in completed:
+        ordered[job_index] = result
+    if any(result is None for result in ordered):
+        raise RuntimeError("formal factorial scheduler did not complete every arm and seed")
+    return ordered
+
+
 def run_formal_factorial(
     config: dict,
     dataset: FormalDataset,
@@ -148,7 +220,9 @@ def run_formal_factorial(
     teacher_path = Path(str(qualification_gate["teacher_checkpoint"]))
     if sha256_file(teacher_path) != qualification_gate["teacher_checkpoint_sha256"]:
         raise RuntimeError("teacher checkpoint hash does not match the qualification gate")
-    teacher = load_teacher_bundle(teacher_path, config)
+    execution_devices = resolve_execution_devices(dataset)
+    execution_device = execution_devices[0]
+    teacher = load_teacher_bundle(teacher_path, config, device=execution_device)
     output_dir = Path(output_root) / "factorial"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -162,7 +236,11 @@ def run_formal_factorial(
         dataset, selection_scenes, teacher, config, route_normalization, normalization
     )
     pilot = _pilot_scales(
-        config, train_corpus, selection_corpus, int(config["seeds"][0]) + 6001
+        config,
+        train_corpus,
+        selection_corpus,
+        int(config["seeds"][0]) + 6001,
+        device=execution_device,
     )
     write_json(
         output_dir / "frozen_pilot.json",
@@ -182,53 +260,69 @@ def run_formal_factorial(
     checkpoint_rows = []
     provisional_use = "FORBIDDEN" if dataset.is_fixture else "CANDIDATE_NOT_CLAIM"
     evidence = evidence_context(config, dataset, provisional_use)
-    for seed in config["seeds"]:
-        for arm in ARMS:
-            model, row = _train_arm(
-                config,
-                train_corpus,
-                int(seed),
-                arm,
-                pilot,
-            )
-            checkpoint = output_dir / "checkpoints" / f"seed_{seed}" / f"{arm}.pt"
-            checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                {
-                    "schema_version": "csi-pairs-formal-checkpoint-v2.1-v6",
-                    "arm": arm,
-                    "seed": int(seed),
-                    "model_spec": _model_spec(config, train_corpus),
-                    "normalization": _normalization_record(normalization),
-                    "teacher_checkpoint_sha256": qualification_gate["teacher_checkpoint_sha256"],
-                    "checkpoint_rule": "fixed_final_step_no_target_selection",
-                    "state_dict": model.state_dict(),
-                    **evidence,
-                },
-                checkpoint,
-            )
-            row.update(
-                {
-                    "checkpoint": str(checkpoint.relative_to(output_dir)),
-                    "checkpoint_sha256": sha256_file(checkpoint),
-                    "alignment_scale": pilot["alignment_scale"],
-                    "response_scale": pilot["response_scale"],
-                    "alignment_null_tolerance": pilot["alignment_null_tolerance"],
-                }
-            )
-            training_rows.append(row)
-            checkpoint_rows.append(
-                {
-                    "seed": int(seed),
-                    "arm": arm,
-                    "path": str(checkpoint.relative_to(output_dir)),
-                    "sha256": sha256_file(checkpoint),
-                    "parameters": row["parameters"],
-                    "measured_flops_per_step": row["measured_flops_per_step"],
-                    "teacher_checkpoint_sha256": qualification_gate["teacher_checkpoint_sha256"],
-                }
-            )
-            models[(int(seed), arm)] = model
+    jobs = []
+    jobs_by_device = {device: [] for device in execution_devices}
+    for job_index, (seed, arm) in enumerate(
+        (int(seed), arm) for seed in config["seeds"] for arm in ARMS
+    ):
+        device = execution_devices[job_index % len(execution_devices)]
+        model = _new_model(config, train_corpus, seed, device=torch.device("cpu"))
+        jobs.append((seed, arm, device, model))
+        jobs_by_device[device].append(
+            (job_index, seed, arm, model)
+        )
+    trained = _run_training_jobs(config, train_corpus, pilot, jobs_by_device)
+
+    for (seed, arm, _device, _prepared), (model, row) in zip(jobs, trained):
+        checkpoint = output_dir / "checkpoints" / f"seed_{seed}" / f"{arm}.pt"
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "schema_version": "csi-pairs-formal-checkpoint-v2.1-v6",
+                "arm": arm,
+                "seed": int(seed),
+                "model_spec": _model_spec(config, train_corpus),
+                "normalization": _normalization_record(normalization),
+                "teacher_checkpoint_sha256": qualification_gate["teacher_checkpoint_sha256"],
+                "checkpoint_rule": "fixed_final_step_no_target_selection",
+                "state_dict": portable_state_dict(model),
+                **evidence,
+            },
+            checkpoint,
+        )
+        reloaded = torch.load(checkpoint, map_location="cpu", weights_only=False)
+        if (
+            reloaded.get("schema_version") != "csi-pairs-formal-checkpoint-v2.1-v6"
+            or reloaded.get("arm") != arm
+            or int(reloaded.get("seed", -1)) != int(seed)
+        ):
+            raise RuntimeError("factorial checkpoint identity changed during serialization")
+        model.load_state_dict(reloaded["state_dict"], strict=True)
+        row.update(
+            {
+                "checkpoint": str(checkpoint.relative_to(output_dir)),
+                "checkpoint_sha256": sha256_file(checkpoint),
+                "alignment_scale": pilot["alignment_scale"],
+                "response_scale": pilot["response_scale"],
+                "alignment_null_tolerance": pilot["alignment_null_tolerance"],
+                "execution_device": row["execution_device"],
+                "parallel_worker_count": len(execution_devices),
+            }
+        )
+        training_rows.append(row)
+        checkpoint_rows.append(
+            {
+                "seed": int(seed),
+                "arm": arm,
+                "path": str(checkpoint.relative_to(output_dir)),
+                "sha256": sha256_file(checkpoint),
+                "parameters": row["parameters"],
+                "measured_flops_per_step": row["measured_flops_per_step"],
+                "execution_device": row["execution_device"],
+                "teacher_checkpoint_sha256": qualification_gate["teacher_checkpoint_sha256"],
+            }
+        )
+        models[(int(seed), arm)] = model
     write_csv(output_dir / "training_summary.csv", bind_rows(training_rows, evidence))
     write_json(
         output_dir / "checkpoint_index.json",
@@ -239,7 +333,14 @@ def run_formal_factorial(
         },
     )
 
-    bank_rows, sample_rows = _run_localization(config, dataset, models, normalization, teacher.patch_spec)
+    bank_rows, sample_rows = _run_localization(
+        config,
+        dataset,
+        models,
+        normalization,
+        teacher.patch_spec,
+        execution_devices,
+    )
     write_csv(output_dir / "localization_per_sample.csv", bind_rows(sample_rows, evidence))
     write_csv(output_dir / "localization_per_bank.csv", bind_rows(bank_rows, evidence))
     summary_rows = _localization_summary(bank_rows)
@@ -571,10 +672,12 @@ def _new_model(
     seed: int,
     *,
     model_spec: dict | None = None,
+    device=None,
 ):
     torch.manual_seed(int(seed))
     spec = _model_spec(config, corpus) if model_spec is None else dict(model_spec)
-    model = CSIPairsFormalModel(**spec)
+    execution_device = module_device(corpus.teacher.teacher) if device is None else torch.device(device)
+    model = CSIPairsFormalModel(**spec).to(execution_device)
     teacher = corpus.teacher.teacher
     if int(spec["csi_encoder_layers"]) == len(teacher.encoder.layers):
         model.initialize_csi_from_teacher(teacher)
@@ -611,8 +714,8 @@ def _model_spec(config, corpus):
     }
 
 
-def _pilot_scales(config, train_corpus, selection_corpus, seed):
-    model = _new_model(config, train_corpus, seed)
+def _pilot_scales(config, train_corpus, selection_corpus, seed, *, device=None):
+    model = _new_model(config, train_corpus, seed, device=device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(config["model"]["learning_rate"]),
@@ -635,6 +738,8 @@ def _pilot_scales(config, train_corpus, selection_corpus, seed):
         loss = loss + float(config["factorial"]["natural_endpoint_weight"]) * _endpoint_loss(
             model, natural_batch, physical_weight
         )
+        if not bool(torch.isfinite(loss).item()):
+            raise FloatingPointError(f"non-finite pilot loss at step {step + 1}")
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
@@ -692,6 +797,7 @@ def _noop_score_gaps(model, corpus, units):
             errors = []
             for entry in corpus.alignment_bank:
                 batch = _identity_batch(corpus, [(scene, world, position)], [entry], supplied_maps=[supplied])
+                batch = batch_for_module(model, batch)
                 state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
                 prediction_z, prediction_y = model.predict(state, batch["zero_action"], batch["query"])
                 errors.append(
@@ -719,8 +825,23 @@ def _train_arm(
     step_count=None,
     model_spec=None,
     loss_trace=None,
+    device=None,
+    prepared_model=None,
+    stop_event=None,
 ):
-    model = _new_model(config, corpus, seed, model_spec=model_spec)
+    if prepared_model is not None and model_spec is not None:
+        raise ValueError("prepared model cannot be combined with a model specification")
+    model = (
+        prepared_model
+        if prepared_model is not None
+        else _new_model(
+            config,
+            corpus,
+            seed,
+            model_spec=model_spec,
+            device=device,
+        )
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(config["model"]["learning_rate"]),
@@ -746,6 +867,10 @@ def _train_arm(
     if steps < 1:
         raise ValueError("control training step count must be positive")
     for step in range(steps):
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError(
+                "formal factorial training cancelled after a peer-device failure"
+            )
         plan = _make_plan(corpus, int(config["factorial"]["batch_size"]), seed, step)
         if step == 0:
             execution = _measure_execution(
@@ -803,7 +928,7 @@ def _train_arm(
                     "gradient_norm": math.sqrt(max(squared_gradient, 0.0)),
                 }
             )
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0, error_if_nonfinite=True)
         optimizer.step()
         last = components
     elapsed = time.perf_counter() - started
@@ -832,6 +957,7 @@ def _train_arm(
         "raw_alignment_gradient_norm_mean": float(np.mean(raw_alignment_gradient_norms)),
         "raw_response_gradient_norm_mean": float(np.mean(raw_response_gradient_norms)),
         "checkpoint_rule": "fixed_final_step_no_target_selection",
+        "execution_device": str(module_device(model)),
         "batch_plan_contract": "identical bank/edge/direction/mask/query sequence for all arms at a seed",
         "response_macro_contract": "independent cluster-bank anchor-edge macro samples for all-directed-edge target, active conditional, and null conditional terms; complete sibling bundles use inverse bundle-size weights",
         "response_all_anchor_bundles_per_step": int(config["factorial"]["batch_size"]),
@@ -914,6 +1040,7 @@ def _loss_components(model, corpus, plan, weights, *, pairing_break=None):
                 for scene, source, target, position in plan.alignment_active
             ],
             dtype=torch.float32,
+            device=module_device(model),
         )
         phi = torch.clamp(
             active_effect / max(float(weights.effect_margin_scale), 1e-12),
@@ -1011,6 +1138,7 @@ def _loss_components(model, corpus, plan, weights, *, pairing_break=None):
 
 
 def _endpoint_loss(model, batch, physical_weight):
+    batch = batch_for_module(model, batch)
     state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
     prediction_z, prediction_y = model.predict(state, batch["zero_action"], batch["query"])
     return torch.mean(
@@ -1057,6 +1185,7 @@ def _alignment_scores(
     )
     scores = []
     for batch in batches:
+        batch = batch_for_module(model, batch)
         state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
         prediction_z, prediction_y = model.predict(state, batch["zero_action"], batch["query"])
         error = endpoint_per_sample(
@@ -1071,6 +1200,7 @@ def _alignment_scores(
 
 
 def _response_target_loss(model, batch, sample_weights):
+    batch = batch_for_module(model, batch)
     state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
     prediction_z, prediction_y = model.predict(state, batch["action"], batch["query"])
     return (
@@ -1080,6 +1210,7 @@ def _response_target_loss(model, batch, sample_weights):
 
 
 def _response_active_loss(model, batch, weights, sample_weights):
+    batch = batch_for_module(model, batch)
     state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
     identity_z, identity_y = model.predict(state, batch["zero_action"], batch["query"])
     prediction_z, prediction_y = model.predict(state, batch["action"], batch["query"])
@@ -1092,6 +1223,7 @@ def _response_active_loss(model, batch, weights, sample_weights):
 
 
 def _response_null_loss(model, batch, weights, sample_weights):
+    batch = batch_for_module(model, batch)
     state = model.state(batch["visible"], batch["maps"], batch["radio"], batch["masks"])
     identity_z, identity_y = model.predict(state, batch["zero_action"], batch["query"])
     prediction_z, prediction_y = model.predict(state, batch["action"], batch["query"])
@@ -1296,7 +1428,7 @@ def _measure_execution(model, corpus, plan, weights):
     return counts
 
 
-def _run_localization(config, dataset, models, normalization, patch_spec):
+def _run_localization(config, dataset, models, normalization, patch_spec, execution_devices):
     bank_rows = []
     sample_rows = []
     source_scenes = [int(value) for value in dataset.indices_for_role("source_encoder_train")]
@@ -1311,6 +1443,7 @@ def _run_localization(config, dataset, models, normalization, patch_spec):
     canonical_bank_digests = {
         scene: _canonical_bank_digest(dataset, scene) for scene in target_scenes
     }
+    localization_job_index = 0
     for seed in config["seeds"]:
         city_orders = {}
         for city in target_cities:
@@ -1319,7 +1452,9 @@ def _run_localization(config, dataset, models, normalization, patch_spec):
                 rng = np.random.default_rng(int(seed) * 100003 + _stable_city_seed(city) + draw)
                 city_orders[(city, draw)] = [candidates[index] for index in rng.permutation(len(candidates))]
         for arm in ARMS:
-            model = models[(int(seed), arm)]
+            device = execution_devices[localization_job_index % len(execution_devices)]
+            localization_job_index += 1
+            model = models[(int(seed), arm)].to(device)
             scene_representations = _natural_representations(
                 model, dataset, source_scenes + target_scenes, normalization, patch_spec
             )
@@ -1411,6 +1546,7 @@ def _run_localization(config, dataset, models, normalization, patch_spec):
                                     "utility_neg_log_median": float(-math.log(max(median, 1e-12))),
                                 }
                             )
+            model.to("cpu")
     return bank_rows, sample_rows
 
 
@@ -1462,11 +1598,11 @@ def _natural_representations(model, dataset, scenes, normalization, patch_spec):
             radio = np.repeat(context[None, :], dataset.position_count, axis=0)
             radio = (radio - normalization.radio_mean) / normalization.radio_scale
             representation = model.retained_representation(
-                torch.as_tensor(patches, dtype=torch.float32),
-                torch.as_tensor(maps, dtype=torch.float32),
-                torch.as_tensor(radio, dtype=torch.float32),
+                tensor_for_module(model, patches, dtype=torch.float32),
+                tensor_for_module(model, maps, dtype=torch.float32),
+                tensor_for_module(model, radio, dtype=torch.float32),
             )
-            outputs[scene] = representation.numpy().astype(np.float64)
+            outputs[scene] = representation.cpu().numpy().astype(np.float64)
     return outputs
 
 

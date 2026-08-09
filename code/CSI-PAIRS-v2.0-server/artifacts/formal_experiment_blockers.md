@@ -1,18 +1,18 @@
 # Formal experiment blockers
 
-Date: 2026-08-08 (Asia/Shanghai)
+Date: 2026-08-09 (Asia/Shanghai)
 
 `PROTOCOL_READY=PASS`. `FORMAL_INPUT_READY=BLOCKED`, `LAUNCH_READY=BLOCKED`, and
 `SCIENTIFIC_EVIDENCE=NOT_ASSESSED` remain mandatory until every P0 row below closes.
 
 | ID | Severity/type | Missing decision or input | Acceptance check | Consequence |
 |---|---|---|---|---|
-| `INPUT-DATA-001` | P0 `EXTERNAL_DATA_REQUIRED` | Complete non-fixture V2.1 NPZ with seven source roles, two target cities, external role, independent repeats, clean CSI, immutable assets and per-city cluster minimums. | `inspect-data` and independent `verify-data` pass on untouched bytes. | G1-G8 cannot run. |
+| `INPUT-DATA-001` | P0 `DATA_PRODUCTION_REQUIRED` | The V2 generator and six frozen raw OSM responses are available, but the new 34-bank non-fixture V2.1 NPZ has not yet been rendered. The old `20260809T005000Z` candidate is forbidden because it contains pathless/all-zero units and failed regeneration. | Generate from the raw cache using `formal_v2/A100_RUNBOOK.md`; `inspect-data` and all 34 independent `verify-data` roles pass on untouched bytes at zero tolerance. | G1-G8 cannot run. |
 | `INPUT-RT-001` | P0 `EXTERNAL_DATA_REQUIRED` | Independent regeneration and RT calibration fit/validation manifests, shared reference evidence and raw rows. | `run-rt-calibration` plus G1 four-statistic/noise-floor checks pass. | C11 and qualification remain blocked. |
 | `MODEL-C1-001` | P0 `COMPUTE_REQUIRED` | The shipped, licensed PMNet adapter is the second C1-eligible model, but its formal non-fixture checkpoint and authenticated six-condition execution are not yet available. | External-baseline V3 gate passes in every city for both shipped C1-eligible models, Wi-GATr and PMNet. | C1 remains blocked until both formal executions pass. |
-| `INPUT-G8-001` | P0 `EXTERNAL_DATA_REQUIRED` | Licensed independent-engine scenes or controlled real paired intervention with registered active/null units. | G8 V4 gate re-probes the runtime and passes cluster intervals. | C12 and external-validity wording remain blocked. |
+| `INPUT-G8-001` | P0 `EXTERNAL_DATA_REQUIRED` | Licensed independent-engine scenes or controlled real paired intervention with registered active/null units. The shipped Sionna G8 adapter is deliberately rejected when the primary data also declare Sionna. | G8 V4 gate re-probes an actually independent runtime and passes cluster intervals. | C12 and external-validity wording remain blocked; same-Sionna evidence cannot close it. |
 | `RESOURCE-001` | P0 `LICENSE_OR_ACCESS_REQUIRED` | Four nonredistributable papers must be fetched locally from registered URLs; all selected assets/checkpoints need permission records. | `fetch_waibu_resources` then `verify-waibu-resources`; compute-plan license acknowledgements match. | G0/full preflight remains blocked. |
-| `COMPUTE-001` | P0 `COMPUTE_REQUIRED` | Linux CUDA host, required Wi-GATr/Sionna runtimes, disk estimate, wall-time and authorized GPU-hour budget. | Formal compute-plan preflight passes actual GPU memory, driver, disk and budget checks. | Formal training is not authorized. |
+| `COMPUTE-001` | P0 `COMPUTE_REQUIRED` | A prior handoff verified 2 x A100-SXM4-40GB with PyTorch 2.5.1+cu121, but the final branch must be installed on the destination host and supplied a reviewed disk, wall-time and GPU-hour budget. | Follow `formal_v2/A100_RUNBOOK.md`; formal compute-plan preflight passes actual GPU memory, driver, disk and budget checks. | Formal training is not authorized until destination-host preflight passes. |
 | `RESULTS-001` | P0 `EXTERNAL_DATA_REQUIRED` | Authenticated non-fixture Response qualification, four-arm, two-city, controls and external runs. | Same-run gate chain and claim assembly pass; per-unit rows populate planned cells. | Scientific claims and submission-ready result panels remain absent. |
 
 ## Closed author protocol decisions

@@ -263,6 +263,7 @@ def _semantic_status(name, payload):
             return "FAIL"
     elif name == "G8":
         null = payload.get("null_equivalence")
+        execution_mode = payload.get("execution_mode")
         if (
             not isinstance(null, dict)
             or null.get("passed") is not True
@@ -270,7 +271,6 @@ def _semantic_status(name, payload):
             or int(payload.get("active_direction_cluster_count", 0)) < 2
             or float(payload.get("active_direction_agreement_ci95_low", -1.0))
             < float(payload.get("minimum_active_direction_agreement", 1.0))
-            or not _lower_sha256(payload.get("adapter_source_sha256"))
             or payload.get("rt_scene_manifest_path") != "rt_scene_manifest.json"
             or not _lower_sha256(payload.get("rt_scene_manifest_sha256"))
             or payload.get("external_csi_path") != "external_csi.npz"
@@ -278,18 +278,45 @@ def _semantic_status(name, payload):
             or payload.get("external_csi_contract")
             != "outer-recomputed-direction-and-effect-from-raw-csi-v1"
             or int(payload.get("external_scene_count", 0)) < 1
-            or payload.get("external_runtime_provenance_path")
-            != "runtime_provenance.json"
-            or not _lower_sha256(
-                payload.get("external_runtime_provenance_sha256")
-            )
-            or not _lower_sha256(
-                payload.get("external_runtime_environment_sha256")
-            )
-            or not isinstance(payload.get("external_runtime_provenance"), dict)
-            or payload["external_runtime_provenance"].get("environment_sha256")
-            != payload.get("external_runtime_environment_sha256")
         ):
+            return "FAIL"
+        if execution_mode == "authenticated_sionna_adapter":
+            if (
+                payload.get("engine_family") != "sionna"
+                or not _lower_sha256(payload.get("adapter_source_sha256"))
+                or payload.get("external_engine_config_path") is not None
+                or payload.get("external_engine_config_sha256") is not None
+                or payload.get("external_runtime_provenance_path")
+                != "runtime_provenance.json"
+                or not _lower_sha256(
+                    payload.get("external_runtime_provenance_sha256")
+                )
+                or not _lower_sha256(
+                    payload.get("external_runtime_environment_sha256")
+                )
+                or not isinstance(payload.get("external_runtime_provenance"), dict)
+                or payload["external_runtime_provenance"].get("environment_sha256")
+                != payload.get("external_runtime_environment_sha256")
+            ):
+                return "FAIL"
+        elif execution_mode == "authenticated_precomputed_rt_archive":
+            if (
+                not isinstance(payload.get("engine_family"), str)
+                or not payload["engine_family"].strip()
+                or payload.get("adapter_source_path") is not None
+                or payload.get("adapter_source_sha256") is not None
+                or payload.get("external_engine_config_path")
+                != "external_engine_config.bin"
+                or not _lower_sha256(
+                    payload.get("external_engine_config_sha256")
+                )
+                or payload.get("external_runtime_provenance_path") is not None
+                or payload.get("external_runtime_provenance_sha256") is not None
+                or payload.get("external_runtime_environment_sha256") is not None
+                or payload.get("external_runtime_provenance") is not None
+            ):
+                return "FAIL"
+        else:
             return "FAIL"
     elif name == "external_baselines":
         eligible = payload.get("c1_eligible_models")
@@ -742,19 +769,26 @@ def _validate_stage_bound_input(
     elif stage_name == "G8":
         from .formal_external_validity import (
             _cluster_direction_interval,
+            _execution_mode,
             _expected_external_registry,
             _load_external_csi,
+            _load_rt_scene_manifest,
             _paired_bank_equivalence,
             _rows_from_external_csi,
             _validate_manifest,
             _verify_adapter_source,
+            require_independent_primary_engine,
         )
-        from .external_adapters.sionna_external_validity import load_scene_manifest
 
         _validate_manifest(manifest)
-        _verify_adapter_source(manifest)
         if dataset is None:
             raise RuntimeError("G8 reauthentication requires the formal dataset")
+        require_independent_primary_engine(dataset, manifest)
+        execution_mode = _execution_mode(manifest)
+        if execution_mode == "authenticated_sionna_adapter":
+            _verify_adapter_source(manifest)
+        if payload.get("execution_mode") != execution_mode:
+            raise RuntimeError("G8 gate execution mode differs from its input manifest")
         scene_relative = payload.get("rt_scene_manifest_path")
         scene_digest = payload.get("rt_scene_manifest_sha256")
         if scene_relative != "rt_scene_manifest.json" or not _lower_sha256(
@@ -773,7 +807,27 @@ def _validate_stage_bound_input(
             raise RuntimeError(
                 "G8 RT scene manifest is absent from or mismatched with the stage manifest"
             )
-        scene_manifest = load_scene_manifest(scene_path, dataset)
+        scene_manifest = _load_rt_scene_manifest(
+            scene_path,
+            dataset,
+            manifest if execution_mode == "authenticated_precomputed_rt_archive" else None,
+        )
+        if execution_mode == "authenticated_precomputed_rt_archive":
+            for entry in scene_manifest["worlds"]:
+                source_relative = entry["source_asset_path"]
+                source_digest = entry["source_asset_sha256"]
+                source_matches = [
+                    row
+                    for row in files
+                    if isinstance(row, dict) and row.get("path") == source_relative
+                ] if isinstance(files, list) else []
+                if (
+                    len(source_matches) != 1
+                    or source_matches[0].get("sha256") != source_digest
+                ):
+                    raise RuntimeError(
+                        "G8 source asset is absent from or mismatched with the stage manifest"
+                    )
         raw_relative = payload.get("external_csi_path")
         raw_digest = payload.get("external_csi_sha256")
         if raw_relative != "external_csi.npz" or not _lower_sha256(raw_digest):
@@ -792,6 +846,40 @@ def _validate_stage_bound_input(
             or raw_matches[0].get("sha256") != raw_digest
         ):
             raise RuntimeError("G8 raw external CSI is not stage-authenticated")
+        if execution_mode == "authenticated_precomputed_rt_archive" and (
+            manifest.get("external_csi_sha256") != raw_digest
+            or manifest.get("rt_scene_manifest_sha256") != scene_digest
+        ):
+            raise RuntimeError("G8 archive hashes differ from the stage-authenticated inputs")
+        if execution_mode == "authenticated_precomputed_rt_archive":
+            config_relative = payload.get("external_engine_config_path")
+            config_digest = payload.get("external_engine_config_sha256")
+            if (
+                config_relative != "external_engine_config.bin"
+                or not _lower_sha256(config_digest)
+                or manifest.get("engine_config_sha256") != config_digest
+                or scene_manifest.get("configuration_sha256") != config_digest
+            ):
+                raise RuntimeError("G8 archive has no authenticated engine configuration")
+            config_path = gate_path.parent / config_relative
+            config_matches = [
+                row
+                for row in files
+                if isinstance(row, dict) and row.get("path") == config_relative
+            ] if isinstance(files, list) else []
+            if (
+                config_path.is_symlink()
+                or not config_path.is_file()
+                or sha256_file(config_path) != config_digest
+                or len(config_matches) != 1
+                or config_matches[0].get("sha256") != config_digest
+            ):
+                raise RuntimeError("G8 engine configuration is not stage-authenticated")
+        elif (
+            payload.get("external_engine_config_path") is not None
+            or payload.get("external_engine_config_sha256") is not None
+        ):
+            raise RuntimeError("G8 Sionna adapter cannot claim an archive engine configuration")
         external_csi = _load_external_csi(raw_path, dataset)
         registry = _expected_external_registry(
             config, dataset, gate_path.parent.parent, scene_manifest
@@ -816,48 +904,61 @@ def _validate_stage_bound_input(
             or payload.get("external_scene_count") != external_csi.shape[0]
         ):
             raise RuntimeError("G8 gate statistics differ from raw-CSI outer recomputation")
-        runtime_relative = payload.get("external_runtime_provenance_path")
-        runtime_digest = payload.get("external_runtime_provenance_sha256")
-        if runtime_relative != "runtime_provenance.json" or not _lower_sha256(
-            runtime_digest
-        ):
-            raise RuntimeError("G8 gate has no authenticated runtime provenance")
-        runtime_path = gate_path.parent / runtime_relative
-        runtime_matches = [
-            row
-            for row in files
-            if isinstance(row, dict) and row.get("path") == runtime_relative
-        ] if isinstance(files, list) else []
-        if (
-            runtime_path.is_symlink()
-            or not runtime_path.is_file()
-            or sha256_file(runtime_path) != runtime_digest
-            or len(runtime_matches) != 1
-            or runtime_matches[0].get("sha256") != runtime_digest
-        ):
-            raise RuntimeError("G8 runtime provenance is not stage-authenticated")
-        from .formal_external_runtime import probe_external_runtime
-        from .formal_external_validity import _authenticate_sionna_runtime
+        if execution_mode == "authenticated_sionna_adapter":
+            runtime_relative = payload.get("external_runtime_provenance_path")
+            runtime_digest = payload.get("external_runtime_provenance_sha256")
+            if runtime_relative != "runtime_provenance.json" or not _lower_sha256(
+                runtime_digest
+            ):
+                raise RuntimeError("G8 gate has no authenticated runtime provenance")
+            runtime_path = gate_path.parent / runtime_relative
+            runtime_matches = [
+                row
+                for row in files
+                if isinstance(row, dict) and row.get("path") == runtime_relative
+            ] if isinstance(files, list) else []
+            if (
+                runtime_path.is_symlink()
+                or not runtime_path.is_file()
+                or sha256_file(runtime_path) != runtime_digest
+                or len(runtime_matches) != 1
+                or runtime_matches[0].get("sha256") != runtime_digest
+            ):
+                raise RuntimeError("G8 runtime provenance is not stage-authenticated")
+            from .formal_external_runtime import probe_external_runtime
+            from .formal_external_validity import _authenticate_sionna_runtime
 
-        project_root = Path(__file__).resolve().parents[1]
-        executable = manifest["command"][0].replace(
-            "{project_root}", str(project_root)
-        )
-        independently_probed = probe_external_runtime(
-            executable,
-            "sionna",
-            project_root,
-            require_execution_ready=True,
-        )
-        _, runtime_record = _authenticate_sionna_runtime(
-            [executable], gate_path.parent, independently_probed
-        )
-        if (
-            payload.get("external_runtime_provenance") != runtime_record
-            or payload.get("external_runtime_environment_sha256")
-            != runtime_record["environment_sha256"]
+            project_root = Path(__file__).resolve().parents[1]
+            executable = manifest["command"][0].replace(
+                "{project_root}", str(project_root)
+            )
+            independently_probed = probe_external_runtime(
+                executable,
+                "sionna",
+                project_root,
+                require_execution_ready=True,
+            )
+            _, runtime_record = _authenticate_sionna_runtime(
+                [executable], gate_path.parent, independently_probed
+            )
+            if (
+                payload.get("external_runtime_provenance") != runtime_record
+                or payload.get("external_runtime_environment_sha256")
+                != runtime_record["environment_sha256"]
+            ):
+                raise RuntimeError("G8 gate runtime fields differ from the probed interpreter")
+        elif any(
+            payload.get(key) is not None
+            for key in (
+                "adapter_source_path",
+                "adapter_source_sha256",
+                "external_runtime_provenance_path",
+                "external_runtime_provenance_sha256",
+                "external_runtime_environment_sha256",
+                "external_runtime_provenance",
+            )
         ):
-            raise RuntimeError("G8 gate runtime fields differ from the probed interpreter")
+            raise RuntimeError("G8 precomputed archive cannot claim adapter runtime provenance")
     elif stage_name == "scene_id_mechanism":
         from .formal_scene_id import _validate_manifest, _verify_adapter_files
 
