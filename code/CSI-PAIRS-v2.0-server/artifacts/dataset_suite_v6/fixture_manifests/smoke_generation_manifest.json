@@ -1,0 +1,46 @@
+{
+  "schema_version": "csi-pairs-generated-supplement-manifest-v1",
+  "generated_at": "2026-08-09T00:17:30+08:00",
+  "dataset": {
+    "path": "csi_pairs_v2_1_v6_smoke.npz",
+    "bytes": 530064,
+    "sha256": "636c172c781ed6eda0ac99b8b94842ef91847651a7dad7775a084c69e2b0b653",
+    "schema_version": "csi-pairs-formal-dataset-v2.1-v6",
+    "dataset_id": "NONSCIENTIFIC-CODE-FIXTURE",
+    "fixture": true,
+    "scientific_use": "FORBIDDEN"
+  },
+  "generation": {
+    "working_directory": "code/CSI-PAIRS-v2.0-server",
+    "command": [
+      "python3",
+      "-m",
+      "formal_v2.formal_cli",
+      "make-fixture",
+      "--output",
+      "csi_pairs_v2_1_v6_smoke.npz",
+      "--seed",
+      "20270805",
+      "--source-banks-per-role",
+      "2"
+    ],
+    "seed": 20270805,
+    "source_banks_per_role": 2,
+    "generator_sha256": "76f3d5d916912067776be9baa19aca7c13437f914602402cbc8d285511d6abd1"
+  },
+  "authority_inputs": {
+    "protocol_sha256": "5866888fac736bcb812ebe3630b38095ad4989979a9fdf68cabcdbfe286f737e",
+    "paper_sha256": "9a0d4aeb3655d16788c9d234cc454c8f6d22b45026de93877f96206e31379183",
+    "data_contract_sha256": "1b5c08f230d9bbfa742ad11b60f1823f14cf464d96ed99a9b53434c458422940",
+    "smoke_config_sha256": "13cccc6e6102fb1b8039a74d4c6bc9be2be61da3cb9e4ebe58ff1b91edbff1fc"
+  },
+  "validation": {
+    "contract_report": "inspection/data_contract.json",
+    "contract_status": "PASS",
+    "deterministic_replay_sha256": "636c172c781ed6eda0ac99b8b94842ef91847651a7dad7775a084c69e2b0b653",
+    "deterministic_replay_byte_identical": true,
+    "authenticated_root_manifest": "NOT_PRODUCED",
+    "authenticated_root_manifest_reason": "The host lacks the locked CPython 3.12 installer report required for formal evidence signing."
+  },
+  "scientific_limit": "This fixture is for software and artifact inspection only and cannot populate paper results or close formal experiment blockers."
+}

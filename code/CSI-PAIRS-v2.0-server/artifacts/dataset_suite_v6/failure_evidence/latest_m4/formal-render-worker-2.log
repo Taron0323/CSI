@@ -1,0 +1,38 @@
+{"elapsed_seconds":807.449,"event":"formal_candidate_bank_complete","executor_index":2,"executor_kind":"m4-cpu-llvm","scene_index":10}
+{"elapsed_seconds":1320.925,"event":"formal_candidate_bank_complete","executor_index":2,"executor_kind":"m4-cpu-llvm","scene_index":11}
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 2120, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 2103, in main
+    output = render_shard(
+             ^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 953, in render_shard
+    rendered = render_bank(bank_record, root, config, scene_index)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 1215, in render_bank
+    path_ids[world_index], path_power[world_index], path_surfaces[world_index] = _extract_paths(
+                                                                                 ^^^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/worktrees/CSI-PAIRS-v2.1-server-m4/CSI-PAIRS-v2.1-server/formal_v2/sionna_osm_candidate.py", line 1605, in _extract_paths
+    raise RuntimeError("stable Sionna path identifier collision")
+RuntimeError: stable Sionna path identifier collision
+     1421.24 real      1168.06 user        16.28 sys
+          1376010240  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              193011  page reclaims
+                   5  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 817  voluntary context switches
+             2935734  involuntary context switches
+       9941141268657  instructions retired
+       3182830820595  cycles elapsed
+          1311819432  peak memory footprint

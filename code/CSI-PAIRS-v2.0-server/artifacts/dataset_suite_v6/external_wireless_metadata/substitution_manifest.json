@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-09",
+  "original_dataset": {
+    "name": "Wireless World Model (WWM)",
+    "original_source_acquired": false,
+    "reason": "The selected Zenodo train, test, point-cloud, and checkpoint records are Restricted and the logged-in account has no shared access.",
+    "records": [
+      "https://zenodo.org/records/18781953",
+      "https://zenodo.org/records/18785355",
+      "https://zenodo.org/records/18919467",
+      "https://zenodo.org/records/18889383"
+    ]
+  },
+  "public_substitute": {
+    "name": "DeepSense 6G selected multimodal scenarios",
+    "public_substitute_complete": true,
+    "official_site": "https://www.deepsense6g.net/",
+    "combined_bytes": 6073581606,
+    "combined_samples": 8024,
+    "selection_reason": "Two public real-world locations retain shared RGB, GPS, and 64-dimensional 60 GHz received-power modalities while Scenario 33 adds 3D LiDAR and FMCW radar. The pair stays below the 10 GB substitute budget.",
+    "items": [
+      {
+        "filename": "scenario8.zip",
+        "source_url": "https://www.dropbox.com/s/2bnd51cwatmnnzo/scenario8.zip?dl=1",
+        "location": "McAllister Ave, Tempe, Arizona",
+        "samples": 4043,
+        "modalities": [
+          "RGB",
+          "GPS",
+          "64-dimensional 60 GHz received power",
+          "2D LiDAR"
+        ],
+        "bytes": 910993649,
+        "zip_members": 28738,
+        "zip_crc_ok": true,
+        "sha256": "86e3eec84efd1ed924da7914c43d2df4e5ab935327024f38eab0d9090126851f"
+      },
+      {
+        "filename": "scenario33.zip",
+        "source_url": "https://www.dropbox.com/s/ib9uwe57p6e9yzm/scenario33.zip?dl=1",
+        "location": "College Ave, Tempe, Arizona",
+        "samples": 3981,
+        "modalities": [
+          "RGB",
+          "GPS",
+          "64-dimensional 60 GHz received power",
+          "3D LiDAR",
+          "FMCW radar"
+        ],
+        "bytes": 5162587957,
+        "zip_members": 19915,
+        "zip_crc_ok": true,
+        "sha256": "ebd9d1fd996c279cc3578f08e26d8256e005b8cee66d306bcdb764ea5b26cb8b"
+      }
+    ]
+  },
+  "equivalence_boundary": {
+    "is_original_wwm_data": false,
+    "does_not_include": [
+      "WWM test_gen_city.zip",
+      "WWM train or test CSI archives",
+      "WWM 3D city point-cloud archives",
+      "WWM checkpoints"
+    ],
+    "appropriate_uses": [
+      "multimodal beam-prediction baselines",
+      "sensor-aided wireless representation learning",
+      "data-adapter development",
+      "conditional cross-location evaluation on shared modalities"
+    ]
+  },
+  "license_note": "The files come from the official public DeepSense download links. Confirm the current DeepSense citation and license terms before redistribution or publication."
+}

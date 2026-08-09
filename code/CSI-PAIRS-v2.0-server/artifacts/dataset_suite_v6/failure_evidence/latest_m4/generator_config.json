@@ -1,0 +1,104 @@
+{
+  "cities": [
+    {
+      "bank_count": 7,
+      "center_lat": 41.882,
+      "center_lon": -87.629,
+      "city_id": "source-chicago",
+      "query_delta_lat": 0.0105,
+      "query_delta_lon": 0.014,
+      "split_group": "source"
+    },
+    {
+      "bank_count": 7,
+      "center_lat": 30.2675,
+      "center_lon": -97.7425,
+      "city_id": "source-austin",
+      "query_delta_lat": 0.0105,
+      "query_delta_lon": 0.0125,
+      "split_group": "source"
+    },
+    {
+      "bank_count": 8,
+      "center_lat": 47.607,
+      "center_lon": -122.333,
+      "city_id": "target-seattle",
+      "query_delta_lat": 0.0105,
+      "query_delta_lon": 0.0155,
+      "split_group": "target"
+    },
+    {
+      "bank_count": 8,
+      "center_lat": 42.3595,
+      "center_lon": -71.0595,
+      "city_id": "target-boston",
+      "query_delta_lat": 0.0105,
+      "query_delta_lon": 0.0145,
+      "split_group": "target"
+    },
+    {
+      "bank_count": 2,
+      "center_lat": 39.7392,
+      "center_lon": -104.9903,
+      "city_id": "external-denver",
+      "query_delta_lat": 0.008,
+      "query_delta_lon": 0.0105,
+      "split_group": "external"
+    },
+    {
+      "bank_count": 2,
+      "center_lat": 25.775,
+      "center_lon": -80.1937,
+      "city_id": "external-miami",
+      "query_delta_lat": 0.008,
+      "query_delta_lon": 0.009,
+      "split_group": "external"
+    }
+  ],
+  "map": {
+    "candidate_grid_radius": 2,
+    "candidate_grid_spacing_m": 300.0,
+    "minimum_building_area_m2": 9.0,
+    "minimum_buildings_per_bank": 6,
+    "origin_xy_m": [
+      -128.0,
+      -128.0
+    ],
+    "resolution_m": 1.0,
+    "size": 256
+  },
+  "overpass_endpoint": "https://overpass-api.de/api/interpreter",
+  "positions_per_bank": 256,
+  "radio": {
+    "carrier_frequency_hz": 3500000000.0,
+    "max_depth": 3,
+    "max_stored_paths": 64,
+    "observation_noise_std": 1e-08,
+    "receiver_z_m": 1.5,
+    "repeats": 3,
+    "subcarrier_spacing_hz": 30000.0,
+    "subcarriers": 4,
+    "transmitter_z_m": 25.0,
+    "tx_antennas": 2
+  },
+  "schema_version": "csi-pairs-sionna-osm-candidate-config-v1",
+  "seed": 2026080901,
+  "world_bits": [
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      1,
+      1
+    ]
+  ]
+}

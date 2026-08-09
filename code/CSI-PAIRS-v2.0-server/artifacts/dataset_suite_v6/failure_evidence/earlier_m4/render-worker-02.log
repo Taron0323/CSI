@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 2003, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 1985, in main
+    output = render_shard(
+             ^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 871, in render_shard
+    rendered = render_bank(bank_record, root, config, scene_index)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 1028, in render_bank
+    candidate_positions = _receiver_candidates(bank, config, scene_index)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 1211, in _receiver_candidates
+    raise RuntimeError(
+RuntimeError: bank osm-sionna-source-chicago-bank-05 has only 199 deterministic LOS candidates

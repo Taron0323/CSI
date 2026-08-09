@@ -1,0 +1,18 @@
+[31m2026-08-09 16:53:10 WARN  [PLYMesh] "background.ply": performance warning -- this file uses the ASCII PLY format, which is slow to parse. Consider converting it to the binary PLY format.
+[0mTraceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 2021, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 2003, in main
+    output = render_shard(
+             ^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 871, in render_shard
+    rendered = render_bank(bank_record, root, config, scene_index)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 1138, in render_bank
+    _require_zero_pathless(clean, path_ids, f"bank {bank['scene_id']}")
+  File "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_DATA/code/CSI-PAIRS-v2.0-server/formal_v2/sionna_osm_candidate.py", line 1578, in _require_zero_pathless
+    raise RuntimeError(
+RuntimeError: bank osm-sionna-target-boston-bank-01 violates zero-pathless protocol: pathless=8, all_zero=8

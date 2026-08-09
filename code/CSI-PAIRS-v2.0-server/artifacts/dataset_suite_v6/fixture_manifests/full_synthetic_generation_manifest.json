@@ -1,0 +1,60 @@
+{
+  "schema_version": "csi-pairs-generated-supplement-manifest-v1",
+  "generated_at": "2026-08-09T00:27:23+08:00",
+  "dataset": {
+    "path": "csi_pairs_v2_1_v6_full_synthetic.npz",
+    "bytes": 1953634,
+    "sha256": "1b3cd310b58f788ba0bf7925277d73986c9a6553e8fccb9dd93b2d90ae662654",
+    "schema_version": "csi-pairs-formal-dataset-v2.1-v6",
+    "dataset_id": "NONSCIENTIFIC-FULL-STRUCTURAL-FIXTURE",
+    "fixture": true,
+    "scientific_use": "FORBIDDEN"
+  },
+  "generation": {
+    "command": [
+      "python3",
+      "generated_datasets/tools/generate_full_synthetic.py",
+      "--output",
+      "generated_datasets/csi_pairs_v2_1_v6_full_synthetic/csi_pairs_v2_1_v6_full_synthetic.npz"
+    ],
+    "seed": 20270805,
+    "source_banks_per_role": 2,
+    "target_city_count": 2,
+    "target_banks_per_city": 9,
+    "external_validation_banks": 4,
+    "positions_per_bank": 30,
+    "generator_sha256": "d2daf44abea68d83a0b3a7a0bf934f666886409a6c8e29b835b2555bbc30ccdf",
+    "upstream_fixture_generator_sha256": "76f3d5d916912067776be9baa19aca7c13437f914602402cbc8d285511d6abd1"
+  },
+  "authority_inputs": {
+    "protocol_sha256": "5866888fac736bcb812ebe3630b38095ad4989979a9fdf68cabcdbfe286f737e",
+    "paper_sha256": "9a0d4aeb3655d16788c9d234cc454c8f6d22b45026de93877f96206e31379183",
+    "data_contract_sha256": "1b5c08f230d9bbfa742ad11b60f1823f14cf464d96ed99a9b53434c458422940",
+    "formal_config_sha256": "4f3a0325769bd0dd05a070e5f8e9c7d8513c080baee007bba9c8092b8495f053"
+  },
+  "coverage": {
+    "scenes": 36,
+    "worlds_per_scene": 4,
+    "positions_per_scene": 30,
+    "repeats": 3,
+    "channels": 16,
+    "source_role_banks": 2,
+    "target_banks": 18,
+    "external_validation_banks": 4,
+    "target_a_unique_support_positions": 135,
+    "target_b_unique_support_positions": 135,
+    "target_a_canonical_clusters": 9,
+    "target_b_canonical_clusters": 9
+  },
+  "validation": {
+    "formal_structure_config": "code/CSI-PAIRS-v2.0-server/formal_v2/configs/formal_v2.json",
+    "contract_report": "inspection/data_contract.json",
+    "contract_status": "PASS",
+    "deterministic_replay_sha256": "1b3cd310b58f788ba0bf7925277d73986c9a6553e8fccb9dd93b2d90ae662654",
+    "deterministic_replay_byte_identical": true,
+    "server_sha256_inventory": "PASS",
+    "authenticated_root_manifest": "NOT_PRODUCED",
+    "authenticated_root_manifest_reason": "The host lacks the locked CPython 3.12 installer report required for formal evidence signing."
+  },
+  "scientific_limit": "Complete synthetic schema coverage only; not qualified RT, measured data, independent-engine evidence, or paper results."
+}

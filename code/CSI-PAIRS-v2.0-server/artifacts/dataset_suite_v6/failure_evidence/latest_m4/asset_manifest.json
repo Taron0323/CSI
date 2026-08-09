@@ -1,0 +1,1828 @@
+{
+  "attribution_path": "ATTRIBUTION.md",
+  "attribution_sha256": "18790a947887d57dd7ec10e961859adcc7977e994f92379d873750484cc1baba",
+  "banks": [
+    {
+      "bank_id": "osm-sionna-source-chicago-bank-00",
+      "bank_index_within_city": 0,
+      "bank_record_path": "banks/osm-sionna-source-chicago-bank-00/bank.json",
+      "bank_record_sha256": "0e2bdb23b5d53df5690f20a63fa233c988002c838803aca35f61c727e8f41f60",
+      "base_map_cluster_id": "osm-foundation-source-chicago-00",
+      "city_id": "source-chicago",
+      "files": [
+        {
+          "bytes": 34172,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-chicago-bank-00/bank.json",
+          "sha256": "0e2bdb23b5d53df5690f20a63fa233c988002c838803aca35f61c727e8f41f60"
+        },
+        {
+          "bytes": 64402,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-00/mesh/background.ply",
+          "sha256": "5e9fbb5a486896ae9efc379d619a5f64056a672f7df68a4ddf80aa5a51103374"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-00/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 6830,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-00/mesh/primitive-0.ply",
+          "sha256": "5a3a56d85d97d6799c36900cb1bf733a252b0771df22f23f166490a066167c52"
+        },
+        {
+          "bytes": 1784,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-00/mesh/primitive-1.ply",
+          "sha256": "05435f6d637b677cc2dfd3025e986ab38cd1324a9991dbdc79691e8da93aa470"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-00/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_encoder_train",
+      "scene_id": "osm-sionna-source-chicago-bank-00",
+      "scene_index": 0,
+      "scene_xml_path": "banks/osm-sionna-source-chicago-bank-00/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-austin-bank-00",
+      "bank_index_within_city": 0,
+      "bank_record_path": "banks/osm-sionna-source-austin-bank-00/bank.json",
+      "bank_record_sha256": "ff081be2073d775210dee7f0d7b357dd0556b7192281a8324adaabf257fdc9a5",
+      "base_map_cluster_id": "osm-foundation-source-austin-00",
+      "city_id": "source-austin",
+      "files": [
+        {
+          "bytes": 24207,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-austin-bank-00/bank.json",
+          "sha256": "ff081be2073d775210dee7f0d7b357dd0556b7192281a8324adaabf257fdc9a5"
+        },
+        {
+          "bytes": 35158,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-00/mesh/background.ply",
+          "sha256": "85b3f4b4d6b1d2ba5892917198bb2b88be732b1c0316e620afa4bcd336f7b1ba"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-00/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1176,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-00/mesh/primitive-0.ply",
+          "sha256": "ed4f661d526ebe29462868acd126ff7dbc93faaaec6c54f2716b11b33367d690"
+        },
+        {
+          "bytes": 1559,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-00/mesh/primitive-1.ply",
+          "sha256": "a445f79ff625267517a141b41df81c4499689c627a992e98d60544c068e589d4"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-00/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_encoder_train",
+      "scene_id": "osm-sionna-source-austin-bank-00",
+      "scene_index": 1,
+      "scene_xml_path": "banks/osm-sionna-source-austin-bank-00/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-chicago-bank-01",
+      "bank_index_within_city": 1,
+      "bank_record_path": "banks/osm-sionna-source-chicago-bank-01/bank.json",
+      "bank_record_sha256": "fb8b86641e28a31cbcd866a61789f488b8d44ba33efc37a7e6c0dd8d3df8e894",
+      "base_map_cluster_id": "osm-foundation-source-chicago-01",
+      "city_id": "source-chicago",
+      "files": [
+        {
+          "bytes": 38190,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-chicago-bank-01/bank.json",
+          "sha256": "fb8b86641e28a31cbcd866a61789f488b8d44ba33efc37a7e6c0dd8d3df8e894"
+        },
+        {
+          "bytes": 66694,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-01/mesh/background.ply",
+          "sha256": "47539825802263ab248fe7e21b5abb8b9521806ebd64c72663d3c79e741d8dd0"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-01/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 8530,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-01/mesh/primitive-0.ply",
+          "sha256": "fd8b622c220e6bdf30e4b496c2286602577bc10884ba61e8ca0021cf4ea479e8"
+        },
+        {
+          "bytes": 2937,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-01/mesh/primitive-1.ply",
+          "sha256": "3fd05c999b9828e1bb12c190084ba9d0b22bfddbce015b257b9ca47ce12851c7"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-01/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_method_selection",
+      "scene_id": "osm-sionna-source-chicago-bank-01",
+      "scene_index": 2,
+      "scene_xml_path": "banks/osm-sionna-source-chicago-bank-01/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-austin-bank-01",
+      "bank_index_within_city": 1,
+      "bank_record_path": "banks/osm-sionna-source-austin-bank-01/bank.json",
+      "bank_record_sha256": "50aa606b3d2ce2b8c56e6cf46db65ddbcc70b1b665c122317c6dc003cc4f7730",
+      "base_map_cluster_id": "osm-foundation-source-austin-01",
+      "city_id": "source-austin",
+      "files": [
+        {
+          "bytes": 20377,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-austin-bank-01/bank.json",
+          "sha256": "50aa606b3d2ce2b8c56e6cf46db65ddbcc70b1b665c122317c6dc003cc4f7730"
+        },
+        {
+          "bytes": 24706,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-01/mesh/background.ply",
+          "sha256": "c533fca8d0d26c8ecb6e76f840d4a28705aafd0c9b01cbcea6334ea1ca13d049"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-01/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 3809,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-01/mesh/primitive-0.ply",
+          "sha256": "92f1039d894dc49dabb5474a2fb2e7020b077f8982c7b771bacbfe59b29d3c11"
+        },
+        {
+          "bytes": 3964,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-01/mesh/primitive-1.ply",
+          "sha256": "1c62999cc45ed08aa0565c48aca23eea308b84eee78fc932785e269dcf52e9c6"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-01/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_method_selection",
+      "scene_id": "osm-sionna-source-austin-bank-01",
+      "scene_index": 3,
+      "scene_xml_path": "banks/osm-sionna-source-austin-bank-01/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-chicago-bank-02",
+      "bank_index_within_city": 2,
+      "bank_record_path": "banks/osm-sionna-source-chicago-bank-02/bank.json",
+      "bank_record_sha256": "b9fbfea2031f78e9498b31690145b084c95028dee48189537e7b280728a8d196",
+      "base_map_cluster_id": "osm-foundation-source-chicago-02",
+      "city_id": "source-chicago",
+      "files": [
+        {
+          "bytes": 27396,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-chicago-bank-02/bank.json",
+          "sha256": "b9fbfea2031f78e9498b31690145b084c95028dee48189537e7b280728a8d196"
+        },
+        {
+          "bytes": 49180,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-02/mesh/background.ply",
+          "sha256": "cef048272381eb8c584418feabcc86c8281cb4ebd26574c9c9805dd6fce7dd6b"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-02/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 2376,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-02/mesh/primitive-0.ply",
+          "sha256": "d42b3326a9ce7bc9a3c33bc8ea277c6c569e3a0cc0d89a4049d9c2cd3abd6265"
+        },
+        {
+          "bytes": 2632,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-02/mesh/primitive-1.ply",
+          "sha256": "386ac8b2ba601f15e32958d4af1fdd7b01bdc1b8cde04e9e009cdcfdbe0c3c74"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-02/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_probe_train",
+      "scene_id": "osm-sionna-source-chicago-bank-02",
+      "scene_index": 4,
+      "scene_xml_path": "banks/osm-sionna-source-chicago-bank-02/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-austin-bank-02",
+      "bank_index_within_city": 2,
+      "bank_record_path": "banks/osm-sionna-source-austin-bank-02/bank.json",
+      "bank_record_sha256": "a6c2e89cabaabfb1d295c5a317565419bca7f1019f91a6f6a26a2285740e3fbd",
+      "base_map_cluster_id": "osm-foundation-source-austin-02",
+      "city_id": "source-austin",
+      "files": [
+        {
+          "bytes": 23761,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-austin-bank-02/bank.json",
+          "sha256": "a6c2e89cabaabfb1d295c5a317565419bca7f1019f91a6f6a26a2285740e3fbd"
+        },
+        {
+          "bytes": 27817,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-02/mesh/background.ply",
+          "sha256": "ab1a2da427b3163290462ac91a70c0d71ab288ac5dfe7c6e9ef2b9f57b44b353"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-02/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 6834,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-02/mesh/primitive-0.ply",
+          "sha256": "3313882e5a2039d71359b3250616ee263edd1f71143d8595bca0efce7d1cc1f8"
+        },
+        {
+          "bytes": 2332,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-02/mesh/primitive-1.ply",
+          "sha256": "c669feca175af470a33fb0e6ef7d2b60f0f2a97b62fb3d8b30d2b897fc607990"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-02/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_probe_train",
+      "scene_id": "osm-sionna-source-austin-bank-02",
+      "scene_index": 5,
+      "scene_xml_path": "banks/osm-sionna-source-austin-bank-02/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-chicago-bank-03",
+      "bank_index_within_city": 3,
+      "bank_record_path": "banks/osm-sionna-source-chicago-bank-03/bank.json",
+      "bank_record_sha256": "9f25781e5240c8d9a516bcc97062eca78a3f1def82761fdc359657ab14986ac1",
+      "base_map_cluster_id": "osm-foundation-source-chicago-03",
+      "city_id": "source-chicago",
+      "files": [
+        {
+          "bytes": 32788,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-chicago-bank-03/bank.json",
+          "sha256": "9f25781e5240c8d9a516bcc97062eca78a3f1def82761fdc359657ab14986ac1"
+        },
+        {
+          "bytes": 61238,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-03/mesh/background.ply",
+          "sha256": "6da592ef15a124253075f22374cf276bcc296e94232463302465f5f62f8d2525"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-03/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 3240,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-03/mesh/primitive-0.ply",
+          "sha256": "77376828860fbe60b0aeaa845ffb57b6bd5051510c60746130c569c10433b0e0"
+        },
+        {
+          "bytes": 1519,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-03/mesh/primitive-1.ply",
+          "sha256": "472a451746acfd9789a5b2b7942170bdbda75abec86f06245defd2e0b4850b08"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-03/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_probe_selection",
+      "scene_id": "osm-sionna-source-chicago-bank-03",
+      "scene_index": 6,
+      "scene_xml_path": "banks/osm-sionna-source-chicago-bank-03/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-austin-bank-03",
+      "bank_index_within_city": 3,
+      "bank_record_path": "banks/osm-sionna-source-austin-bank-03/bank.json",
+      "bank_record_sha256": "bddc8dd1b05b2a3514a081f1d6e6541e1aa1a6a4b7b0789d585c4c0c3ef5fbbe",
+      "base_map_cluster_id": "osm-foundation-source-austin-03",
+      "city_id": "source-austin",
+      "files": [
+        {
+          "bytes": 47982,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-austin-bank-03/bank.json",
+          "sha256": "bddc8dd1b05b2a3514a081f1d6e6541e1aa1a6a4b7b0789d585c4c0c3ef5fbbe"
+        },
+        {
+          "bytes": 64297,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-03/mesh/background.ply",
+          "sha256": "57f02d7722b4624a8b2a9fe032fd527df471a2f15ab5fdd38783ae29531145cd"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-03/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1198,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-03/mesh/primitive-0.ply",
+          "sha256": "a1cf5ae5dabb1ad3f52fe7c126535ae99e2f7fa9ddc2083ee4c8043214688b6b"
+        },
+        {
+          "bytes": 1575,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-03/mesh/primitive-1.ply",
+          "sha256": "b8e5ef03c13961e1ca177f2a47be17ba7d960954afc8807625d7f86efaa1d1f0"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-03/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_probe_selection",
+      "scene_id": "osm-sionna-source-austin-bank-03",
+      "scene_index": 7,
+      "scene_xml_path": "banks/osm-sionna-source-austin-bank-03/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-chicago-bank-04",
+      "bank_index_within_city": 4,
+      "bank_record_path": "banks/osm-sionna-source-chicago-bank-04/bank.json",
+      "bank_record_sha256": "b82087f323b5cc782b42953a2697da394ebbd2d38c4371860c6b03718cdba177",
+      "base_map_cluster_id": "osm-foundation-source-chicago-04",
+      "city_id": "source-chicago",
+      "files": [
+        {
+          "bytes": 24674,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-chicago-bank-04/bank.json",
+          "sha256": "b82087f323b5cc782b42953a2697da394ebbd2d38c4371860c6b03718cdba177"
+        },
+        {
+          "bytes": 39414,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-04/mesh/background.ply",
+          "sha256": "a4e1283096f24589fda57d3b00855aee7e557a2d7bb3a4ebec1c5cb2f99d74b3"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-04/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 10683,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-04/mesh/primitive-0.ply",
+          "sha256": "f97048b111f13934b3170dc12235b86b27ef73cdcb88e0bf6371d347b6136dee"
+        },
+        {
+          "bytes": 4565,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-04/mesh/primitive-1.ply",
+          "sha256": "7490e1552214bb256e6f240e3b2a202b7cfee9b0afc54ff8d15f783573ab865a"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-04/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_calibration_fit",
+      "scene_id": "osm-sionna-source-chicago-bank-04",
+      "scene_index": 8,
+      "scene_xml_path": "banks/osm-sionna-source-chicago-bank-04/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-austin-bank-04",
+      "bank_index_within_city": 4,
+      "bank_record_path": "banks/osm-sionna-source-austin-bank-04/bank.json",
+      "bank_record_sha256": "7ccfbf62762cc0ed71322af5a08db67e951cf29e3ba19d1a8d89d1cb07679ae3",
+      "base_map_cluster_id": "osm-foundation-source-austin-04",
+      "city_id": "source-austin",
+      "files": [
+        {
+          "bytes": 19083,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-austin-bank-04/bank.json",
+          "sha256": "7ccfbf62762cc0ed71322af5a08db67e951cf29e3ba19d1a8d89d1cb07679ae3"
+        },
+        {
+          "bytes": 19475,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-04/mesh/background.ply",
+          "sha256": "560106ec8bbf12ae214e631cfec9d6a8dd8aa202f4469258767dad6b547fb127"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-04/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 3984,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-04/mesh/primitive-0.ply",
+          "sha256": "9d4f6e3b42e2caf5929f8375fa44bfcd0b0fa43818ee8a6117a4aea249e8adcb"
+        },
+        {
+          "bytes": 5135,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-04/mesh/primitive-1.ply",
+          "sha256": "db6253ad10212a018bb9bfea3b3c7e4b38652eef563b6739850dc1daff552f76"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-04/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_calibration_fit",
+      "scene_id": "osm-sionna-source-austin-bank-04",
+      "scene_index": 9,
+      "scene_xml_path": "banks/osm-sionna-source-austin-bank-04/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-chicago-bank-05",
+      "bank_index_within_city": 5,
+      "bank_record_path": "banks/osm-sionna-source-chicago-bank-05/bank.json",
+      "bank_record_sha256": "9f4f6dcb087a737d569200a6363b7c9ad6b0be14c65b05d07e47be99ed7723f4",
+      "base_map_cluster_id": "osm-foundation-source-chicago-05",
+      "city_id": "source-chicago",
+      "files": [
+        {
+          "bytes": 38429,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-chicago-bank-05/bank.json",
+          "sha256": "9f4f6dcb087a737d569200a6363b7c9ad6b0be14c65b05d07e47be99ed7723f4"
+        },
+        {
+          "bytes": 58187,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-05/mesh/background.ply",
+          "sha256": "faeb70d57c5c0134ea1e55112440ef863ed95815b8f2bdf6e0d791e70da0652e"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-05/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 3941,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-05/mesh/primitive-0.ply",
+          "sha256": "225bae571453763f71d4d2d6ed1a146fb354c04a11aefdb1ea404d817bee2bcd"
+        },
+        {
+          "bytes": 1515,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-05/mesh/primitive-1.ply",
+          "sha256": "eeb435b87ed6f59647a6085a4240b65d10d03eb821fda3cc559b95cdbac586fd"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-05/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_calibration_selection",
+      "scene_id": "osm-sionna-source-chicago-bank-05",
+      "scene_index": 10,
+      "scene_xml_path": "banks/osm-sionna-source-chicago-bank-05/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-austin-bank-05",
+      "bank_index_within_city": 5,
+      "bank_record_path": "banks/osm-sionna-source-austin-bank-05/bank.json",
+      "bank_record_sha256": "8128a7cd8ea5cb5b1aff0e4c26735673609791ab80628f5b26d2c64629572186",
+      "base_map_cluster_id": "osm-foundation-source-austin-05",
+      "city_id": "source-austin",
+      "files": [
+        {
+          "bytes": 17543,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-austin-bank-05/bank.json",
+          "sha256": "8128a7cd8ea5cb5b1aff0e4c26735673609791ab80628f5b26d2c64629572186"
+        },
+        {
+          "bytes": 25545,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-05/mesh/background.ply",
+          "sha256": "be65d24692001f354c4ff4793ca6bf42b2f8d2c63577194f6f42335e7b0ddccf"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-05/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 4845,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-05/mesh/primitive-0.ply",
+          "sha256": "27888e90191f311b32a899269621d4b23f9b1a31e868ae302e35a17e5c93383d"
+        },
+        {
+          "bytes": 1024,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-05/mesh/primitive-1.ply",
+          "sha256": "311a6be1bf0e16749139eea58535b61e0da90b5dc750351264618c2b7a1ccb1b"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-05/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_calibration_selection",
+      "scene_id": "osm-sionna-source-austin-bank-05",
+      "scene_index": 11,
+      "scene_xml_path": "banks/osm-sionna-source-austin-bank-05/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-chicago-bank-06",
+      "bank_index_within_city": 6,
+      "bank_record_path": "banks/osm-sionna-source-chicago-bank-06/bank.json",
+      "bank_record_sha256": "1f66eae9346df1e84e9b5101997ae95f8a39cf325f81d9521a53bcd776c5a906",
+      "base_map_cluster_id": "osm-foundation-source-chicago-06",
+      "city_id": "source-chicago",
+      "files": [
+        {
+          "bytes": 30608,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-chicago-bank-06/bank.json",
+          "sha256": "1f66eae9346df1e84e9b5101997ae95f8a39cf325f81d9521a53bcd776c5a906"
+        },
+        {
+          "bytes": 46281,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-06/mesh/background.ply",
+          "sha256": "17445198964a77e193149d939b17a186cb7a83fe8b722e3d1e773c14120ae34f"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-06/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 8878,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-06/mesh/primitive-0.ply",
+          "sha256": "7b0ec50a6ed7dccdb1b67f851f1dda3a1ef4616a74492375616f8cecf71d38da"
+        },
+        {
+          "bytes": 6911,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-06/mesh/primitive-1.ply",
+          "sha256": "e9ebf4f70a9b4c6a03f4dca488f528fb292930dfc5b2f20df13996f509abb635"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-chicago-bank-06/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_final_unseen_bank",
+      "scene_id": "osm-sionna-source-chicago-bank-06",
+      "scene_index": 12,
+      "scene_xml_path": "banks/osm-sionna-source-chicago-bank-06/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-source-austin-bank-06",
+      "bank_index_within_city": 6,
+      "bank_record_path": "banks/osm-sionna-source-austin-bank-06/bank.json",
+      "bank_record_sha256": "7f12eda93b13c99d6c8f223e7e9f565af82f7d4844ff79d7ca8235e2140447f8",
+      "base_map_cluster_id": "osm-foundation-source-austin-06",
+      "city_id": "source-austin",
+      "files": [
+        {
+          "bytes": 35611,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-source-austin-bank-06/bank.json",
+          "sha256": "7f12eda93b13c99d6c8f223e7e9f565af82f7d4844ff79d7ca8235e2140447f8"
+        },
+        {
+          "bytes": 61192,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-06/mesh/background.ply",
+          "sha256": "f2cd5c0a06fb0686e8f11d088186181f9bcc86a601429001636a286750b59ad2"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-06/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1249,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-06/mesh/primitive-0.ply",
+          "sha256": "5c0eace8bddc6ae20f5ba588d2c3dd39a62704e4f7c746373109ba8df7c511ea"
+        },
+        {
+          "bytes": 1529,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-06/mesh/primitive-1.ply",
+          "sha256": "969cd511039d74e27ffc7bb8c2b24d2bed3860322d771e11e49a0dbe4863cd12"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-source-austin-bank-06/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "source_final_unseen_bank",
+      "scene_id": "osm-sionna-source-austin-bank-06",
+      "scene_index": 13,
+      "scene_xml_path": "banks/osm-sionna-source-austin-bank-06/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-00",
+      "bank_index_within_city": 0,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-00/bank.json",
+      "bank_record_sha256": "a02f9caeda6cf503639a8eae88c2429a9cf896bebe8b6490072c1e7bd7a52481",
+      "base_map_cluster_id": "osm-foundation-target-seattle-00",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 27727,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-00/bank.json",
+          "sha256": "a02f9caeda6cf503639a8eae88c2429a9cf896bebe8b6490072c1e7bd7a52481"
+        },
+        {
+          "bytes": 41857,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-00/mesh/background.ply",
+          "sha256": "a5ff05913d3ea13f3e23290413161c9045820a238b0c93c463c69b06c18d3634"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-00/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 4186,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-00/mesh/primitive-0.ply",
+          "sha256": "5cc46ef5418e1f4e7d862ef79ea344394ff80a861675f5dcdc1137c1d678eb60"
+        },
+        {
+          "bytes": 2738,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-00/mesh/primitive-1.ply",
+          "sha256": "6705928392495e716f6b7fe6312662b519237e05a1c6a0b06038e8c3eae40580"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-00/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-00",
+      "scene_index": 14,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-00/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-01",
+      "bank_index_within_city": 1,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-01/bank.json",
+      "bank_record_sha256": "a030e6e22f39de43b25b3c2d00fce68e72795d3c64622e9901eafc0a5ea1254d",
+      "base_map_cluster_id": "osm-foundation-target-seattle-01",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 20174,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-01/bank.json",
+          "sha256": "a030e6e22f39de43b25b3c2d00fce68e72795d3c64622e9901eafc0a5ea1254d"
+        },
+        {
+          "bytes": 28809,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-01/mesh/background.ply",
+          "sha256": "3059ce43f49ddaf79ac47d8964b88e1d665dc57fdc07eb815343a8c1e6d3695c"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-01/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1017,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-01/mesh/primitive-0.ply",
+          "sha256": "35fa248d03ccb05ff0926b608a05ed201f7c7bd747d89d49ef37ee2e0e97b206"
+        },
+        {
+          "bytes": 1240,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-01/mesh/primitive-1.ply",
+          "sha256": "fd9d817ce573bd9a9b5b0b83608f9aa8d39aebe49c7db5487ceca8463c11d09f"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-01/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-01",
+      "scene_index": 15,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-01/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-02",
+      "bank_index_within_city": 2,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-02/bank.json",
+      "bank_record_sha256": "90e4b7aa0016342771f21c7d5e210f41986f008f96cbf633f22f5182ce3ef39a",
+      "base_map_cluster_id": "osm-foundation-target-seattle-02",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 40771,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-02/bank.json",
+          "sha256": "90e4b7aa0016342771f21c7d5e210f41986f008f96cbf633f22f5182ce3ef39a"
+        },
+        {
+          "bytes": 75095,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-02/mesh/background.ply",
+          "sha256": "a00fc9f6fe828ec25e9f975f7d288f6e78990c0c592dff2a3b3ed735d98ae56c"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-02/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1248,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-02/mesh/primitive-0.ply",
+          "sha256": "10f4b4d1536334c153001c44e25fd49d6de887c53b08c2e6efc3f25c222b23da"
+        },
+        {
+          "bytes": 3960,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-02/mesh/primitive-1.ply",
+          "sha256": "0791b9cf72e2b3fed69f0aa73ebc4780c5eebfdcb50902f98ee3ffa3504de35f"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-02/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-02",
+      "scene_index": 16,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-02/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-03",
+      "bank_index_within_city": 3,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-03/bank.json",
+      "bank_record_sha256": "cf72e6087c2c3e4e8950e4ee124a28fe68db4714f40d5dd2690d8423fe5074d4",
+      "base_map_cluster_id": "osm-foundation-target-seattle-03",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 34564,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-03/bank.json",
+          "sha256": "cf72e6087c2c3e4e8950e4ee124a28fe68db4714f40d5dd2690d8423fe5074d4"
+        },
+        {
+          "bytes": 43576,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-03/mesh/background.ply",
+          "sha256": "771fd9f3b1163f3d3e7fce4ff85d7799e81847710251184b7202c48afb0b2e25"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-03/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 2046,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-03/mesh/primitive-0.ply",
+          "sha256": "c75d45d046a52f29057ed20fa0a8b26366af9be4829f3443480e4681848ef007"
+        },
+        {
+          "bytes": 3271,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-03/mesh/primitive-1.ply",
+          "sha256": "0ae087ecb3a053d16b1bbfd81c689dda2e920a25d4ff73669d7bf8c5efa2146d"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-03/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-03",
+      "scene_index": 17,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-03/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-04",
+      "bank_index_within_city": 4,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-04/bank.json",
+      "bank_record_sha256": "32368845d0e3aebef3dacd0b865686d7fffdcddc19a4fe2b4cebf307c4f470a0",
+      "base_map_cluster_id": "osm-foundation-target-seattle-04",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 16616,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-04/bank.json",
+          "sha256": "32368845d0e3aebef3dacd0b865686d7fffdcddc19a4fe2b4cebf307c4f470a0"
+        },
+        {
+          "bytes": 19903,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-04/mesh/background.ply",
+          "sha256": "bc63740704919ba6a00b72e63c6d0835fd83f7c0e344106b034cee88e63d6250"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-04/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 8249,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-04/mesh/primitive-0.ply",
+          "sha256": "4e195a1089f4a19e153da814890e93947ac4597a78ea4299427d53029f1e332e"
+        },
+        {
+          "bytes": 5413,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-04/mesh/primitive-1.ply",
+          "sha256": "01dd2c300ecea5579eb9f9f8c10f9e3d7396b38bc592b0d643252aeeb62aa502"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-04/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-04",
+      "scene_index": 18,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-04/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-05",
+      "bank_index_within_city": 5,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-05/bank.json",
+      "bank_record_sha256": "27494b500a8f97ad8c990bab77c3c19c4a032cedbc5f8ac421919a227c189d20",
+      "base_map_cluster_id": "osm-foundation-target-seattle-05",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 24181,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-05/bank.json",
+          "sha256": "27494b500a8f97ad8c990bab77c3c19c4a032cedbc5f8ac421919a227c189d20"
+        },
+        {
+          "bytes": 47004,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-05/mesh/background.ply",
+          "sha256": "1c2360371a9fea4700a52b7c739cad5b0e71a6c95dca5cc64dfdfe38fccaa077"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-05/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 6207,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-05/mesh/primitive-0.ply",
+          "sha256": "73de1385c7bff8eaac2e4784a79c423bbae4127b19b801dfd58acdb96cb1b6e3"
+        },
+        {
+          "bytes": 4171,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-05/mesh/primitive-1.ply",
+          "sha256": "e31ea47b4d39819e2dee72b2eb98d0b6e32e54100b0568bc02ffe13be54115aa"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-05/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-05",
+      "scene_index": 19,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-05/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-06",
+      "bank_index_within_city": 6,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-06/bank.json",
+      "bank_record_sha256": "2a761af8f89c48a072786d583958d122ba3965ff9753fb7054f52cff3412475d",
+      "base_map_cluster_id": "osm-foundation-target-seattle-06",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 25909,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-06/bank.json",
+          "sha256": "2a761af8f89c48a072786d583958d122ba3965ff9753fb7054f52cff3412475d"
+        },
+        {
+          "bytes": 39046,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-06/mesh/background.ply",
+          "sha256": "347f61e0c96b6e946b3d9fd5551a195efedef51923409a8a33c4529bca310270"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-06/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 25950,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-06/mesh/primitive-0.ply",
+          "sha256": "2c92e3c28cd1b79cf456ef6289a3f68fb18acafff0f5007fdb51de9f646167d9"
+        },
+        {
+          "bytes": 3657,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-06/mesh/primitive-1.ply",
+          "sha256": "bcd94cead9dc022a9076987fc72b49d2035a6f190680cca968ca0832e07f0979"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-06/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-06",
+      "scene_index": 20,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-06/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-seattle-bank-07",
+      "bank_index_within_city": 7,
+      "bank_record_path": "banks/osm-sionna-target-seattle-bank-07/bank.json",
+      "bank_record_sha256": "2d42c7125988877139ab08e8ebac31b588921da0746d5eb408278a5f5053daea",
+      "base_map_cluster_id": "osm-foundation-target-seattle-07",
+      "city_id": "target-seattle",
+      "files": [
+        {
+          "bytes": 18309,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-seattle-bank-07/bank.json",
+          "sha256": "2d42c7125988877139ab08e8ebac31b588921da0746d5eb408278a5f5053daea"
+        },
+        {
+          "bytes": 28382,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-07/mesh/background.ply",
+          "sha256": "a2e258ba859d7c2be6fdd537e45fa5cfec028302a3aae398e04ebb4008c53048"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-07/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1175,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-07/mesh/primitive-0.ply",
+          "sha256": "ee4c4843fbe33996fa9cea645911703a571ae857d47a2f611e198c055ae42885"
+        },
+        {
+          "bytes": 2120,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-07/mesh/primitive-1.ply",
+          "sha256": "6725afa7e2ae25658080e7d28b6d2bfe142d01f77b7344c72695d529d026c070"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-seattle-bank-07/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-seattle-bank-07",
+      "scene_index": 21,
+      "scene_xml_path": "banks/osm-sionna-target-seattle-bank-07/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-00",
+      "bank_index_within_city": 0,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-00/bank.json",
+      "bank_record_sha256": "72d326a39817d3729649738e8517928ddd4a52efac6bc0fa2fc90f0fdacc5177",
+      "base_map_cluster_id": "osm-foundation-target-boston-00",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 241484,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-00/bank.json",
+          "sha256": "72d326a39817d3729649738e8517928ddd4a52efac6bc0fa2fc90f0fdacc5177"
+        },
+        {
+          "bytes": 344663,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-00/mesh/background.ply",
+          "sha256": "00a43919f8d4879858ea67b276351883aff3d4f773447948bdfb3bdbbe021e7a"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-00/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1153,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-00/mesh/primitive-0.ply",
+          "sha256": "deb5b2d0e9056c88c46b1b3ad918c8c5a2433791ca32fe423d5254d8fb2319af"
+        },
+        {
+          "bytes": 2419,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-00/mesh/primitive-1.ply",
+          "sha256": "b50c84842302021e27a80c7b4fb8d7a941d647148e2b1d5e71e39b0b2416924c"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-00/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-00",
+      "scene_index": 22,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-00/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-01",
+      "bank_index_within_city": 1,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-01/bank.json",
+      "bank_record_sha256": "cc3723ee16b4089c899aaa7bdf5c619aa78e3ac9a892232778470ed265f31439",
+      "base_map_cluster_id": "osm-foundation-target-boston-01",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 243342,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-01/bank.json",
+          "sha256": "cc3723ee16b4089c899aaa7bdf5c619aa78e3ac9a892232778470ed265f31439"
+        },
+        {
+          "bytes": 405782,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-01/mesh/background.ply",
+          "sha256": "46ca6db2451c0f169d3a21eff33dc7096cbc0674fcd7067f8c7545c1572eedd3"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-01/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 10654,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-01/mesh/primitive-0.ply",
+          "sha256": "f183d706c477ef9f5a44ced628e85084e5a93dfd545d4c34b87e6c9f7eb61b31"
+        },
+        {
+          "bytes": 3008,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-01/mesh/primitive-1.ply",
+          "sha256": "fe30f1e8815bd4052ae7ad513d830f40273cc384484e9fb9a2724c1a0afa2a8f"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-01/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-01",
+      "scene_index": 23,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-01/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-02",
+      "bank_index_within_city": 2,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-02/bank.json",
+      "bank_record_sha256": "422ee2b3f2eec33bc40e21a97f8552b58a9ab06ae69eb78a889b904d8bf2a889",
+      "base_map_cluster_id": "osm-foundation-target-boston-02",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 180127,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-02/bank.json",
+          "sha256": "422ee2b3f2eec33bc40e21a97f8552b58a9ab06ae69eb78a889b904d8bf2a889"
+        },
+        {
+          "bytes": 312389,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-02/mesh/background.ply",
+          "sha256": "f50876e34bcbf89d01d7a1d4ea80edeeadb60e59a0320044f87ebd8b4e0e5297"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-02/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 2675,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-02/mesh/primitive-0.ply",
+          "sha256": "03564ba627c352b2497a1c8bfd0ca08855922f39f52fb280e7b6f0aaffbcba07"
+        },
+        {
+          "bytes": 2808,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-02/mesh/primitive-1.ply",
+          "sha256": "fc549c9a20a02ea9fcc5cd59c0db8bbf907b38979e7c59ba46121801f44e2656"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-02/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-02",
+      "scene_index": 24,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-02/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-03",
+      "bank_index_within_city": 3,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-03/bank.json",
+      "bank_record_sha256": "d65a197aedd1fa458e831a0b700ccdae2e9b261f2085fc46c16a532b89a531ce",
+      "base_map_cluster_id": "osm-foundation-target-boston-03",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 41855,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-03/bank.json",
+          "sha256": "d65a197aedd1fa458e831a0b700ccdae2e9b261f2085fc46c16a532b89a531ce"
+        },
+        {
+          "bytes": 75475,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-03/mesh/background.ply",
+          "sha256": "4ce16490bb2e83067a4a62294d7c49b2ac0e9ace565c282d644abc2f7e14c6ba"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-03/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 3017,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-03/mesh/primitive-0.ply",
+          "sha256": "be709d63b6215dd2ed48f8bd29d74ffb2a269f52876f4d48de1c054fcf2e6b39"
+        },
+        {
+          "bytes": 7527,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-03/mesh/primitive-1.ply",
+          "sha256": "3233f8ac36ecc40dabcb18329e66681161ae40a5df8ff92ff2d9dff06723426b"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-03/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-03",
+      "scene_index": 25,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-03/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-04",
+      "bank_index_within_city": 4,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-04/bank.json",
+      "bank_record_sha256": "c2c23df0d4c480f2dece5f91182b08a37951ec0b88477827cb766028c07e559c",
+      "base_map_cluster_id": "osm-foundation-target-boston-04",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 38550,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-04/bank.json",
+          "sha256": "c2c23df0d4c480f2dece5f91182b08a37951ec0b88477827cb766028c07e559c"
+        },
+        {
+          "bytes": 56654,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-04/mesh/background.ply",
+          "sha256": "8d36a48b25bb8ec043e3179a7f1712393a7ac26198d6b5e2bf146a08c18d41de"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-04/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 4185,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-04/mesh/primitive-0.ply",
+          "sha256": "9700efb329b3a983feea5257517ef368a9842dcf7d34082f679367c9ab1e6200"
+        },
+        {
+          "bytes": 3659,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-04/mesh/primitive-1.ply",
+          "sha256": "c754b40b52af61f5a7f71f55a817abe3870db3cd84c4c2d5b2f3006e8eb8f696"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-04/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-04",
+      "scene_index": 26,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-04/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-05",
+      "bank_index_within_city": 5,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-05/bank.json",
+      "bank_record_sha256": "26bc1ae00e62bdb2ceddd11847dc405df61913bdc85a11a8e272e4444c9155d3",
+      "base_map_cluster_id": "osm-foundation-target-boston-05",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 25120,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-05/bank.json",
+          "sha256": "26bc1ae00e62bdb2ceddd11847dc405df61913bdc85a11a8e272e4444c9155d3"
+        },
+        {
+          "bytes": 36470,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-05/mesh/background.ply",
+          "sha256": "3bc88a3ffc3ae90852c83e6de118a71f3d46fc4b546c01365d85a831becc045b"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-05/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 6161,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-05/mesh/primitive-0.ply",
+          "sha256": "03fb296280a9352c190e4a8f57a5b63feb73b70d49ad25abba843709f4f45113"
+        },
+        {
+          "bytes": 2063,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-05/mesh/primitive-1.ply",
+          "sha256": "dcdd27f54a635bb3b8cfb2aaa0a9daca456f8a8c0bc6a45e48470dee8590738d"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-05/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-05",
+      "scene_index": 27,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-05/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-06",
+      "bank_index_within_city": 6,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-06/bank.json",
+      "bank_record_sha256": "f6505ba02386064c6522d6237cdfecf1bef746b71487fedf4ca378b1bc28dc81",
+      "base_map_cluster_id": "osm-foundation-target-boston-06",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 54884,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-06/bank.json",
+          "sha256": "f6505ba02386064c6522d6237cdfecf1bef746b71487fedf4ca378b1bc28dc81"
+        },
+        {
+          "bytes": 71755,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-06/mesh/background.ply",
+          "sha256": "dad42b4fc18ba7a34ca2f9e841fdca1260a50d87c45fb70222828b84c87f30f0"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-06/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 5208,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-06/mesh/primitive-0.ply",
+          "sha256": "b5e93dc008c32df5fb72e2f2089a63dcc489869479a14126bc062a19a9305aaa"
+        },
+        {
+          "bytes": 6672,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-06/mesh/primitive-1.ply",
+          "sha256": "dce04918575339904b2eb62f648ec322913228c0d060020a7f4cd196f225f6dd"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-06/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-06",
+      "scene_index": 28,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-06/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-target-boston-bank-07",
+      "bank_index_within_city": 7,
+      "bank_record_path": "banks/osm-sionna-target-boston-bank-07/bank.json",
+      "bank_record_sha256": "4a742535306b9f518db9616f48e1ccb6cd0099acaeb285ab6a77198f3593858b",
+      "base_map_cluster_id": "osm-foundation-target-boston-07",
+      "city_id": "target-boston",
+      "files": [
+        {
+          "bytes": 68924,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-target-boston-bank-07/bank.json",
+          "sha256": "4a742535306b9f518db9616f48e1ccb6cd0099acaeb285ab6a77198f3593858b"
+        },
+        {
+          "bytes": 96967,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-07/mesh/background.ply",
+          "sha256": "95087da2f3469c4956b85d7c74693d6418199e9be6191fbc1706856d45d562e8"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-07/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 40978,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-07/mesh/primitive-0.ply",
+          "sha256": "fda7ad7f686ccf431cecb84ee1264b8df6daf187d3c8145535292383d6d8ae33"
+        },
+        {
+          "bytes": 1168,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-07/mesh/primitive-1.ply",
+          "sha256": "2a046da6b46afd2a2eb29c3c3e784311776b852f01e62be9656ca979f570164d"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-target-boston-bank-07/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "target",
+      "scene_id": "osm-sionna-target-boston-bank-07",
+      "scene_index": 29,
+      "scene_xml_path": "banks/osm-sionna-target-boston-bank-07/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-external-denver-bank-00",
+      "bank_index_within_city": 0,
+      "bank_record_path": "banks/osm-sionna-external-denver-bank-00/bank.json",
+      "bank_record_sha256": "3a7cb7b7f537e1ba6b78ce343d0c3925075574d9462efdd26db064ad0e01ea02",
+      "base_map_cluster_id": "osm-foundation-external-denver-00",
+      "city_id": "external-denver",
+      "files": [
+        {
+          "bytes": 58622,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-external-denver-bank-00/bank.json",
+          "sha256": "3a7cb7b7f537e1ba6b78ce343d0c3925075574d9462efdd26db064ad0e01ea02"
+        },
+        {
+          "bytes": 88195,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-00/mesh/background.ply",
+          "sha256": "bb3163c77e8f65d7a9e628118f41cb26940a8f30d7bca9608133380be21d5038"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-00/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 3336,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-00/mesh/primitive-0.ply",
+          "sha256": "46884653734b808c375c9d1756d3d0cc2bde27e2b2c6f4ece17872218f0847d8"
+        },
+        {
+          "bytes": 1496,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-00/mesh/primitive-1.ply",
+          "sha256": "55a9e185682480ed9da87c08674c9012bd1cd0cb9cf97323f1bba43a41a86975"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-00/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "external_validation",
+      "scene_id": "osm-sionna-external-denver-bank-00",
+      "scene_index": 30,
+      "scene_xml_path": "banks/osm-sionna-external-denver-bank-00/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-external-denver-bank-01",
+      "bank_index_within_city": 1,
+      "bank_record_path": "banks/osm-sionna-external-denver-bank-01/bank.json",
+      "bank_record_sha256": "be8a66935890b06382674898b679597235267db9185652282f9ee2e01763535e",
+      "base_map_cluster_id": "osm-foundation-external-denver-01",
+      "city_id": "external-denver",
+      "files": [
+        {
+          "bytes": 34732,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-external-denver-bank-01/bank.json",
+          "sha256": "be8a66935890b06382674898b679597235267db9185652282f9ee2e01763535e"
+        },
+        {
+          "bytes": 50159,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-01/mesh/background.ply",
+          "sha256": "a33d0d4097c808ea946555ae43ac2f7f11139cee5a1c5c2f51c89a0daf9d9848"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-01/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 2939,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-01/mesh/primitive-0.ply",
+          "sha256": "db4394228c753d2fd3f034f36909797de7a53a799b474c4756967ae37f54c3c5"
+        },
+        {
+          "bytes": 3811,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-01/mesh/primitive-1.ply",
+          "sha256": "8daa06e8e7b3ce381b87c76595c3d0ded0ef642b2083768b64af16afbdb64b0c"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-denver-bank-01/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "external_validation",
+      "scene_id": "osm-sionna-external-denver-bank-01",
+      "scene_index": 31,
+      "scene_xml_path": "banks/osm-sionna-external-denver-bank-01/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-external-miami-bank-00",
+      "bank_index_within_city": 0,
+      "bank_record_path": "banks/osm-sionna-external-miami-bank-00/bank.json",
+      "bank_record_sha256": "44feddd1415c6d81ecbf7d4a0ddc227f400648cccce1e2a7cadbba447efacf28",
+      "base_map_cluster_id": "osm-foundation-external-miami-00",
+      "city_id": "external-miami",
+      "files": [
+        {
+          "bytes": 27042,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-external-miami-bank-00/bank.json",
+          "sha256": "44feddd1415c6d81ecbf7d4a0ddc227f400648cccce1e2a7cadbba447efacf28"
+        },
+        {
+          "bytes": 43281,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-00/mesh/background.ply",
+          "sha256": "c05b3d82aaf967dfaabd9bcb60bd8b554ebff3e65f160babdb51d60ceeb55edf"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-00/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 1234,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-00/mesh/primitive-0.ply",
+          "sha256": "c7b408479d6eb7b81fe882e35b9c994b156817c0fdbe3d68ad4cc10087d07eda"
+        },
+        {
+          "bytes": 4283,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-00/mesh/primitive-1.ply",
+          "sha256": "3597c3d71e9e8ccf772b51b7f016d071946cef32cd34190f85a24adece836d43"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-00/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "external_validation",
+      "scene_id": "osm-sionna-external-miami-bank-00",
+      "scene_index": 32,
+      "scene_xml_path": "banks/osm-sionna-external-miami-bank-00/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    },
+    {
+      "bank_id": "osm-sionna-external-miami-bank-01",
+      "bank_index_within_city": 1,
+      "bank_record_path": "banks/osm-sionna-external-miami-bank-01/bank.json",
+      "bank_record_sha256": "15872635bbce7cce1f2cd1c9fbbeb54c40503f2b00b8a356f5eae00e70f8c8dd",
+      "base_map_cluster_id": "osm-foundation-external-miami-01",
+      "city_id": "external-miami",
+      "files": [
+        {
+          "bytes": 18256,
+          "license_id": "ODbL-1.0",
+          "path": "banks/osm-sionna-external-miami-bank-01/bank.json",
+          "sha256": "15872635bbce7cce1f2cd1c9fbbeb54c40503f2b00b8a356f5eae00e70f8c8dd"
+        },
+        {
+          "bytes": 31461,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-01/mesh/background.ply",
+          "sha256": "edffb541f5f71ce1ed4ffe4e0e4049ba3b0eb8577db53d06b95752d9c7fe0065"
+        },
+        {
+          "bytes": 236,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-01/mesh/ground.ply",
+          "sha256": "75ffe4fdda82b0e7f9a69d803050f3700227f86374cf874e097a6ec9e74ad7e1"
+        },
+        {
+          "bytes": 3077,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-01/mesh/primitive-0.ply",
+          "sha256": "efc7a38043877e5848606d2250c0cf06eb0cc69ba6ef1a258cd3005916bcf410"
+        },
+        {
+          "bytes": 2349,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-01/mesh/primitive-1.ply",
+          "sha256": "4fef5c3ecb2f092b67b2d9796d9969a47bbcd554bb2b2ee42096124a39c9c534"
+        },
+        {
+          "bytes": 1194,
+          "license_id": "ODbL-1.0-DERIVED",
+          "path": "banks/osm-sionna-external-miami-bank-01/scene.xml",
+          "sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+        }
+      ],
+      "role": "external_validation",
+      "scene_id": "osm-sionna-external-miami-bank-01",
+      "scene_index": 33,
+      "scene_xml_path": "banks/osm-sionna-external-miami-bank-01/scene.xml",
+      "scene_xml_sha256": "ebac2cbe4a2fcfbbeac8a31d1d0366a1f2f60387f5e5b5414007d1eee0b9d744"
+    }
+  ],
+  "config_path": "generator_config.json",
+  "config_sha256": "b5b4b39bd31c750c2fa41d7dcfbb380b1f018a4853890c58a1fc5c46bfe6f898",
+  "created_utc": "2026-08-09T08:10:52.089181+00:00",
+  "licenses": [
+    {
+      "attribution_url": "https://www.openstreetmap.org/copyright",
+      "license_id": "ODbL-1.0",
+      "redistribution_allowed_with_terms": true,
+      "url": "https://opendatacommons.org/licenses/odbl/1-0/"
+    },
+    {
+      "license_id": "Apache-2.0",
+      "redistribution_allowed_with_terms": true,
+      "scope": "Sionna and Sionna RT engine source",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  ],
+  "raw_sources": [
+    {
+      "bytes": 1845813,
+      "city_id": "source-chicago",
+      "license_id": "ODbL-1.0",
+      "osm_base_timestamp": "2026-08-09T00:05:21Z",
+      "overpass_endpoint": "frozen-cache-sha256:77581f127bbbccf0feb65b8bf8ad1930cd5a26077727cf0eca9991dade5078d3",
+      "overpass_query": "[out:json][timeout:120];way[\"building\"](41.8715000,-87.6430000,41.8925000,-87.6150000);out geom tags;",
+      "parsed_closed_building_way_count": 1801,
+      "path": "raw_osm/source-chicago.json",
+      "sha256": "77581f127bbbccf0feb65b8bf8ad1930cd5a26077727cf0eca9991dade5078d3"
+    },
+    {
+      "bytes": 1830388,
+      "city_id": "source-austin",
+      "license_id": "ODbL-1.0",
+      "osm_base_timestamp": "2026-08-09T00:06:21Z",
+      "overpass_endpoint": "frozen-cache-sha256:25d12cdaf89a899a7d918fa81365b7b23f39b85bc11d15105dd933844e750697",
+      "overpass_query": "[out:json][timeout:120];way[\"building\"](30.2570000,-97.7550000,30.2780000,-97.7300000);out geom tags;",
+      "parsed_closed_building_way_count": 2294,
+      "path": "raw_osm/source-austin.json",
+      "sha256": "25d12cdaf89a899a7d918fa81365b7b23f39b85bc11d15105dd933844e750697"
+    },
+    {
+      "bytes": 1706281,
+      "city_id": "target-seattle",
+      "license_id": "ODbL-1.0",
+      "osm_base_timestamp": "2026-07-02T16:51:45Z",
+      "overpass_endpoint": "frozen-cache-sha256:f38a158db45033e2794ec69255d135778f6b3d5e9e4056495b782efd515e8f5e",
+      "overpass_query": "[out:json][timeout:120];way[\"building\"](47.5965000,-122.3485000,47.6175000,-122.3175000);out geom tags;",
+      "parsed_closed_building_way_count": 1573,
+      "path": "raw_osm/target-seattle.json",
+      "sha256": "f38a158db45033e2794ec69255d135778f6b3d5e9e4056495b782efd515e8f5e"
+    },
+    {
+      "bytes": 3121247,
+      "city_id": "target-boston",
+      "license_id": "ODbL-1.0",
+      "osm_base_timestamp": "2026-08-09T00:11:18Z",
+      "overpass_endpoint": "frozen-cache-sha256:ab86ddad77942f13a9089d0c6f70d6dc2d23338013e997d4ff57244ab7971f8e",
+      "overpass_query": "[out:json][timeout:120];way[\"building\"](42.3490000,-71.0740000,42.3700000,-71.0450000);out geom tags;",
+      "parsed_closed_building_way_count": 3858,
+      "path": "raw_osm/target-boston.json",
+      "sha256": "ab86ddad77942f13a9089d0c6f70d6dc2d23338013e997d4ff57244ab7971f8e"
+    },
+    {
+      "bytes": 1326333,
+      "city_id": "external-denver",
+      "license_id": "ODbL-1.0",
+      "osm_base_timestamp": "2026-08-09T00:12:21Z",
+      "overpass_endpoint": "frozen-cache-sha256:9821026863c6359320a7c72340c2132a91d4fe8932822c613e4daf57ea88e078",
+      "overpass_query": "[out:json][timeout:120];way[\"building\"](39.7312000,-105.0008000,39.7472000,-104.9798000);out geom tags;",
+      "parsed_closed_building_way_count": 1441,
+      "path": "raw_osm/external-denver.json",
+      "sha256": "9821026863c6359320a7c72340c2132a91d4fe8932822c613e4daf57ea88e078"
+    },
+    {
+      "bytes": 569516,
+      "city_id": "external-miami",
+      "license_id": "ODbL-1.0",
+      "osm_base_timestamp": "2026-06-01T08:52:28Z",
+      "overpass_endpoint": "frozen-cache-sha256:ee7fd553242d3c2a3c00c31379e81baba36a974fde332c31d02225c3d1e4881e",
+      "overpass_query": "[out:json][timeout:120];way[\"building\"](25.7670000,-80.2027000,25.7830000,-80.1847000);out geom tags;",
+      "parsed_closed_building_way_count": 669,
+      "path": "raw_osm/external-miami.json",
+      "sha256": "ee7fd553242d3c2a3c00c31379e81baba36a974fde332c31d02225c3d1e4881e"
+    }
+  ],
+  "schema_version": "csi-pairs-sionna-osm-asset-manifest-v1",
+  "source_config_sha256": "8f4a3df13888b90da8f16088ede66c72d8e2f6f902d908f0db9423b9b185372f",
+  "status": "PASS"
+}

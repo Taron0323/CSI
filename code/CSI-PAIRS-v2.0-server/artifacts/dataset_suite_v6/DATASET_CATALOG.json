@@ -1,0 +1,315 @@
+{
+  "schema_version": "csi-pairs-dataset-suite-catalog-v1",
+  "suite_id": "CSI_PAIRS_DATASET_SUITE_V6_20260809",
+  "snapshot_date": "2026-08-09",
+  "authority": [
+    "00_FROZEN_SPECS/Idea1-CSI-PAIRS-完整研究方案-v6.md",
+    "00_FROZEN_SPECS/Idea1-CSI-PAIRS-冻结版-零基础阅读稿-v6.md",
+    "00_FROZEN_SPECS/FORMAL_V2_DATA_CONTRACT.md"
+  ],
+  "suite_status": {
+    "engineering_copy_status": "ALL_REGISTERED_SOURCES_COPIED",
+    "formal_status": "POST_AUDIT_NO_GO",
+    "scientific_use": "FORBIDDEN",
+    "reason": "The newest formal M4 run failed before shard completion/merge, and all scientific qualification/evidence gates remain incomplete."
+  },
+  "final_verification": {
+    "timestamp": "2026-08-09T17:38:00+08:00",
+    "command": "./VERIFY_SUITE.sh",
+    "result": "PASS",
+    "checks": 20,
+    "mode": "full",
+    "formal_status_after_verification": "POST_AUDIT_NO_GO",
+    "scientific_use_after_verification": "FORBIDDEN"
+  },
+  "copy_method": {
+    "method": "macOS APFS clone copy",
+    "command_family": "cp -cRp",
+    "top_level_symlink_copy": false,
+    "semantics": "Independent paths and inodes; APFS may share data blocks until mutation."
+  },
+  "datasets": [
+    {
+      "dataset_id": "external_wireless",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/external_wireless",
+      "suite_path": "02_EXTERNAL_WIRELESS/external_wireless",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 363263,
+        "directories": 1005,
+        "symlinks": 3,
+        "regular_file_bytes": 23857330137,
+        "verifier_apparent_bytes": 23857786425,
+        "allocated_kib": 24184668
+      },
+      "contents": {
+        "DeepMIMO": "asu_campus_3p5 plus i1_2p5 and official code/runtime",
+        "UrbanMIMOMap": "map 0, 120 of 120 NPZ files plus repository snapshot",
+        "RadioMapSeer": "main, Loc, ToA, RadioMap3DSeer substitute and RadioUNet",
+        "WWM": "metadata plus DeepSense Scenario 8 and 33 public substitute"
+      },
+      "engineering_verification": {
+        "sha256_entries": 133,
+        "training_core_complete": true,
+        "all_original_sources_complete": false,
+        "public_substitutions_used": true,
+        "partial_download_files": 0,
+        "final_deep_reverification": "PASS_2026-08-09T17:38:00+08:00"
+      },
+      "missing_originals": [
+        "RadioMapSeer IRT2HighRes.zip",
+        "WWM train/test/field/beam-prediction data",
+        "WWM 3D point clouds",
+        "WWM checkpoints"
+      ],
+      "allowed_roles": [
+        "external baseline",
+        "adapter development",
+        "preregistered external-domain evaluation",
+        "common warm-start ablation"
+      ],
+      "forbidden_roles": [
+        "formal sibling-world main data",
+        "headline Stage-0 teacher",
+        "route or normalization selection",
+        "claiming substitutes are original WWM or IRT2"
+      ],
+      "scientific_status": "NOT_FORMAL_PAIRED_DATA"
+    },
+    {
+      "dataset_id": "qualcomm_wireless_indoor",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/datasets/qualcomm_wireless_indoor",
+      "suite_path": "03_INDEPENDENT_ENGINE_QUALCOMM/qualcomm_wireless_indoor",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 190590,
+        "directories": 46945,
+        "symlinks": 0,
+        "regular_file_bytes": 13435727571,
+        "allocated_kib": 13321952,
+        "critical_zip_hdf5_sha256_entries": 13
+      },
+      "engine": "Remcom Wireless InSite",
+      "carrier_frequency_hz": 3500000000,
+      "coverage_audit": {
+        "Wi3R_main_layouts": 5000,
+        "Wi3R_main_links": 5000000,
+        "Wi3R_main_stored_path_rows": 125000000,
+        "WiPTR_train_layouts": 10000,
+        "WiPTR_validation_layouts": 1000,
+        "WiPTR_test_layouts": 1000,
+        "WiPTR_wall_removal_ood_layouts": 5,
+        "main_split_links_approx": 11000000,
+        "main_split_stored_path_rows_approx": 275000000,
+        "path_fields": [
+          "gain",
+          "phase",
+          "time of arrival",
+          "departure phi/theta",
+          "arrival phi/theta"
+        ]
+      },
+      "provenance": {
+        "local_source_manifest": "MISSING",
+        "local_dataset_license_snapshot": "MISSING",
+        "local_download_record": "MISSING",
+        "upstream_checksums": "MISSING",
+        "suite_generated_local_checksums": "99_REGISTRY/QUALCOMM_SHA256SUMS"
+      },
+      "allowed_roles": [
+        "independent-engine baseline candidate",
+        "adapter development",
+        "external-domain test after license resolution"
+      ],
+      "forbidden_roles": [
+        "formal sibling-world main data",
+        "direct closure of second-engine gate",
+        "headline Stage-0 teacher",
+        "redistribution before license resolution"
+      ],
+      "scientific_status": "BLOCKED_PENDING_LICENSE_AND_PAIRED_RETRACE"
+    },
+    {
+      "dataset_id": "legacy_sionna_osm_34bank",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate",
+      "suite_path": "01_FORMAL_MAIN_CANDIDATES/legacy_sionna_osm_34bank_POST_AUDIT_NO_GO",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 223,
+        "regular_file_bytes": 59797769,
+        "allocated_kib": 58932
+      },
+      "coverage": {
+        "banks": 34,
+        "worlds_per_bank": 4,
+        "positions_per_bank": 256,
+        "repeats": 3,
+        "clean_units": 34816,
+        "repeat_units": 104448,
+        "pathless_clean_units": 16124,
+        "all_zero_clean_units": 16124,
+        "pathless_fraction": 0.4631204044117647,
+        "nonfinite_clean_units": 0
+      },
+      "dataset_sha256": "6534777ee33d6cc2f4b964b60e7a6fcd5f8bb14fd9b4714e19cb300c9a9bd5fc",
+      "original_manifest_label": "CANDIDATE",
+      "formal_data_ready": false,
+      "formal_status": "POST_AUDIT_NO_GO",
+      "scientific_use": "FORBIDDEN"
+    },
+    {
+      "dataset_id": "full_synthetic_fixture",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_full_synthetic",
+      "suite_path": "04_FIXTURES_SOFTWARE_ONLY/csi_pairs_v2_1_v6_full_synthetic",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 4,
+        "regular_file_bytes": 1963888,
+        "allocated_kib": 1924
+      },
+      "dataset_sha256": "1b3cd310b58f788ba0bf7925277d73986c9a6553e8fccb9dd93b2d90ae662654",
+      "contract_status": "PASS",
+      "fixture": true,
+      "scientific_use": "FORBIDDEN"
+    },
+    {
+      "dataset_id": "dual_a100_sionna_fixture",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100",
+      "suite_path": "04_FIXTURES_SOFTWARE_ONLY/csi_pairs_v2_1_v6_sionna_rt_dual_a100",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 9,
+        "regular_file_bytes": 5692348,
+        "allocated_kib": 5576
+      },
+      "dataset_sha256": "ae3445739fa3415f7676f544bab28b102459d9819c40028b5ed7e23f7cd5cead",
+      "contract_status": "PASS",
+      "fixture": true,
+      "rt_calibration": "NOT_ASSESSED",
+      "external_validity": "NOT_ASSESSED",
+      "scientific_use": "FORBIDDEN"
+    },
+    {
+      "dataset_id": "smoke_fixture",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_smoke",
+      "suite_path": "04_FIXTURES_SOFTWARE_ONLY/csi_pairs_v2_1_v6_smoke",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 4,
+        "regular_file_bytes": 537555,
+        "allocated_kib": 532
+      },
+      "dataset_sha256": "636c172c781ed6eda0ac99b8b94842ef91847651a7dad7775a084c69e2b0b653",
+      "contract_status": "PASS",
+      "fixture": true,
+      "scientific_use": "FORBIDDEN"
+    },
+    {
+      "dataset_id": "legacy_candidate_005000Z",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T005000Z",
+      "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/legacy_sionna_osm_candidate_005000Z",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 224,
+        "regular_file_bytes": 59804291,
+        "allocated_kib": 58940
+      },
+      "dataset_sha256": "8493214ca12ee31a859e27eb6e2b24dc6fb5102e3a223016a0032655e7bab627",
+      "original_manifest_label": "CANDIDATE",
+      "suite_scientific_use": "FORBIDDEN",
+      "reason": "Earlier candidate retained for history and regression only."
+    },
+    {
+      "dataset_id": "diagnostic_scene_00_004000Z",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/sionna_osm_candidate_20260809T004000Z_diagnostic",
+      "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/diagnostic_scene_00_004000Z",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 2,
+        "regular_file_bytes": 689559,
+        "allocated_kib": 676
+      },
+      "dataset_sha256": "db48817e5591a02023c26286d67002ad3b19412569a451cd8e6e5cc98a453dd8",
+      "scientific_use": "DIAGNOSTIC_ONLY"
+    },
+    {
+      "dataset_id": "dense_diagnostic_scene_22_004500Z",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_HANDOFF_20260809T032602Z/project/generated_datasets/sionna_osm_candidate_20260809T004500Z_dense_diagnostic",
+      "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/dense_diagnostic_scene_22_004500Z",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 2,
+        "regular_file_bytes": 632371,
+        "allocated_kib": 620
+      },
+      "dataset_sha256": "187f6516f6a267becb002acdf72da81246cbb6d231135c90dcfab027b750c93e",
+      "scientific_use": "DIAGNOSTIC_ONLY"
+    },
+    {
+      "dataset_id": "m4_formal_20260809T080951Z",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_LOCAL_SIM/runs/m4-formal-20260809T080951Z",
+      "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/failed_m4_formal_20260809T080951Z_path_id_collision",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 247,
+        "directories": 77,
+        "symlinks": 0,
+        "regular_file_bytes": 41926059,
+        "allocated_kib": 41536
+      },
+      "final_run_status": {
+        "timestamp_audited": "2026-08-09T17:30:06+08:00",
+        "logged_completed_banks_before_failure": 32,
+        "sealed_shard_banks": 30,
+        "expected_banks": 34,
+        "passed_shards": 7,
+        "expected_shards": 8,
+        "merge_produced": false,
+        "failure_scene_index": 12,
+        "failure_scene_id": "osm-sionna-source-chicago-bank-06",
+        "failure_role": "source_final_unseen_bank",
+        "failure": "stable Sionna path identifier collision"
+      },
+      "prechecks": {
+        "receiver_protocol_passed_banks": 34,
+        "receiver_protocol_expected_banks": 34,
+        "scene_00_exact_fields": 23,
+        "scene_00_total_fields": 23,
+        "scene_00_pathless_clean_units": 0,
+        "scene_00_all_zero_clean_units": 0
+      },
+      "scientific_status": "FAILED_INCOMPLETE_DIAGNOSTIC_ONLY"
+    },
+    {
+      "dataset_id": "m4_paper_v2_failed_20260809T082513Z",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_OUTPUTS/sionna-osm-m4-v2-20260809T082513Z",
+      "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/failed_m4_paper_v2_20260809T082513Z",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 231,
+        "directories": 76,
+        "regular_file_bytes": 16930850,
+        "allocated_kib": 17080
+      },
+      "failure": "bank osm-sionna-source-chicago-bank-05 has only 199 deterministic LOS candidates",
+      "scientific_use": "FAILED_DIAGNOSTIC_ONLY"
+    },
+    {
+      "dataset_id": "failed_visibility_diagnostic_20260809T0852Z",
+      "source_path": "/Users/futaoran/Desktop/ICLR2027/CSI_M4_PAPER_OUTPUTS/visibility-diagnostic-20260809T0852Z",
+      "suite_path": "05_INCOMPLETE_AND_FAILED_RUNS/failed_visibility_diagnostic_20260809T0852Z",
+      "copy_status": "COPIED",
+      "inventory": {
+        "regular_files": 2,
+        "directories": 1,
+        "regular_file_bytes": 1526,
+        "allocated_kib": 4
+      },
+      "failures": [
+        "scene-10 produced no output and an empty log",
+        "bank osm-sionna-target-boston-bank-01 violates zero-pathless protocol: pathless=8, all_zero=8"
+      ],
+      "scientific_use": "FAILED_DIAGNOSTIC_ONLY"
+    }
+  ]
+}

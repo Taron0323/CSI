@@ -1,0 +1,30 @@
+{
+  "asset_manifest_path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate/assets/asset_manifest.json",
+  "asset_manifest_sha256": "9f2a77367cd9484c97bbbd42709b09c262d770cdbeb26577775f8fa1d6b1807d",
+  "engine_config_sha256": "951344a73ec3cb961465467441c03b12d0f9589f2df34ab9f8a2bc1e934227a6",
+  "fixture": false,
+  "generator_sha256": "9818f79aad0f1011d43d1cfc3107149da07f9cfcbe5feaab4589b143e97eff8f",
+  "output_bytes": 22399401,
+  "output_path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate/dataset.npz",
+  "output_sha256": "6534777ee33d6cc2f4b964b60e7a6fcd5f8bb14fd9b4714e19cb300c9a9bd5fc",
+  "schema_version": "csi-pairs-sionna-osm-candidate-generation-v1",
+  "scientific_use": "CANDIDATE",
+  "shards": [
+    {
+      "duration_seconds": 70.19529795274138,
+      "gpu_uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176",
+      "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate/shards/scenes_00_16_gpu0.npz",
+      "physical_gpu_index": 0,
+      "sha256": "53ece4e3c24b5bc2adc1efb21c01b4c5a5571df8455e2702adafef92c67311e1"
+    },
+    {
+      "duration_seconds": 84.10301352897659,
+      "gpu_uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d",
+      "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_osm_candidate_20260809T091000Z_final_candidate/shards/scenes_17_33_gpu1.npz",
+      "physical_gpu_index": 1,
+      "sha256": "9f9e9f8862fe791e81385e34ab34156ff6d11c3e12378a942062f76ce0f5b0c5"
+    }
+  ],
+  "simulation_not_measurement": true,
+  "status": "PASS"
+}

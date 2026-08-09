@@ -1,0 +1,468 @@
+{
+  "coverage": {
+    "bits": 2,
+    "channels": 16,
+    "map_channels": 3,
+    "map_size": 256,
+    "positions": 30,
+    "radio_features": 4,
+    "repeats": 3,
+    "scenes": 36,
+    "worlds": 4
+  },
+  "dataset": {
+    "bytes": 3114005,
+    "dataset_id": "NONSCIENTIFIC-SIONNA-RT-DUAL-A100-FIXTURE",
+    "fixture": true,
+    "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/csi_pairs_v2_1_v6_sionna_rt_dual_a100.npz",
+    "schema_version": "csi-pairs-formal-dataset-v2.1-v6",
+    "scientific_use": "FORBIDDEN",
+    "sha256": "ae3445739fa3415f7676f544bab28b102459d9819c40028b5ed7e23f7cd5cead"
+  },
+  "generated_at": "2026-08-08T17:09:37.679252+00:00",
+  "schema_version": "csi-pairs-sionna-dual-gpu-generation-manifest-v1",
+  "scientific_limit": "GPU ray tracing and formal structural validation completed, but this fixture is not measured data, independently calibrated RT evidence, or an independent-engine external-validity result.",
+  "simulation": {
+    "edge_effects": {
+      "0": {
+        "changed_position_comparisons": 1249,
+        "maximum_bank_edge_rms": 1.0375332482187369e-05,
+        "mean_edge_rms": 9.752849068699674e-06,
+        "minimum_bank_edge_rms": 9.176302810857926e-06,
+        "total_position_comparisons": 2160
+      },
+      "1": {
+        "changed_position_comparisons": 1204,
+        "maximum_bank_edge_rms": 1.045934575819103e-05,
+        "mean_edge_rms": 1.0064732160860077e-05,
+        "minimum_bank_edge_rms": 9.660423688520024e-06,
+        "total_position_comparisons": 2160
+      }
+    },
+    "engine": "Sionna RT PathSolver",
+    "scene": "simple_street_canyon",
+    "seed": 20270809,
+    "trace_calls": 144
+  },
+  "status": "PASS",
+  "validation": {
+    "contract_report": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/inspection/data_contract.json",
+    "contract_status": "PASS",
+    "external_validity": "NOT_ASSESSED",
+    "formal_config": "/root/xunlian/Futaoran/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/configs/formal_v2.json",
+    "independent_regeneration_gate": "NOT_RUN",
+    "rt_calibration": "NOT_ASSESSED"
+  },
+  "workers": [
+    {
+      "coverage": {
+        "max_paths_observed": 7,
+        "positions_per_scene": 30,
+        "scene_count": 18,
+        "scene_end_exclusive": 18,
+        "scene_start_inclusive": 0,
+        "trace_calls": 72,
+        "worlds_per_scene": 4
+      },
+      "duration_seconds": 12.464603511150926,
+      "finished_utc": "2026-08-08T17:09:18.353960+00:00",
+      "generator": {
+        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/tools/generate_sionna_gpu_shard.py",
+        "sha256": "65c30cd870acfc51c48d254a1bd12eb7f541652fcd3d2f6c8ace09c647a78fcd"
+      },
+      "gpu": {
+        "after": {
+          "memory_free_mib": 37832,
+          "memory_total_mib": 40960,
+          "memory_used_mib": 0,
+          "name": "NVIDIA A100-SXM4-40GB",
+          "physical_index": 0,
+          "power_draw_w": 48.9,
+          "temperature_c": 31,
+          "utilization_percent": 0,
+          "uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176"
+        },
+        "before": {
+          "memory_free_mib": 39870,
+          "memory_total_mib": 40960,
+          "memory_used_mib": 0,
+          "name": "NVIDIA A100-SXM4-40GB",
+          "physical_index": 0,
+          "power_draw_w": 48.39,
+          "temperature_c": 30,
+          "utilization_percent": 0,
+          "uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176"
+        },
+        "cuda_visible_devices": "0",
+        "logical_device": 0,
+        "physical_gpu_index": 0,
+        "uuid": "GPU-0e31845b-99e5-7784-4b0d-d37446c79176"
+      },
+      "output": {
+        "bytes": 1265817,
+        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/shards/gpu0_scenes_00_17.npz",
+        "sha256": "f6fa0e5d05b9610a2944e28430af2749613913cedc00cc843386372f72c31410"
+      },
+      "runtime": {
+        "drjit": "1.2.0",
+        "mitsuba": "3.7.1",
+        "mitsuba_variant": "cuda_ad_mono_polarized",
+        "python": "3.12.13",
+        "sionna": "2.0.1",
+        "sionna_revision": "04ddb9312116b408093b9d3ad363a3df355093a6",
+        "sionna_rt": "1.2.1"
+      },
+      "scene": {
+        "asset_tree_sha256": "d2824c41043d248c8d3089fe8396b7cc225ad1c328a626ad70c897951797004b",
+        "assets": [
+          {
+            "bytes": 520,
+            "path": "meshes/building_1.ply",
+            "sha256": "b8d90a9dc1813d9415187808c8e2d143fbde98d406b5a1eef90d6374aaef3886"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_2.ply",
+            "sha256": "68b2d70c2c8f2e11f4bf7075757323076c806f2a7e9282e357373512973a374d"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_3.ply",
+            "sha256": "626e25b2e41490e643bdc982e161e93149141cede7e3f3b0715a3ef1a5f6b538"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_4.ply",
+            "sha256": "8ef103c850e286c3dd152c350c567565e63a261ea738b5e6fbd75fa6481eacc5"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_5.ply",
+            "sha256": "65844f67abe2262753429d9a26aaf9d83df487f11e517c4c9ecc041710dfa996"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_6.ply",
+            "sha256": "da449d68dbe60531d14f8d2c3ed1841ab97d98e6d453eb7a098d905bd175cc92"
+          },
+          {
+            "bytes": 309,
+            "path": "meshes/floor.ply",
+            "sha256": "638802fa86a5e6961418784d3873d89556e21f0227ae0f67455f8d71fba90756"
+          },
+          {
+            "bytes": 2101,
+            "path": "simple_street_canyon.xml",
+            "sha256": "02e4c97a82dfa3fbcc42a1742ed28a3b64fdeeeb962a15f505445b38a9179dc0"
+          }
+        ],
+        "name": "simple_street_canyon",
+        "objects": [
+          {
+            "bbox_max_xyz_m": [
+              63.478111267089844,
+              38.223602294921875,
+              21.815460205078125
+            ],
+            "bbox_min_xyz_m": [
+              32.356605529785156,
+              10.33729362487793,
+              -0.030794143676757812
+            ],
+            "name": "building_2",
+            "original_material": "brick",
+            "runtime_object_id": 6,
+            "stable_surface_id": 102
+          },
+          {
+            "bbox_max_xyz_m": [
+              16.002498626708984,
+              -8.613334655761719,
+              50.943809509277344
+            ],
+            "bbox_min_xyz_m": [
+              -15.119009971618652,
+              -36.49964141845703,
+              -0.030794143676757812
+            ],
+            "name": "building_6",
+            "original_material": "wood",
+            "runtime_object_id": 2,
+            "stable_surface_id": 106
+          },
+          {
+            "bbox_max_xyz_m": [
+              92.4267578125,
+              60.8076286315918,
+              -0.030794143676757812
+            ],
+            "bbox_min_xyz_m": [
+              -93.96609497070312,
+              -60.3305549621582,
+              -0.030794143676757812
+            ],
+            "name": "floor",
+            "original_material": "concrete",
+            "runtime_object_id": 7,
+            "stable_surface_id": 100
+          },
+          {
+            "bbox_max_xyz_m": [
+              16.002498626708984,
+              37.45787048339844,
+              50.943809509277344
+            ],
+            "bbox_min_xyz_m": [
+              -62.41142272949219,
+              9.571563720703125,
+              -0.030794143676757812
+            ],
+            "name": "no-name-1",
+            "original_material": "marble",
+            "runtime_object_id": 10,
+            "stable_surface_id": 103
+          },
+          {
+            "bbox_max_xyz_m": [
+              62.64027404785156,
+              -8.613334655761719,
+              29.097551345825195
+            ],
+            "bbox_min_xyz_m": [
+              -62.10765075683594,
+              -36.49964141845703,
+              -0.030794143676757812
+            ],
+            "name": "no-name-2",
+            "original_material": "glass",
+            "runtime_object_id": 9,
+            "stable_surface_id": 105
+          }
+        ],
+        "xml_path": "/root/xunlian/Futaoran/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.runtime-sionna/venv/lib/python3.12/site-packages/sionna/rt/scenes/simple_street_canyon/simple_street_canyon.xml",
+        "xml_sha256": "02e4c97a82dfa3fbcc42a1742ed28a3b64fdeeeb962a15f505445b38a9179dc0"
+      },
+      "schema_version": "csi-pairs-sionna-gpu-shard-manifest-v1",
+      "simulation": {
+        "bandwidth_hz": 120000.0,
+        "carrier_frequency_hz": 3500000000.0,
+        "diffuse_reflection": false,
+        "los": true,
+        "max_depth": 3,
+        "observation_noise_std": 1e-07,
+        "refraction": false,
+        "seed": 20270809,
+        "specular_reflection": true,
+        "subcarrier_spacing_hz": 30000.0,
+        "synthetic_array": true
+      },
+      "started_utc": "2026-08-08T17:09:05.889306+00:00",
+      "status": "PASS"
+    },
+    {
+      "coverage": {
+        "max_paths_observed": 7,
+        "positions_per_scene": 30,
+        "scene_count": 18,
+        "scene_end_exclusive": 36,
+        "scene_start_inclusive": 18,
+        "trace_calls": 72,
+        "worlds_per_scene": 4
+      },
+      "duration_seconds": 12.841874012723565,
+      "finished_utc": "2026-08-08T17:09:18.727061+00:00",
+      "generator": {
+        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/tools/generate_sionna_gpu_shard.py",
+        "sha256": "65c30cd870acfc51c48d254a1bd12eb7f541652fcd3d2f6c8ace09c647a78fcd"
+      },
+      "gpu": {
+        "after": {
+          "memory_free_mib": 37832,
+          "memory_total_mib": 40960,
+          "memory_used_mib": 0,
+          "name": "NVIDIA A100-SXM4-40GB",
+          "physical_index": 1,
+          "power_draw_w": 55.74,
+          "temperature_c": 30,
+          "utilization_percent": 0,
+          "uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d"
+        },
+        "before": {
+          "memory_free_mib": 39870,
+          "memory_total_mib": 40960,
+          "memory_used_mib": 0,
+          "name": "NVIDIA A100-SXM4-40GB",
+          "physical_index": 1,
+          "power_draw_w": 55.31,
+          "temperature_c": 29,
+          "utilization_percent": 0,
+          "uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d"
+        },
+        "cuda_visible_devices": "1",
+        "logical_device": 0,
+        "physical_gpu_index": 1,
+        "uuid": "GPU-826ef21b-33e6-41a7-7a7b-c2e15cd2b96d"
+      },
+      "output": {
+        "bytes": 1272928,
+        "path": "/root/xunlian/Futaoran/CSI/generated_datasets/csi_pairs_v2_1_v6_sionna_rt_dual_a100/shards/gpu1_scenes_18_35.npz",
+        "sha256": "02d6e107a67e954101570c30443037df4835e5580a0fbb6d328ab060cb3eab3f"
+      },
+      "runtime": {
+        "drjit": "1.2.0",
+        "mitsuba": "3.7.1",
+        "mitsuba_variant": "cuda_ad_mono_polarized",
+        "python": "3.12.13",
+        "sionna": "2.0.1",
+        "sionna_revision": "04ddb9312116b408093b9d3ad363a3df355093a6",
+        "sionna_rt": "1.2.1"
+      },
+      "scene": {
+        "asset_tree_sha256": "d2824c41043d248c8d3089fe8396b7cc225ad1c328a626ad70c897951797004b",
+        "assets": [
+          {
+            "bytes": 520,
+            "path": "meshes/building_1.ply",
+            "sha256": "b8d90a9dc1813d9415187808c8e2d143fbde98d406b5a1eef90d6374aaef3886"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_2.ply",
+            "sha256": "68b2d70c2c8f2e11f4bf7075757323076c806f2a7e9282e357373512973a374d"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_3.ply",
+            "sha256": "626e25b2e41490e643bdc982e161e93149141cede7e3f3b0715a3ef1a5f6b538"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_4.ply",
+            "sha256": "8ef103c850e286c3dd152c350c567565e63a261ea738b5e6fbd75fa6481eacc5"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_5.ply",
+            "sha256": "65844f67abe2262753429d9a26aaf9d83df487f11e517c4c9ecc041710dfa996"
+          },
+          {
+            "bytes": 520,
+            "path": "meshes/building_6.ply",
+            "sha256": "da449d68dbe60531d14f8d2c3ed1841ab97d98e6d453eb7a098d905bd175cc92"
+          },
+          {
+            "bytes": 309,
+            "path": "meshes/floor.ply",
+            "sha256": "638802fa86a5e6961418784d3873d89556e21f0227ae0f67455f8d71fba90756"
+          },
+          {
+            "bytes": 2101,
+            "path": "simple_street_canyon.xml",
+            "sha256": "02e4c97a82dfa3fbcc42a1742ed28a3b64fdeeeb962a15f505445b38a9179dc0"
+          }
+        ],
+        "name": "simple_street_canyon",
+        "objects": [
+          {
+            "bbox_max_xyz_m": [
+              63.478111267089844,
+              38.223602294921875,
+              21.815460205078125
+            ],
+            "bbox_min_xyz_m": [
+              32.356605529785156,
+              10.33729362487793,
+              -0.030794143676757812
+            ],
+            "name": "building_2",
+            "original_material": "brick",
+            "runtime_object_id": 6,
+            "stable_surface_id": 102
+          },
+          {
+            "bbox_max_xyz_m": [
+              16.002498626708984,
+              -8.613334655761719,
+              50.943809509277344
+            ],
+            "bbox_min_xyz_m": [
+              -15.119009971618652,
+              -36.49964141845703,
+              -0.030794143676757812
+            ],
+            "name": "building_6",
+            "original_material": "wood",
+            "runtime_object_id": 2,
+            "stable_surface_id": 106
+          },
+          {
+            "bbox_max_xyz_m": [
+              92.4267578125,
+              60.8076286315918,
+              -0.030794143676757812
+            ],
+            "bbox_min_xyz_m": [
+              -93.96609497070312,
+              -60.3305549621582,
+              -0.030794143676757812
+            ],
+            "name": "floor",
+            "original_material": "concrete",
+            "runtime_object_id": 7,
+            "stable_surface_id": 100
+          },
+          {
+            "bbox_max_xyz_m": [
+              16.002498626708984,
+              37.45787048339844,
+              50.943809509277344
+            ],
+            "bbox_min_xyz_m": [
+              -62.41142272949219,
+              9.571563720703125,
+              -0.030794143676757812
+            ],
+            "name": "no-name-1",
+            "original_material": "marble",
+            "runtime_object_id": 10,
+            "stable_surface_id": 103
+          },
+          {
+            "bbox_max_xyz_m": [
+              62.64027404785156,
+              -8.613334655761719,
+              29.097551345825195
+            ],
+            "bbox_min_xyz_m": [
+              -62.10765075683594,
+              -36.49964141845703,
+              -0.030794143676757812
+            ],
+            "name": "no-name-2",
+            "original_material": "glass",
+            "runtime_object_id": 9,
+            "stable_surface_id": 105
+          }
+        ],
+        "xml_path": "/root/xunlian/Futaoran/CSI/code/CSI-PAIRS-v2.0-server/formal_v2/external_adapters/.runtime-sionna/venv/lib/python3.12/site-packages/sionna/rt/scenes/simple_street_canyon/simple_street_canyon.xml",
+        "xml_sha256": "02e4c97a82dfa3fbcc42a1742ed28a3b64fdeeeb962a15f505445b38a9179dc0"
+      },
+      "schema_version": "csi-pairs-sionna-gpu-shard-manifest-v1",
+      "simulation": {
+        "bandwidth_hz": 120000.0,
+        "carrier_frequency_hz": 3500000000.0,
+        "diffuse_reflection": false,
+        "los": true,
+        "max_depth": 3,
+        "observation_noise_std": 1e-07,
+        "refraction": false,
+        "seed": 20270809,
+        "specular_reflection": true,
+        "subcarrier_spacing_hz": 30000.0,
+        "synthetic_array": true
+      },
+      "started_utc": "2026-08-08T17:09:05.885148+00:00",
+      "status": "PASS"
+    }
+  ]
+}
