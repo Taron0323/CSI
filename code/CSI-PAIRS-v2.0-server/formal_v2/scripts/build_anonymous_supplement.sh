@@ -32,6 +32,7 @@ mkdir -p "${BUNDLE_ROOT}/paper/official_style"
     --exclude='formal_v2/anonymous_release.py' \
     --exclude='formal_v2/tests/test_anonymous_release.py' \
     --exclude='formal_v2/tests/test_audit_artifacts.py' \
+    --exclude='formal_v2/tests/test_sionna_visibility_one_factor_diagnostic.py' \
     -cf - formal_v2
 ) | (
   cd "${BUNDLE_ROOT}"

@@ -1,0 +1,95 @@
+{
+  "schema_version": "csi-pairs-sionna-visibility-one-factor-config-v1",
+  "simulation_not_measurement": true,
+  "scientific_use": "DIAGNOSTIC_NOT_FORMAL_EVIDENCE",
+  "scene_index": 27,
+  "backend": "llvm",
+  "drjit_threads": 1,
+  "solver_seed": 2026107904,
+  "receiver_sampling": {
+    "method": "frozen_candidate_grid_with_optional_radial_filter",
+    "position_count": 256
+  },
+  "fixed_solver_settings": {
+    "los": true,
+    "diffuse_reflection": false,
+    "edge_diffraction": false,
+    "synthetic_array": true
+  },
+  "baseline": {
+    "receiver_effective_radius_m": null,
+    "bs_xy_offset_m": [0.0, 0.0],
+    "bs_height_m": 25.0,
+    "max_depth": 3,
+    "specular_reflection": true,
+    "refraction": false,
+    "diffraction": false,
+    "stored_path_capacity": 64
+  },
+  "variants": [
+    {
+      "name": "receiver_effective_radius_112m",
+      "single_change": {
+        "factor": "receiver_effective_radius_m",
+        "from": null,
+        "to": 112.0
+      }
+    },
+    {
+      "name": "bs_xy_offset_south_10m",
+      "single_change": {
+        "factor": "bs_xy_offset_m",
+        "from": [0.0, 0.0],
+        "to": [0.0, -10.0]
+      }
+    },
+    {
+      "name": "bs_height_35m",
+      "single_change": {
+        "factor": "bs_height_m",
+        "from": 25.0,
+        "to": 35.0
+      }
+    },
+    {
+      "name": "max_depth_6",
+      "single_change": {
+        "factor": "max_depth",
+        "from": 3,
+        "to": 6
+      }
+    },
+    {
+      "name": "specular_reflection_off",
+      "single_change": {
+        "factor": "specular_reflection",
+        "from": true,
+        "to": false
+      }
+    },
+    {
+      "name": "refraction_on",
+      "single_change": {
+        "factor": "refraction",
+        "from": false,
+        "to": true
+      }
+    },
+    {
+      "name": "diffraction_on",
+      "single_change": {
+        "factor": "diffraction",
+        "from": false,
+        "to": true
+      }
+    },
+    {
+      "name": "stored_path_capacity_16",
+      "single_change": {
+        "factor": "stored_path_capacity",
+        "from": 64,
+        "to": 16
+      }
+    }
+  ]
+}
