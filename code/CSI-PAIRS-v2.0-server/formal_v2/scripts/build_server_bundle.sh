@@ -27,6 +27,7 @@ mkdir -p "${BUNDLE_ROOT}/artifacts" "${BUNDLE_ROOT}/output/pdf" "${BUNDLE_ROOT}/
   tar \
     --exclude='formal_v2/external_adapters/.venv-wigatr' \
     --exclude='formal_v2/external_adapters/.runtime-sionna' \
+    --exclude='formal_v2/tests/test_sionna_visibility_one_factor_diagnostic.py' \
     -cf - formal_v2
 ) | (
   cd "${BUNDLE_ROOT}"
