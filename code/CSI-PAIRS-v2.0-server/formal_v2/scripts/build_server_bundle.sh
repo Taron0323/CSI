@@ -57,6 +57,7 @@ cp -p "${PROJECT_ROOT}/artifacts/v6_atomic_requirement_matrix_2026-08-08.csv" \
 cp -p "${PROJECT_ROOT}/artifacts/iclr2027_official_policy_recheck_2026-08-05.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/waibu_integration_audit_2026-08-06.md" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/artifacts/v6_traceability_audit_2026-08-07.md" "${BUNDLE_ROOT}/artifacts/"
+cp -R "${PROJECT_ROOT}/artifacts/m4_formal_candidate_v2" "${BUNDLE_ROOT}/artifacts/"
 cp -p "${PROJECT_ROOT}/output/pdf/CSI-PAIRS-paper-v2.1-draft.pdf" "${BUNDLE_ROOT}/output/pdf/"
 
 find "${BUNDLE_ROOT}" -type d -name __pycache__ -prune -exec rm -rf {} +

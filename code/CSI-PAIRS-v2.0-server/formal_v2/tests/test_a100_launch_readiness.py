@@ -779,7 +779,7 @@ class SionnaFormalRendererContractTests(unittest.TestCase):
                     libllvm=llvm,
                 )
         self.assertEqual(resolved_python, python.resolve())
-        self.assertEqual(environment["DRJIT_LIBLLVM_PATH"], str(llvm))
+        self.assertEqual(environment["DRJIT_LIBLLVM_PATH"], str(llvm.resolve()))
         self.assertEqual(environment["MI_DEFAULT_VARIANT"], SIONNA_MITSUBA_VARIANT)
         self.assertNotIn("LD_PRELOAD", environment)
 

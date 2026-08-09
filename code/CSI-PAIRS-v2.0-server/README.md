@@ -1,7 +1,13 @@
 # CSI-PAIRS V2.1 V6 server bundle
 
-Status: formal code `CODE_READY_FOR_FORMAL_INPUT`; scientific evidence `NOT_ASSESSED` until
-required non-fixture gates pass. Archived V1 fixture failures remain non-scientific history.
+Status: formal code `CODE_READY_FOR_FORMAL_INPUT`;
+`M4_DATA_PRODUCTION_READY=REPORTED`;
+`EVIDENCE_REGISTRY_READY=YES`;
+`FORMAL_CANDIDATE_READY=BLOCKED_UNAPPROVED_RUNTIME`;
+`FORMAL_INPUT_READY=BLOCKED`;
+`FORMAL_TRAINING_READY=NO`;
+`LAUNCH_READY=BLOCKED`; and scientific evidence `NOT_ASSESSED`.
+Archived V1 fixture failures remain non-scientific history.
 
 This internal research-delivery bundle is self-contained for the V2.1 code runtime. It is not an
 anonymous ICLR supplementary artifact because it includes delivery provenance. Third-party files
@@ -9,7 +15,9 @@ without a downstream redistribution grant are never bundled; each user fetches t
 the immutable source URL before formal preflight. Use `formal_v2/scripts/build_anonymous_supplement.sh`
 for the separate identity-scanned package that excludes all of `waibu/` and delivery audits. The
 internal bundle intentionally contains no formal dataset, external model checkpoint, licensed scene
-asset, or claimed result. The top-level directory and three audit-listed artifact filenames retain
+asset, or claimed result. It does contain the hash-only, identity-scrubbed M4 candidate evidence
+under `artifacts/m4_formal_candidate_v2/`. The top-level directory and three audit-listed
+artifact filenames retain
 `v2.0`/`v2_0` only as compatibility paths; their contents, schemas, runtime version, and generated
 bundle root are V2.1.
 
@@ -172,7 +180,38 @@ retained inference while excluding the common localization head on both sides; c
 parameters and measured training/inference FLOPs remain included. `generous_2x_concat` is
 report-only.
 
-## 4. Inspect formal data
+## 4. Verify the M4 evidence registry
+
+The 34-bank Apple Silicon candidate is bound by dataset SHA-256
+`e5ec3d32bbb7c639f2fd6e6dcc23bc4bb6085cc76830a700e5b7103b17a37847`.
+Its isolated zero-tolerance verification gate is bound by
+`ac790e2ffacca784cba22bc31bc9798049bb219f3f88cfeb3cd0c69fce7c86a8`.
+The submitted registry reports that all 34 scene banks and all nine role
+groups passed at `rtol=0` and `atol=0`. Static verification checks the
+committed hash registry and inventories only:
+
+~~~bash
+PYTHONDONTWRITEBYTECODE=1 python3 \
+  artifacts/m4_formal_candidate_v2/verify_candidate_evidence.py
+~~~
+
+To authenticate the omitted local NPZ files, shard manifests, inspection, and
+verification output, use the optional deep-verification command documented in
+`artifacts/m4_formal_candidate_v2/README.md`. The repository does not
+contain either NPZ or unsanitized host-local manifests.
+
+The recorded libLLVM hash `26273678...451` is not present in the current
+approved runtime registry, whose Darwin entry is `e514c689...a88`. Therefore
+this package is a useful commitment to an external run, but it is not a
+current formal candidate. Review and register the exact historical runtime or
+regenerate under an approved runtime before the candidate can enter G1/G2.
+
+This same-host, same-Sionna regeneration establishes deterministic internal
+consistency only. It does not close independent RT calibration, G8,
+destination A100 preflight, model execution, training, license review, or
+scientific qualification.
+
+## 5. Inspect formal data
 
 Do not start training first. Validate the NPZ against the frozen contract:
 
@@ -185,7 +224,7 @@ PYTHONDONTWRITEBYTECODE=1 "$PWD/.venv/bin/python" -m formal_v2.formal_cli inspec
 
 Review the generated `data_contract.json`, the engine/config hash, license records, phase/gauge convention, scene roles, support/query isolation, repeats, natural anchors, and primitive permutations.
 
-## 5. Prepare, review, and authorize a formal run
+## 6. Prepare, review, and authorize a formal run
 
 Formal execution is a two-phase protocol. `prepare-full-run` validates every late manifest, runtime
 executable, license acknowledgement, credential name, pre-staged input, disk budget, CUDA GPU budget,
