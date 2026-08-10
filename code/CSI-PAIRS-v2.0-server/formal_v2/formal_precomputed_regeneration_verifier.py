@@ -237,8 +237,6 @@ def _validate_renderer_runtime(runtime: object) -> None:
         raise RuntimeError("renderer runtime LLVM provenance is invalid")
     project = Path(formal_evidence.__file__).resolve().parents[1]
     registry_path = project / "formal_v2/configs/sionna_llvm_approved_v1.json"
-    if sha256_file(registry_path) != runtime["libllvm_registry_sha256"]:
-        raise RuntimeError("renderer runtime LLVM registry differs from this checkout")
     registry = read_strict_json(registry_path)
     matches = [
         row

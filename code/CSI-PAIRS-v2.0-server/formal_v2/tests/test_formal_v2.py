@@ -2075,7 +2075,7 @@ class EvidenceAndPathTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fields"):
             validate_rt_calibration_manifest(manifest)
 
-    def test_rt_calibration_stage_executes_and_binds_fitted_artifacts_end_to_end(self):
+    def test_rt_calibration_stage_isolates_reference_and_binds_outputs_end_to_end(self):
         fit = self.root / "rt-fit.json"
         validation_inputs = self.root / "rt-validation-inputs.json"
         validation_reference = self.root / "rt-validation-reference.csv"
@@ -2144,7 +2144,9 @@ class EvidenceAndPathTests(unittest.TestCase):
             "p=argparse.ArgumentParser(); p.add_argument('--output'); p.add_argument('--fit'); p.add_argument('--validation-inputs'); p.add_argument('--protocol'); a=p.parse_args()\n"
             "out=Path(a.output); fitted=out/'fitted.json'; fitted.write_text('{\"gain\":1.0}', encoding='utf-8')\n"
             "sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()\n"
-            "sim=out/'simulated_statistics.csv'; sim.write_text('unit_id,path_loss,delay_spread,angular_spread,visible_path_count\\nunit-a,1.05,2.05,3.05,4\\nunit-b,2.05,3.05,4.05,5\\n',encoding='utf-8')\n"
+            "sim=out/'simulated_statistics.csv'; secret=list(Path(a.validation_inputs).parent.glob('*reference*.csv'))\n"
+            "if secret: sim.write_bytes(secret[0].read_bytes())\n"
+            "else: sim.write_text('unit_id,path_loss,delay_spread,angular_spread,visible_path_count\\nunit-a,1.05,2.05,3.05,4\\nunit-b,2.05,3.05,4.05,5\\n',encoding='utf-8')\n"
             "payload={'schema_version':'csi-pairs-v6-rt-calibration-adapter-result-v5','fit_dataset_sha256':sha(a.fit),'validation_inputs_sha256':sha(a.validation_inputs),'fitted_parameters_path':fitted.name,'fitted_parameters_sha256':sha(fitted),'simulated_statistics_path':sim.name,'simulated_statistics_sha256':sha(sim)}\n"
             "(out/'adapter_result.json').write_text(json.dumps(payload,sort_keys=True),encoding='utf-8')\n",
             encoding="utf-8",

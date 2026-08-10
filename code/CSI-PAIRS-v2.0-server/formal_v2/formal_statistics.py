@@ -125,6 +125,7 @@ def _cluster_differences(
 
 def exact_factorial_utilities(rows: list[dict], primary_budgets: list[int] | tuple[int, ...]) -> dict:
     """Compute V6 J_a with equal city, k, bank, seed and draw layers."""
+    _validate_canonical_bank_ownership(rows)
     budgets = tuple(int(value) for value in primary_budgets)
     arms = sorted({str(row["arm"]) for row in rows})
     cities = sorted({str(row["city_id"]) for row in rows})
@@ -158,6 +159,7 @@ def hierarchical_factorial_interval(
     seed: int,
 ) -> dict:
     """Paired city-fixed bootstrap over base-map cluster, seed, and k>0 draw."""
+    _validate_canonical_bank_ownership(rows)
     budgets = tuple(int(value) for value in primary_budgets)
     cities = sorted({str(row["city_id"]) for row in rows})
     seeds = sorted({int(row["seed"]) for row in rows})
@@ -275,6 +277,7 @@ def bank_only_factorial_interval(
     resamples: int,
     seed: int,
 ) -> dict:
+    _validate_canonical_bank_ownership(rows)
     collapsed = _collapsed_cells(rows, primary_budgets)
     rng = np.random.default_rng(int(seed))
     cities = sorted({key[1] for key in collapsed})
@@ -325,6 +328,7 @@ def bank_only_factorial_interval(
 def leave_one_factorial_sensitivity(
     rows: list[dict], primary_budgets: list[int] | tuple[int, ...]
 ) -> dict:
+    _validate_canonical_bank_ownership(rows)
     seeds = sorted({int(row["seed"]) for row in rows})
     positive_draws = sorted({int(row["draw"]) for row in rows if int(row["budget"]) > 0})
     leave_seed = [
@@ -452,7 +456,7 @@ def _factorial_cell_lookup(rows, budgets):
     if not grouped:
         raise ValueError("factorial lookup is empty")
     return {
-        key: float(np.mean([np.mean(values) for values in by_bank.values()]))
+        key: _canonical_bank_macro_mean(by_bank)
         for key, by_bank in grouped.items()
     }
 
@@ -473,11 +477,33 @@ def _layered_cell_mean(rows: list[dict]) -> float:
                     by_bank.setdefault(_bank_unit(row), []).append(
                         float(row["utility_neg_log_median"])
                     )
-            draw_values.append(
-                float(np.mean([np.mean(values) for values in by_bank.values()]))
-            )
+            draw_values.append(_canonical_bank_macro_mean(by_bank))
         seed_values.append(float(np.mean(draw_values)))
     return float(np.mean(seed_values))
+
+
+def _canonical_bank_macro_mean(by_bank: dict[str, list[float]]) -> float:
+    values = []
+    for bank, copies in by_bank.items():
+        value = copies[0]
+        if any(copy != value for copy in copies[1:]):
+            raise ValueError(
+                f"conflicting utility values for canonical bank {bank}"
+            )
+        values.append(value)
+    return float(np.mean(values))
+
+
+def _validate_canonical_bank_ownership(rows: list[dict]) -> None:
+    owners = {}
+    for row in rows:
+        bank = _bank_unit(row)
+        owner = (_independent_unit(row), str(row["city_id"]))
+        previous = owners.setdefault(bank, owner)
+        if previous != owner:
+            raise ValueError(
+                f"canonical bank {bank} is assigned to multiple independent units or cities"
+            )
 
 
 def _independent_unit(row: dict) -> str:

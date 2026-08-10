@@ -4,8 +4,10 @@ import csv
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -64,6 +66,96 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
 
     output_dir = Path(output_root) / "qualification" / "rt_calibration"
     output_dir.mkdir(parents=True, exist_ok=True)
+    project_root = Path(__file__).resolve().parents[1]
+    with tempfile.TemporaryDirectory(prefix="csi-pairs-rt-adapter-") as temporary:
+        sandbox = Path(temporary)
+        sandbox_inputs = sandbox / "inputs"
+        sandbox_output = sandbox / "output"
+        sandbox_inputs.mkdir()
+        sandbox_output.mkdir()
+        staged_protocol = sandbox_inputs / "protocol.json"
+        staged_fit = sandbox_inputs / "fit.json"
+        staged_validation = sandbox_inputs / "validation.json"
+        staged_adapter = sandbox_inputs / adapter_source_path.name
+        shutil.copy2(protocol_path, staged_protocol)
+        shutil.copy2(adapter_source_path, staged_adapter)
+        _stage_partition_contract(fit_dataset_path, staged_fit, "fit")
+        _stage_partition_contract(
+            validation_inputs_path, staged_validation, "validation"
+        )
+        command = [
+            value.format(
+                dataset=str(dataset.source_path),
+                output=str(sandbox_output),
+                python=sys.executable,
+                fit_dataset=str(staged_fit),
+                validation_inputs=str(staged_validation),
+                protocol=str(staged_protocol),
+                adapter_source=str(staged_adapter),
+            )
+            for value in manifest["command"]
+        ]
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=sandbox_inputs,
+            env=_adapter_environment(project_root, sandbox),
+        )
+        (output_dir / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
+        (output_dir / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
+        result_path = sandbox_output / "adapter_result.json"
+        if completed.returncode != 0 or not result_path.is_file():
+            raise RuntimeError("RT calibration adapter failed")
+        result_record = read_strict_json(result_path)
+        required_result = {
+            "schema_version",
+            "fit_dataset_sha256",
+            "validation_inputs_sha256",
+            "fitted_parameters_path",
+            "fitted_parameters_sha256",
+            "simulated_statistics_path",
+            "simulated_statistics_sha256",
+        }
+        if not isinstance(result_record, dict) or set(result_record) != required_result:
+            raise RuntimeError("RT calibration adapter-result fields must be exact")
+        if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-result-v5":
+            raise RuntimeError("RT calibration adapter-result schema mismatch")
+        expected_adapter_hashes = {
+            "fit_dataset_sha256": sha256_file(staged_fit),
+            "validation_inputs_sha256": sha256_file(staged_validation),
+        }
+        for key, expected in expected_adapter_hashes.items():
+            if result_record[key] != expected:
+                raise RuntimeError(f"RT calibration result {key} mismatch")
+        staged_fitted = _bound_output_file(
+            sandbox_output,
+            result_record["fitted_parameters_path"],
+            result_record["fitted_parameters_sha256"],
+            "fitted parameters",
+        )
+        staged_simulated = _bound_output_file(
+            sandbox_output,
+            result_record["simulated_statistics_path"],
+            result_record["simulated_statistics_sha256"],
+            "simulated statistics",
+        )
+        simulated_rows = _read_statistics_csv(
+            staged_simulated, "simulated statistics"
+        )
+        adapter_inputs = output_dir / "adapter_inputs"
+        shutil.copytree(sandbox_inputs, adapter_inputs)
+        shutil.copy2(result_path, output_dir / result_path.name)
+        fitted_path = output_dir / staged_fitted.name
+        simulated_path = output_dir / staged_simulated.name
+        shutil.copy2(staged_fitted, fitted_path)
+        shutil.copy2(staged_simulated, simulated_path)
+    validated_rows, assessments = _join_and_assess(
+        reference_rows,
+        simulated_rows,
+        protocol["absolute_tolerances"],
+    )
     bound_manifest = output_dir / "adapter_manifest.json"
     write_json(
         bound_manifest,
@@ -75,67 +167,6 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
             "validation_reference_path": str(validation_reference_path),
             "adapter_source_path": str(adapter_source_path),
         },
-    )
-    command = [
-        value.format(
-            dataset=str(dataset.source_path),
-            output=str(output_dir),
-            python=sys.executable,
-            fit_dataset=str(fit_dataset_path),
-            validation_inputs=str(validation_inputs_path),
-            protocol=str(protocol_path),
-            adapter_source=str(adapter_source_path),
-        )
-        for value in manifest["command"]
-    ]
-    project_root = Path(__file__).resolve().parents[1]
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        cwd=project_root,
-        env=_adapter_environment(project_root),
-    )
-    (output_dir / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
-    (output_dir / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
-    result_path = output_dir / "adapter_result.json"
-    if completed.returncode != 0 or not result_path.is_file():
-        raise RuntimeError("RT calibration adapter failed")
-    result_record = read_strict_json(result_path)
-    required_result = {
-        "schema_version",
-        "fit_dataset_sha256",
-        "validation_inputs_sha256",
-        "fitted_parameters_path",
-        "fitted_parameters_sha256",
-        "simulated_statistics_path",
-        "simulated_statistics_sha256",
-    }
-    if not isinstance(result_record, dict) or set(result_record) != required_result:
-        raise RuntimeError("RT calibration adapter-result fields must be exact")
-    if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-result-v5":
-        raise RuntimeError("RT calibration adapter-result schema mismatch")
-    for key in ("fit_dataset_sha256", "validation_inputs_sha256"):
-        if result_record[key] != manifest[key]:
-            raise RuntimeError(f"RT calibration result {key} mismatch")
-    fitted_path = _bound_output_file(
-        output_dir,
-        result_record["fitted_parameters_path"],
-        result_record["fitted_parameters_sha256"],
-        "fitted parameters",
-    )
-    simulated_path = _bound_output_file(
-        output_dir,
-        result_record["simulated_statistics_path"],
-        result_record["simulated_statistics_sha256"],
-        "simulated statistics",
-    )
-    simulated_rows = _read_statistics_csv(simulated_path, "simulated statistics")
-    validated_rows, assessments = _join_and_assess(
-        reference_rows,
-        simulated_rows,
-        protocol["absolute_tolerances"],
     )
     validated_path = output_dir / "validated_statistics.csv"
     write_csv(validated_path, validated_rows)
@@ -232,10 +263,12 @@ def _validate_manifest(manifest):
             )
         )
         or any("validation_reference" in value for value in command)
+        or any("{dataset}" in value for value in command)
     ):
         raise ValueError(
             "RT calibration command must directly execute the authenticated adapter, bind fit, "
-            "validation inputs, protocol, and output exactly once, and exclude validation references"
+            "validation inputs, protocol, and output exactly once, and exclude validation references "
+            "and the main experiment dataset"
         )
     for key in (
         "protocol_path",
@@ -575,13 +608,45 @@ def _bound_output_file(output_dir, relative, digest, label):
     return path
 
 
-def _adapter_environment(project_root):
+def _stage_partition_contract(source_path, destination, partition):
+    contract = read_strict_json(source_path)
+    assets = destination.parent / "source_assets" / partition
+    assets.mkdir(parents=True)
+    for unit in contract["units"]:
+        source = unit["source"]
+        asset = Path(source["asset_path"])
+        if not asset.is_absolute():
+            asset = Path(source_path).parent / asset
+        asset = asset.resolve()
+        staged_asset = assets / f"{source['asset_sha256']}.json"
+        if not staged_asset.exists():
+            shutil.copy2(asset, staged_asset)
+        source["asset_path"] = str(staged_asset.relative_to(destination.parent))
+    write_json(destination, contract)
+    _read_partition_contract(destination, partition)
+
+
+def _adapter_environment(project_root, sandbox_root):
     root = str(Path(project_root).resolve())
-    existing = os.environ.get("PYTHONPATH", "")
-    return {
-        **os.environ,
-        "PYTHONPATH": root if not existing else root + os.pathsep + existing,
+    temporary = Path(sandbox_root) / "tmp"
+    temporary.mkdir()
+    environment = {
+        "HOME": str(Path(sandbox_root).resolve()),
+        "PATH": os.environ.get("PATH", os.defpath),
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": root,
+        "TMPDIR": str(temporary.resolve()),
     }
+    for key in (
+        "CUDA_VISIBLE_DEVICES",
+        "DRJIT_LIBLLVM_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LD_LIBRARY_PATH",
+    ):
+        if key in os.environ:
+            environment[key] = os.environ[key]
+    return environment
 
 
 def _validate_protocol(protocol):

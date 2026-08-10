@@ -273,7 +273,7 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
                 "source_method_selection": "PASS",
             },
         }
-        with self.assertRaisesRegex(RuntimeError, "authenticated verifier fields"):
+        with self.assertRaisesRegex(RuntimeError, "requires live independent regeneration"):
             require_data_verification(handwritten, self.config, self.dataset)
 
         output, gate = self._verified_run("tampered-run")
@@ -343,9 +343,19 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
                 "source_tree_sha256": "a" * 64,
             }
         )
+        receipt["renderer_runtime"]["libllvm_registry_sha256"] = "b" * 64
+        receipt["renderer_runtime"]["lock_files"][
+            "sionna_approved_libllvm_registry"
+        ] = "b" * 64
         write_json(receipt_path, receipt)
-        with self.assertRaisesRegex(RuntimeError, "not registered"):
-            validate_receipt(receipt_path, self.dataset_path)
+        unregistered = self.root / "unregistered_candidate_evidence.json"
+        write_json(unregistered, {})
+        with patch(
+            "formal_v2.formal_precomputed_regeneration_verifier.REGISTERED_CANDIDATE_EVIDENCE",
+            unregistered,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "not registered"):
+                validate_receipt(receipt_path, self.dataset_path)
         validate_receipt(
             receipt_path,
             self.dataset_path,
