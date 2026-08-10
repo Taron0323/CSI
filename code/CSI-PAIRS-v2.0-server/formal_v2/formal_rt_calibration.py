@@ -66,7 +66,6 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
 
     output_dir = Path(output_root) / "qualification" / "rt_calibration"
     output_dir.mkdir(parents=True, exist_ok=True)
-    project_root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="csi-pairs-rt-adapter-") as temporary:
         sandbox = Path(temporary)
         sandbox_inputs = sandbox / "inputs"
@@ -83,7 +82,7 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
         _stage_partition_contract(
             validation_inputs_path, staged_validation, "validation"
         )
-        command = [
+        formatted_command = [
             value.format(
                 dataset=str(dataset.source_path),
                 output=str(sandbox_output),
@@ -95,14 +94,26 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
             )
             for value in manifest["command"]
         ]
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            cwd=sandbox_inputs,
-            env=_adapter_environment(project_root, sandbox),
-        )
+        command = [formatted_command[0], "-I", "-B", *formatted_command[1:]]
+        expected_adapter_hashes = {
+            "fit_dataset_sha256": sha256_file(staged_fit),
+            "validation_inputs_sha256": sha256_file(staged_validation),
+        }
+        staged_input_hashes = _input_tree_hashes(sandbox_inputs)
+        _set_input_tree_writable(sandbox_inputs, writable=False)
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=sandbox_inputs,
+                env=_adapter_environment(sandbox),
+            )
+        finally:
+            _set_input_tree_writable(sandbox_inputs, writable=True)
+        if _input_tree_hashes(sandbox_inputs) != staged_input_hashes:
+            raise RuntimeError("RT calibration adapter modified its staged inputs")
         (output_dir / "stdout.txt").write_text(completed.stdout, encoding="utf-8")
         (output_dir / "stderr.txt").write_text(completed.stderr, encoding="utf-8")
         result_path = sandbox_output / "adapter_result.json"
@@ -122,10 +133,6 @@ def run_rt_calibration_gate(config, dataset, manifest_path, output_root):
             raise RuntimeError("RT calibration adapter-result fields must be exact")
         if result_record["schema_version"] != "csi-pairs-v6-rt-calibration-adapter-result-v5":
             raise RuntimeError("RT calibration adapter-result schema mismatch")
-        expected_adapter_hashes = {
-            "fit_dataset_sha256": sha256_file(staged_fit),
-            "validation_inputs_sha256": sha256_file(staged_validation),
-        }
         for key, expected in expected_adapter_hashes.items():
             if result_record[key] != expected:
                 raise RuntimeError(f"RT calibration result {key} mismatch")
@@ -250,6 +257,26 @@ def _validate_manifest(manifest):
     if not isinstance(manifest["command"], list) or not manifest["command"]:
         raise ValueError("RT calibration command must be nonempty argv")
     command = manifest["command"]
+    placeholders = {
+        "{python}",
+        "{adapter_source}",
+        "{fit_dataset}",
+        "{validation_inputs}",
+        "{protocol}",
+        "{output}",
+    }
+    trailing_arguments_are_bounded = all(
+        value in placeholders
+        or (
+            isinstance(value, str)
+            and value.startswith("--")
+            and "=" not in value
+            and "/" not in value
+            and "\\" not in value
+            and "reference" not in value.lower()
+        )
+        for value in command[2:]
+    )
     if (
         Path(manifest["adapter_source_path"]).suffix != ".py"
         or command[:2] != ["{python}", "{adapter_source}"]
@@ -264,6 +291,7 @@ def _validate_manifest(manifest):
         )
         or any("validation_reference" in value for value in command)
         or any("{dataset}" in value for value in command)
+        or not trailing_arguments_are_bounded
     ):
         raise ValueError(
             "RT calibration command must directly execute the authenticated adapter, bind fit, "
@@ -626,27 +654,36 @@ def _stage_partition_contract(source_path, destination, partition):
     _read_partition_contract(destination, partition)
 
 
-def _adapter_environment(project_root, sandbox_root):
-    root = str(Path(project_root).resolve())
+def _input_tree_hashes(root):
+    root = Path(root).resolve()
+    hashes = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise RuntimeError("RT calibration staged inputs cannot contain symlinks")
+        if path.is_file():
+            hashes[str(path.relative_to(root))] = sha256_file(path)
+    return hashes
+
+
+def _set_input_tree_writable(root, *, writable):
+    root = Path(root).resolve()
+    file_mode = 0o600 if writable else 0o400
+    directory_mode = 0o700 if writable else 0o500
+    for path in sorted(root.rglob("*"), reverse=True):
+        os.chmod(path, directory_mode if path.is_dir() else file_mode)
+    os.chmod(root, directory_mode)
+
+
+def _adapter_environment(sandbox_root):
     temporary = Path(sandbox_root) / "tmp"
     temporary.mkdir()
-    environment = {
+    return {
         "HOME": str(Path(sandbox_root).resolve()),
-        "PATH": os.environ.get("PATH", os.defpath),
+        "PATH": os.defpath,
         "PYTHONNOUSERSITE": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPATH": root,
         "TMPDIR": str(temporary.resolve()),
     }
-    for key in (
-        "CUDA_VISIBLE_DEVICES",
-        "DRJIT_LIBLLVM_PATH",
-        "DYLD_LIBRARY_PATH",
-        "LD_LIBRARY_PATH",
-    ):
-        if key in os.environ:
-            environment[key] = os.environ[key]
-    return environment
 
 
 def _validate_protocol(protocol):

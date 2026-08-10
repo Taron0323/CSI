@@ -39,7 +39,10 @@ def _family(
         code=code,
         config=config,
         tests=tests,
-        dynamic=f"required replay: {dynamic_test}; current full-suite PASS is recorded in the Goal ledger",
+        dynamic=(
+            f"required replay: {dynamic_test}; exact-head execution status is "
+            "external to this static matrix"
+        ),
         status=status,
         blocker=blocker,
         repair=repair,

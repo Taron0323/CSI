@@ -348,6 +348,21 @@ class DataVerifierAuthenticationTests(unittest.TestCase):
             "sionna_approved_libllvm_registry"
         ] = "b" * 64
         write_json(receipt_path, receipt)
+        with self.assertRaisesRegex(RuntimeError, "registry differs"):
+            validate_receipt(
+                receipt_path,
+                self.dataset_path,
+                require_registration=False,
+            )
+        approved_registry = ROOT / "formal_v2/configs/sionna_llvm_approved_v1.json"
+        approved_registry_sha256 = sha256_file(approved_registry)
+        receipt["renderer_runtime"][
+            "libllvm_registry_sha256"
+        ] = approved_registry_sha256
+        receipt["renderer_runtime"]["lock_files"][
+            "sionna_approved_libllvm_registry"
+        ] = approved_registry_sha256
+        write_json(receipt_path, receipt)
         unregistered = self.root / "unregistered_candidate_evidence.json"
         write_json(unregistered, {})
         with patch(

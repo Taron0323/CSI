@@ -497,6 +497,22 @@ class EvidenceIntegrityTests(unittest.TestCase):
                 _validate_external_manifest_binding(
                     stage / "gate.json", payload, self.dataset, {}
                 )
+            payload.update(
+                {
+                    "c1_eligible_models": [],
+                    "model_assessments": [],
+                    "c1_eligible_model_count": 0,
+                    "unique_passing_models": ["forged-model"],
+                    "unique_passing_model_count": 1,
+                    "passing_map_conditioned_models": 1,
+                }
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "counts require passing raw adapters"
+            ):
+                _validate_external_manifest_binding(
+                    stage / "gate.json", payload, self.dataset, {}
+                )
 
     def test_c1_claim_recomputes_raw_adapter_assessments(self):
         with tempfile.TemporaryDirectory() as temporary:

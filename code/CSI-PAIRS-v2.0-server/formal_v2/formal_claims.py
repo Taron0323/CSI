@@ -618,8 +618,17 @@ def _validate_external_manifest_binding(
             "C1 gate names a model without a passing raw adapter"
         )
     if not passed_adapters:
-        if payload.get("model_assessments") not in ([], None):
-            raise RuntimeError("C1 gate has assessments without passing raw adapters")
+        if (
+            payload.get("model_assessments") not in ([], None)
+            or claimed_eligible != []
+            or int(payload.get("c1_eligible_model_count", -1)) != 0
+            or payload.get("unique_passing_models") != []
+            or int(payload.get("unique_passing_model_count", -1)) != 0
+            or int(payload.get("passing_map_conditioned_models", -1)) != 0
+        ):
+            raise RuntimeError(
+                "C1 gate model counts require passing raw adapters"
+            )
         return
     if config is None:
         raise RuntimeError("C1 outer recomputation requires the formal config")

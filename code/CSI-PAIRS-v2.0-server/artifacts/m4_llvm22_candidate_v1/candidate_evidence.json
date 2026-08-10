@@ -72,7 +72,7 @@
     }
   },
   "portable_replay": {
-    "status": "DIAGNOSTIC_REPLAY_PASS",
+    "status": "BLOCKED_SHIPPED_VERIFIER_CHANGED",
     "verification_mode": "precomputed_regeneration_replay_diagnostic",
     "verification_receipt_sha256": "9396eab866ac21998f4031f4cc728e07d25ccabb3e14ff2b3468cfef21dff1be",
     "precomputed_verifier_sha256": "1697a22c981ecb2712129824a833fa6a7faef99b17c2c933aee70dc15aee56f6",
@@ -103,6 +103,7 @@
     "INPUT-DATA-001"
   ],
   "remaining_blockers": [
+    "portable diagnostic bundle must be re-exported against the current fail-closed verifier",
     "external candidate, regenerated archive, origin gate, stage manifest, per-scene rows, and runtime provenance must pass an independently reviewed deep verification",
     "independent RT calibration fit, validation, and reference inputs",
     "Wi-GATr and PMNet formal checkpoints and six-condition results",

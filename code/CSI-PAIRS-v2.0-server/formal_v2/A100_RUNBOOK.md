@@ -6,8 +6,10 @@ unrendered candidate, a fixture, or a failed gate as scientific evidence.
 
 ## Required transfer layout
 
-Transfer the verified server bundle and the portable candidate bundle produced
-by `export-data-verification`:
+Transfer the verified server bundle and a portable candidate bundle produced
+by the current checkout's `export-data-verification`. The historical bundle
+recorded in `artifacts/m4_llvm22_candidate_v1/` predates the repaired verifier
+and is blocked until it is re-exported:
 
 ```text
 CSI-PAIRS-v2.1-server/

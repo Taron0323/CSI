@@ -208,7 +208,9 @@ evidence.
 The newer registry reports dataset `e8903430...d2e` and an independent
 regeneration under LLVM 22.1.8 library `e514c689...a88`.
 `artifacts/m4_llvm22_candidate_v1/` records the claimed 34-scene inventory,
-source/runtime fields, and portable receipt. The candidate, regenerated NPZ,
+source/runtime fields, and a historical portable receipt. The recorded portable
+bundle predates the current shipped verifier and must be re-exported before
+diagnostic replay. The candidate, regenerated NPZ,
 origin bundle, and runtime evidence remain outside Git, so source CI cannot
 authenticate that execution. Transfer and replay are diagnostic content checks
 only; formal use requires deep verification of the originals and a fresh live

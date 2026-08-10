@@ -2071,6 +2071,10 @@ class EvidenceAndPathTests(unittest.TestCase):
         forged["command"] = ["python3", "-c", "print('fabricated')"]
         with self.assertRaisesRegex(ValueError, "authenticated adapter"):
             validate_rt_calibration_manifest(forged)
+        forged = dict(manifest)
+        forged["command"] = [*manifest["command"], "--reference", "/tmp/held-out.csv"]
+        with self.assertRaisesRegex(ValueError, "exclude validation references"):
+            validate_rt_calibration_manifest(forged)
         del manifest["fit_dataset_path"]
         with self.assertRaisesRegex(ValueError, "fields"):
             validate_rt_calibration_manifest(manifest)
